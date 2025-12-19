@@ -1,0 +1,10 @@
+apiVersion: hana.orchestrate.cloud.sap/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: example
+spec:
+  credentials:
+    source: Secret
+    connectionSecretRef:
+      namespace: crossplane-system
+      name: secret
