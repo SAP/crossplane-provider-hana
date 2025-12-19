@@ -1,0 +1,16 @@
+apiVersion: admin.hana.orchestrate.cloud.sap/v1alpha1
+kind: User
+metadata:
+  name: e2e-test-user
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    authentication:
+      password:
+        passwordSecretRef:
+          key: password
+          name: e2e-test-user-secret
+          namespace: default
+    username: E2ETESTUSER
+  providerConfigRef:
+    name: example

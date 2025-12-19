@@ -1,0 +1,60 @@
+{{ .Env.BOILERPLATE }}
+
+package {{ .Env.KIND | strings.ToLower }}
+
+import (
+	"context"
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.tools.sap/cloud-orchestration/crossplane-provider-{{ .Env.PROVIDER | strings.ToLower }}/internal/clients/xsql"
+	"github.tools.sap/cloud-orchestration/crossplane-provider-{{ .Env.PROVIDER | strings.ToLower }}/apis/{{ .Env.GROUP | strings.ToLower }}/v1alpha1"
+
+	"github.com/crossplane/crossplane-runtime/pkg/test"
+)
+
+// Unlike many Kubernetes projects Crossplane does not use third party testing
+// libraries, per the common Go test review comments. Crossplane encourages the
+// use of table driven unit tests. The tests of the crossplane-runtime project
+// are representative of the testing style Crossplane encourages.
+//
+// https://github.com/golang/go/wiki/TestComments
+// https://github.com/crossplane/crossplane/blob/master/CONTRIBUTING.md#contributing-code
+
+func TestRead(t *testing.T) {
+	type fields struct {
+		db xsql.DB
+	}
+
+	type args struct {
+		ctx        context.Context
+		parameters *v1alpha1.{{ .Env.KIND }}Parameters
+	}
+
+	type want struct {
+		observed *v1alpha1.{{ .Env.KIND }}Observation
+		err      error
+	}
+
+	cases := map[string]struct {
+		reason string
+		fields fields
+		args   args
+		want   want
+	}{
+		// TODO: Add test cases.
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := Client{DB: tc.fields.db}
+			got, err := e.Read(tc.args.ctx, tc.args.parameters)
+			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+				t.Errorf("\n%s\ne.Read(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+			if diff := cmp.Diff(tc.want.observed, got); diff != "" {
+				t.Errorf("\n%s\ne.Read(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
