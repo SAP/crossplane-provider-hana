@@ -1,0 +1,15 @@
+apiVersion: meta.pkg.crossplane.io/v1alpha1
+kind: Provider
+metadata:
+  name: provider-hana
+  annotations:
+    meta.crossplane.io/maintainer: SAP Cloud Orchestrator Crossplane Maintainers <CloudOrchestrator@sap.com>
+    friendly-name.meta.crossplane.io: Provider SAP HANA
+    meta.crossplane.io/source: github.com/SAP/crossplane-provider-hana
+    meta.crossplane.io/license: Apache-2.0
+    meta.crossplane.io/description: |
+      A Crossplane provider for managing SAP HANA databases.
+
+spec:
+  controller:
+    image: DOCKER_REGISTRY/crossplane/provider-hana-controller:VERSION

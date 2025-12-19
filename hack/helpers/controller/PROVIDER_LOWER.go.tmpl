@@ -1,0 +1,34 @@
+{{ .Env.BOILERPLATE }}
+
+package controller
+
+import (
+	"github.com/crossplane/crossplane-runtime/pkg/controller"
+	ctrl "sigs.k8s.io/controller-runtime"
+
+	"github.com/SAP/crossplane-provider-{{ .Env.PROVIDER | strings.ToLower }}/internal/clients/xsql"
+{{- $provider_lower := (getenv "PROVIDER") | strings.ToLower -}}
+{{- $dirs := (split (getenv "DIR_LIST") " ") -}}
+{{- range $dir := $dirs }}
+{{- if $dir }}
+    "github.com/SAP/crossplane-provider-{{ $provider_lower }}/internal/controller/{{ $dir }}"
+{{- end }}
+{{- end }}
+)
+
+// Setup creates all HANA controllers with the supplied logger and adds
+// them to the supplied manager.
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+    for _, setup := range []func(ctrl.Manager, controller.Options, xsql.DB) error{
+{{- range $dir := $dirs }}
+{{- if $dir }}
+        {{ $dir }}.Setup,
+{{- end }}
+{{- end }}
+	} {
+		if err := setup(mgr, o, db); err != nil {
+			return err
+		}
+	}
+	return nil
+}

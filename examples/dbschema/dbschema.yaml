@@ -1,0 +1,10 @@
+apiVersion: schema.hana.sap.crossplane.io/v1alpha1
+kind: DbSchema
+metadata:
+  name: example-dbschema
+spec:
+  forProvider:
+    schemaName: EXAMPLE_SCHEMA
+    owner: DBADMIN
+  providerConfigRef:
+    name: example

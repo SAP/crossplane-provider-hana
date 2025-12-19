@@ -1,0 +1,27 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: example-user
+spec:
+  forProvider:
+    username: EXAMPLEUSER
+    privileges:
+    # System privilege
+    - CREATE SCHEMA
+    # Schema privilege
+    - SELECT ON SCHEMA EXAMPLE_SCHEMA
+    # Object privilege
+    - INSERT ON EXAMPLE_SCHEMA.TABLE1
+    # Usergroup operator privilege
+    - USERGROUP OPERATOR ON USERGROUP mygroup
+    # System privilege with admin option
+    - ROLE ADMIN WITH ADMIN OPTION
+    # Object privilege with grant option
+    - CREATE ANY ON SCHEMA EXAMPLE_SCHEMA WITH GRANT OPTION
+    roles:
+    - MODELING
+    # Role with admin option
+    - MONITORING WITH ADMIN OPTION
+    isPasswordLifetimeCheckEnabled: false
+  providerConfigRef:
+    name: example

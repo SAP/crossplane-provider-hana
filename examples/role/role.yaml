@@ -1,0 +1,10 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: Role
+metadata:
+  name: example-role
+spec:
+  forProvider:
+    roleName: EXAMPLE_ROLE
+    schema: EXAMPLE_SCHEMA
+  providerConfigRef:
+    name: example
