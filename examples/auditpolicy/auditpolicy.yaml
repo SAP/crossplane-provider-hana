@@ -1,0 +1,16 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: AuditPolicy
+metadata:
+  name: example-auditpolicy
+spec:
+  forProvider:
+    policyName: SAP_EXAMPLE_AUTHORIZATION_AUDIT
+    auditStatus: UNSUCCESSFUL
+    auditActions:
+      - GRANT ANY
+      - REVOKE ANY
+    auditLevel: INFO
+    auditTrailRetention: 30
+    enabled: true
+  providerConfigRef:
+    name: example

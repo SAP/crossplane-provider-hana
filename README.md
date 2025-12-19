@@ -2,13 +2,70 @@
 
 # crossplane-provider-hana
 
+![logo](/Logo.png)
+
+
 ## About this project
 
-Crossplane provider for SAP HANA
+`crossplane-provider-hana` is a minimal [Crossplane](https://crossplane.io/) Provider
+that is meant to be used as a hana for implementing new Providers. It comes
+with the following features that are meant to be refactored:
+
+- A `ProviderConfig` type that only points to a credentials `Secret`.
+- A `MyType` resource type that serves as an example managed resource.
+- A managed resource controller that reconciles `MyType` objects and simply
+  prints their configuration in its `Observe` method.
 
 ## Requirements and Setup
 
-*Insert a short description what is required to get your project running...*
+### Provider 
+
+1. Use this repository as a hana to create a new one.
+1. Run `make submodules` to initialize the "build" Make submodule we use for CI/CD.
+1. Rename the provider by running the follwing command:
+```
+  make provider.prepare provider={PascalProviderName}
+```
+4. Add your new type by running the following command:
+```
+make provider.addtype provider={PascalProviderName} group={group} kind={type}
+```
+5. Replace the *sample* group with your new group in apis/{provider}.go
+5. Replace the *mytype* type with your new type in internal/controller/{provider}.go
+5. Replace the default controller and ProviderConfig implementations with your own
+5. Run `make generate` to run code generation, this created the CRDs from the API definition.
+5. Run `make build` to build the provider.
+
+### Client
+
+If you don't have an existing native go client, feel free to check out 
+our [client hana repo](https://github.tools.sap/cloud-orchestration/hana-go-client) for building a simple native go client for an API.
+
+## Testing
+
+### Unit Tests
+Unit tests can be executed via `go test` or you can use the predefined rule in the Makefile.
+
+Run unit test via make rule
+```bash
+make test.run
+```
+
+### E2E Tests
+The E2E tests are located in the `{project_root}/test/e2e` directory. 
+
+_You will need to build the provider before running E2E tests._ 
+
+
+E2E tests are based on the [k8s e2e-framework](https://github.com/kubernetes-sigs/e2e-framework). Executing an E2E test
+will start a kind cluster that installs crossplane, the **UUT_CONFIG** (Crossplane Package **U**nit **u**nder **T**est),
+**UUT_CONTROLLER** (Crossplane Provider Controller) and any CRs and Provider Config defined in `test/e2e/testdata`, env variables are defined in `dev.env`.
+
+To run E2E tests via make rule
+
+```bash
+make e2e.run
+```
 
 ## Support, Feedback, Contributing
 

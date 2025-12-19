@@ -1,0 +1,17 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: example-user
+spec:
+  forProvider:
+    username: EXAMPLEUSER
+    privileges:
+    # System privilege
+    - CREATE SCHEMA
+    # Schema privilege
+    - SELECT ON SCHEMA EXAMPLE_SCHEMA
+    # Object privilege
+    # - INSERT ON EXAMPLE_SCHEMA.TABLE1
+    isPasswordLifetimeCheckEnabled: false
+  providerConfigRef:
+    name: example

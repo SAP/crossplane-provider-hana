@@ -1,0 +1,10 @@
+apiVersion: hana.sap.crossplane.io/v1alpha1
+kind: ProviderConfigUsage
+metadata:
+  name: example-providerconfigusage
+providerConfigRef:
+  name: example
+resourceRef:
+  apiVersion: schema.hana.sap.crossplane.io/v1alpha1
+  kind: DbSchema
+  name: example-dbschema

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: crossplane-system
+  name: example-provider-secret
+type: Opaque
+data:
+  # Dummy credentials. Replace with real credentials when testing.
+  credentials: ZHVtbXktY3JlZGVudGlhbHM=
+---
+apiVersion: hana.sap.crossplane.io/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: example
+spec:
+  credentials:
+    source: Secret
+    connectionSecretRef:
+      name: example-provider-secret
+      namespace: crossplane-system
