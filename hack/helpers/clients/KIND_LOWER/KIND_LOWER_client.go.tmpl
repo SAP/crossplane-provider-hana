@@ -1,0 +1,37 @@
+{{ .Env.BOILERPLATE }}
+
+package {{ .Env.KIND | strings.ToLower }}
+
+import (
+	"context"
+
+	"github.tools.sap/cloud-orchestration/crossplane-provider-{{ .Env.PROVIDER | strings.ToLower }}/apis/{{ .Env.GROUP | strings.ToLower }}/v1alpha1"	
+	"github.tools.sap/cloud-orchestration/crossplane-provider-{{ .Env.PROVIDER | strings.ToLower }}/internal/clients/xsql"
+)
+
+// Client struct holds the connection to the db
+type Client struct {
+	xsql.DB
+}
+
+// New creates a new db client
+func New(db xsql.DB) Client {
+	return Client{
+		DB: db,
+	}
+}
+
+// Read checks the state of the schema
+func (c Client) Read(ctx context.Context, parameters *v1alpha1.{{ .Env.KIND }}Parameters) (*v1alpha1.{{ .Env.KIND }}Observation, error) {
+	return nil, nil
+}
+
+// Create a new schema
+func (c Client) Create(ctx context.Context, parameters *v1alpha1.{{ .Env.KIND }}Parameters, args ...any) error {
+	return nil
+}
+
+// Delete an existing schema
+func (c Client) Delete(ctx context.Context, parameters *v1alpha1.{{ .Env.KIND }}Parameters) error {
+	return nil
+}

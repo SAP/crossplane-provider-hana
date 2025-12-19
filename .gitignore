@@ -1,0 +1,19 @@
+/.cache
+/lib
+/.work
+/_output
+cover.out
+/vendor
+/.vendor-new
+.DS_Store
+libdbcapiHDB.dylib
+
+# ignore IDE folders
+.vscode/
+.idea/
+.idea/workspace.xml
+crossplane-provider-hana.iml
+#ignore goenv version fileß
+.go-version
+_output
+.idea

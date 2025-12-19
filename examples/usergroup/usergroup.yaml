@@ -1,0 +1,9 @@
+apiVersion: admin.hana.orchestrate.cloud.sap/v1alpha1
+kind: Usergroup
+metadata:
+  name: example-usergroup
+spec:
+  forProvider:
+    usergroupName: example-usergroup
+  providerConfigRef:
+    name: example
