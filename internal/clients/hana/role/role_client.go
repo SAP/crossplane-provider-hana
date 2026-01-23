@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/privilege"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
 // Client struct holds the connection to the db

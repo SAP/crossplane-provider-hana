@@ -25,8 +25,8 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/test"
 	"github.com/google/go-cmp/cmp"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/user"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/user"
 )
 
 func TestObserveAuthenticationErrors(t *testing.T) {

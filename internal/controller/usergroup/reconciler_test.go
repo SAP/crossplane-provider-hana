@@ -32,12 +32,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/usergroup"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/usergroup"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	apisv1alpha1 "github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
 )
 
 // MockLogger is a mock implementation of logging.Logger

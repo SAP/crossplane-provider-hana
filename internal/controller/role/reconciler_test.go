@@ -23,12 +23,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/role"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/role"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	apisv1alpha1 "github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/SAP/crossplane-provider-hana/apis/schema/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/schema/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana"
 )
 
 func TestReadSchema_RealConnection(t *testing.T) {

@@ -9,9 +9,9 @@ import (
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/privilege"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/user"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/user"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -25,8 +25,8 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	apisv1alpha1 "github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 )
 
 const (

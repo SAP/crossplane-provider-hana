@@ -152,4 +152,4 @@ If any other parameters needs to be updated (other than 2 above), for example au
 
 ### GitHub Issue
 
-- [GitHub Issue/Feature](https://github.tools.sap/cloud-orchestration/crossplane-provider-hana/issues/127)
+- [GitHub Issue/Feature](https://github.com/SAP/crossplane-provider-hana/issues/127)

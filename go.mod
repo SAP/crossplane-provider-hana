@@ -1,4 +1,4 @@
-module github.tools.sap/cloud-orchestration/crossplane-provider-hana
+module github.com/SAP/crossplane-provider-hana
 
 go 1.24.0
 

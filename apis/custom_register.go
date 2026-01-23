@@ -2,8 +2,8 @@
 package apis
 
 import (
-	adminv1alpha1 "github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	schemav1alpha1 "github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/schema/v1alpha1"
+	adminv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	schemav1alpha1 "github.com/SAP/crossplane-provider-hana/apis/schema/v1alpha1"
 )
 
 func init() {

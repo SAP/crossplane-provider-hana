@@ -13,9 +13,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/fake"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/privilege"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 )
 
 var testTime = metav1.Now()

@@ -9,11 +9,11 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/pkg/errors"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

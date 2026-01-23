@@ -16,7 +16,7 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"golang.org/x/crypto/argon2"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
 type hanaDB struct {

@@ -8,12 +8,12 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/controller"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/xsql"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/controller/auditpolicy"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/controller/dbschema"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/controller/role"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/controller/user"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/controller/usergroup"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/auditpolicy"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/dbschema"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/role"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/user"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/usergroup"
 )
 
 // Setup creates all HANA controllers with the supplied logger and adds

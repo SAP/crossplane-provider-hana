@@ -25,11 +25,11 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis"
-	apisv1alpha1 "github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana"
-	hanaController "github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/controller"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/controller/features"
+	"github.com/SAP/crossplane-provider-hana/apis"
+	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
+	hanaController "github.com/SAP/crossplane-provider-hana/internal/controller"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
 
 func main() {

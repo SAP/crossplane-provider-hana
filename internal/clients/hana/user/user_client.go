@@ -11,10 +11,10 @@ import (
 	"github.com/SAP/go-hdb/driver"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/privilege"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
 // Error types for user authentication issues

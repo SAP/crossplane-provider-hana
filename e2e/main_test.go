@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
+	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/crossplane-contrib/xp-testing/pkg/envvar"
-	apisv1alpha1 "github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/v1alpha1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/e2e-framework/support/kind"
 

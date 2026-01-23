@@ -10,9 +10,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/apis/admin/v1alpha1"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/fake"
-	"github.tools.sap/cloud-orchestration/crossplane-provider-hana/internal/clients/hana/privilege"
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 )
 
 func TestRead(t *testing.T) {
