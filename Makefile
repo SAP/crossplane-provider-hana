@@ -11,7 +11,7 @@ PLATFORMS ?= linux_amd64
 
 VERSION := $(shell echo "v$$(cat VERSION)-$$(git rev-list HEAD --count)-g$$(git describe --dirty --always)" | sed 's/-/./2' | sed 's/-/./2' | sed 's/-/./2')
 
-GOLANGCILINT_VERSION= 1.53.3
+GOLANGCILINT_VERSION ?= 2.8.0
 
 -include build/makelib/common.mk
 
