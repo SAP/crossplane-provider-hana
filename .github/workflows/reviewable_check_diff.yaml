@@ -29,7 +29,7 @@ jobs:
 
     - name: Make Reviewable
       run: make reviewable
-      env:
-        RUNNING_IN_CI: 'true'
+      # env:
+      #   RUNNING_IN_CI: 'true'
     - name: Make Check-Diff
       run: make check-diff
