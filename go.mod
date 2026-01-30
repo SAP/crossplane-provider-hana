@@ -8,7 +8,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/SAP/go-hdb v1.14.13
 	github.com/alecthomas/kingpin/v2 v2.4.0
-	github.com/crossplane-contrib/xp-testing v1.8.0
+	github.com/crossplane-contrib/xp-testing v1.9.0
 	github.com/crossplane/crossplane-runtime v1.20.0
 	github.com/crossplane/crossplane-tools v0.0.0-20250422201939-01c86c11b835
 	github.com/google/go-cmp v0.7.0
@@ -100,7 +100,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
-	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.31.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
