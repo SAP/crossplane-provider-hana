@@ -42,6 +42,7 @@ IMAGES = $(BASE_NAME) $(BASE_NAME)-controller
 export UUT_CONFIG = $(BUILD_REGISTRY)/$(subst crossplane-,crossplane/,$(PROJECT_NAME)):$(VERSION)
 export UUT_CONTROLLER = $(BUILD_REGISTRY)/$(subst crossplane-,crossplane/,$(PROJECT_NAME))-controller:$(VERSION)
 export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_CONFIG)","crossplane/provider-hana-controller":"$(UUT_CONTROLLER)"}
+export HANA_BINDINGS
 
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .
