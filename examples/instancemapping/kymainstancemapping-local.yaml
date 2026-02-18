@@ -1,0 +1,146 @@
+# Example: KymaInstanceMapping for local cluster (single-cluster deployment)
+#
+# This example demonstrates how to create a HANA Cloud instance mapping when both
+# the provider controller and the HANA ServiceInstance are on the same cluster.
+#
+# Prerequisites:
+# 1. Cluster with crossplane-provider-hana installed
+# 2. BTP Service Operator installed on the same cluster
+# 3. HANA Cloud ServiceInstance created
+# 4. Admin API ServiceBinding created
+
+---
+# Step 1: ProviderConfig (placeholder - admin API credentials come from ServiceBinding)
+apiVersion: hana.orchestrate.cloud.sap/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: HanaConnectionSecret
+    connectionSecretRef:
+      # This is not used for KymaInstanceMapping since credentials come from the ServiceBinding
+      # However, ProviderConfig is still required by Crossplane architecture
+      name: dummy-creds
+      namespace: crossplane-system
+
+---
+# Step 2: KymaInstanceMapping resource (using local cluster)
+apiVersion: inventory.hana.orchestrate.cloud.sap/v1alpha1
+kind: KymaInstanceMapping
+metadata:
+  name: local-hana-mapping
+spec:
+  providerConfigRef:
+    name: default
+
+  forProvider:
+    # No kymaConnectionRef - controller uses local cluster
+    # When kymaConnectionRef is omitted, the controller reads ServiceInstance, ServiceBinding,
+    # and ConfigMap resources from the same cluster where it's running
+
+    # ServiceInstance on local cluster (contains HANA Cloud instance GUID)
+    serviceInstanceRef:
+      name: my-hana-instance
+      namespace: default
+
+    # ServiceBinding on local cluster (provides admin API credentials)
+    adminBindingRef:
+      name: hana-admin-api-binding
+      namespace: default
+
+    # Target namespace to map
+    targetNamespace: my-application
+
+    # Optional: ConfigMap containing CLUSTER_ID
+    # If not specified, defaults to kyma-system/sap-btp-operator-config
+    clusterIdConfigMapRef:
+      name: sap-btp-operator-config
+      namespace: kyma-system
+
+    # Set as default mapping for the namespace
+    isDefault: false
+
+---
+# Resources expected on the local cluster:
+
+# 1. HANA Cloud ServiceInstance
+# apiVersion: services.cloud.sap.com/v1
+# kind: ServiceInstance
+# metadata:
+#   name: my-hana-instance
+#   namespace: default
+# spec:
+#   serviceOfferingName: hana-cloud
+#   servicePlanName: hana
+#   parameters:
+#     data:
+#       memory: 32
+#       vcpu: 2
+# status:
+#   instanceID: "cf923d7d-7661-48f2-aaa2-d4dbb151a708"  # ← Extracted by controller
+#   ready: true
+
+# 2. Admin API ServiceInstance
+# apiVersion: services.cloud.sap.com/v1
+# kind: ServiceInstance
+# metadata:
+#   name: hana-admin-api
+#   namespace: default
+# spec:
+#   serviceOfferingName: hana-cloud
+#   servicePlanName: admin-api-access
+#   parameters:
+#     data:
+#       platform: "kubernetes"
+
+# 3. Admin API ServiceBinding
+# apiVersion: services.cloud.sap.com/v1
+# kind: ServiceBinding
+# metadata:
+#   name: hana-admin-api-binding
+#   namespace: default
+# spec:
+#   serviceInstanceName: hana-admin-api
+#   secretName: hana-admin-api-secret  # ← Extracted by controller
+
+# 4. Admin API credentials secret (auto-created by BTP operator)
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: hana-admin-api-secret
+#   namespace: default
+# data:
+#   url: <base64-encoded-url>      # ← Extracted by controller
+#   uaa: <base64-encoded-json>     # ← Extracted by controller
+
+# 5. BTP Operator ConfigMap
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: sap-btp-operator-config
+#   namespace: kyma-system
+# data:
+#   CLUSTER_ID: "shoot--prod--cluster-abc123"  # ← Extracted by controller
+
+---
+# Expected status after successful reconciliation:
+#
+# status:
+#   conditions:
+#   - type: Ready
+#     status: "True"
+#   - type: Synced
+#     status: "True"
+#   atProvider:
+#     kyma:
+#       serviceInstanceID: "cf923d7d-7661-48f2-aaa2-d4dbb151a708"
+#       clusterID: "shoot--prod--cluster-abc123"
+#       serviceInstanceName: "my-hana-instance"
+#       serviceInstanceReady: true
+#     hana:
+#       mappingId:
+#         serviceInstanceID: "cf923d7d-7661-48f2-aaa2-d4dbb151a708"
+#         primaryID: "shoot--prod--cluster-abc123"
+#         secondaryID: "my-application"
+#       ready: true
