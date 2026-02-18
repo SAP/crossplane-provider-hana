@@ -6,5 +6,5 @@
   "postUpdateOptions": [
     "gomodTidy"
   ],
-  "labels": ["release-notes/dependencies"],
+  "labels": ["release-notes/dependencies"]
 }

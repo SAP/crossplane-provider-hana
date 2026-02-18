@@ -87,11 +87,9 @@ func (h *hanaDB) Disconnect() error {
 	h.dbs.Range(func(_, val any) bool {
 		db, ok := val.(*sql.DB)
 		if ok {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				_ = db.Close()
-			}()
+			})
 		} else {
 			// Log warning when loaded value is not *sql.DB
 			h.logger.Info("Warning: sync.Map loaded value that is not *sql.DB", "type", fmt.Sprintf("%T", val))
