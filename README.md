@@ -7,34 +7,75 @@
 
 ## About this project
 
-`crossplane-provider-hana` is a minimal [Crossplane](https://crossplane.io/) Provider
-that is meant to be used as a hana for implementing new Providers. It comes
-with the following features that are meant to be refactored:
+`crossplane-provider-hana` is a [Crossplane](https://crossplane.io/) Provider for managing SAP HANA Cloud resources and instance mappings. It provides Kubernetes-native management of:
 
-- A `ProviderConfig` type that only points to a credentials `Secret`.
-- A `MyType` resource type that serves as an example managed resource.
-- A managed resource controller that reconciles `MyType` objects and simply
-  prints their configuration in its `Observe` method.
+- **HANA Database Resources**: Users, roles, schemas, audit policies, and security configurations
+- **Instance Mapping**: Map HANA Cloud instances to Kubernetes namespaces via `KymaInstanceMapping`
+  - Single-cluster deployment: Controller and ServiceInstance on same cluster
+  - Cross-cluster deployment: Controller accesses remote Kyma cluster via kubeconfig
+
+See the [examples directory](./examples/) for detailed usage guides and example manifests.
 
 ## Requirements and Setup
 
-### Provider 
+### Installation
 
-1. Use this repository as a hana to create a new one.
-1. Run `make submodules` to initialize the "build" Make submodule we use for CI/CD.
-1. Rename the provider by running the follwing command:
+1. Install Crossplane on your Kubernetes cluster:
+```bash
+kubectl create namespace crossplane-system
+helm repo add crossplane-stable https://charts.crossplane.io/stable
+helm install crossplane --namespace crossplane-system crossplane-stable/crossplane
 ```
-  make provider.prepare provider={PascalProviderName}
+
+2. Install the HANA provider:
+```bash
+kubectl apply -f - <<EOF
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-hana
+spec:
+  package: ghcr.io/sap/crossplane-provider-hana:latest
+EOF
 ```
-4. Add your new type by running the following command:
+
+3. Configure the provider with credentials:
+```bash
+# For SQL-based resources (User, Role, Schema, etc.)
+kubectl create secret generic hana-provider-creds \
+  --from-literal=username=SYSTEM \
+  --from-literal=password=YourPassword \
+  --from-literal=endpoint=your-instance.hanacloud.ondemand.com \
+  --from-literal=port=443 \
+  -n crossplane-system
+
+kubectl apply -f examples/providerconfig.yaml
 ```
-make provider.addtype provider={PascalProviderName} group={group} kind={type}
+
+4. Create resources:
+```bash
+# For instance mapping, see examples/instancemapping/
+kubectl apply -f examples/instancemapping/kymainstancemapping-local.yaml
 ```
-5. Replace the *sample* group with your new group in apis/{provider}.go
-5. Replace the *mytype* type with your new type in internal/controller/{provider}.go
-5. Replace the default controller and ProviderConfig implementations with your own
-5. Run `make generate` to run code generation, this created the CRDs from the API definition.
-5. Run `make build` to build the provider.
+
+### Development Setup
+
+1. Clone the repository and initialize submodules:
+```bash
+git clone https://github.com/SAP/crossplane-provider-hana.git
+cd crossplane-provider-hana
+make submodules
+```
+
+2. Build the provider:
+```bash
+make build
+```
+
+3. Run locally for development:
+```bash
+make dev
+```
 
 ### Client
 

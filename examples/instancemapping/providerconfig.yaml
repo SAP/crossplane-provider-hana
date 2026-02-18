@@ -1,0 +1,29 @@
+---
+# Example ProviderConfig with SQL credentials
+#
+# NOTE: This ProviderConfig is used for SQL-based resources (User, Role, Schema, etc.).
+# KymaInstanceMapping does NOT use these credentials - it retrieves Admin API credentials
+# directly from the ServiceBinding on the Kyma cluster.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hana-provider-creds
+  namespace: crossplane-system
+type: Opaque
+stringData:
+  # SQL credentials for database resources (User, Role, Schema, etc.)
+  username: SYSTEM
+  password: MySecurePassword123
+  endpoint: abc123-456.hanacloud.ondemand.com
+  port: "443"
+---
+apiVersion: hana.orchestrate.cloud.sap/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: HanaConnectionSecret
+    connectionSecretRef:
+      name: hana-provider-creds
+      namespace: crossplane-system
