@@ -101,8 +101,9 @@ type kymaExtractedData struct {
 // It follows this flow:
 // 1. Track ProviderConfig usage
 // 2. Determine cluster client (local or remote based on KymaConnectionRef)
-//    - If KymaConnectionRef is nil, use local cluster (c.kube)
-//    - If KymaConnectionRef is provided, read kubeconfig and create remote client
+//   - If KymaConnectionRef is nil, use local cluster (c.kube)
+//   - If KymaConnectionRef is provided, read kubeconfig and create remote client
+//
 // 3. Extract all needed data from cluster (ServiceInstance, ServiceBinding, ConfigMap)
 // 4. Create a new HANA Cloud client and connect using extracted credentials
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {

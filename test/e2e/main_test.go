@@ -8,12 +8,13 @@ import (
 	"os"
 	"testing"
 
-	adminv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
-	schemav1alpha1 "github.com/SAP/crossplane-provider-hana/apis/schema/v1alpha1"
-	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/crossplane-contrib/xp-testing/pkg/envvar"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/e2e-framework/support/kind"
+
+	adminv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	schemav1alpha1 "github.com/SAP/crossplane-provider-hana/apis/schema/v1alpha1"
+	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 
 	"github.com/crossplane-contrib/xp-testing/pkg/vendored"
 

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go version:*)",
+      "Bash(curl:*)",
+      "Bash(gofmt:*)",
+      "Bash(go install:*)",
+      "Bash(make:*)"
+    ]
+  }
+}
