@@ -42,7 +42,6 @@ IMAGES = $(BASE_NAME) $(BASE_NAME)-controller
 export UUT_CONFIG = $(BUILD_REGISTRY)/$(subst crossplane-,crossplane/,$(PROJECT_NAME)):$(VERSION)
 export UUT_CONTROLLER = $(BUILD_REGISTRY)/$(subst crossplane-,crossplane/,$(PROJECT_NAME))-controller:$(VERSION)
 export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_CONFIG)","crossplane/provider-hana-controller":"$(UUT_CONTROLLER)"}
-export HANA_BINDINGS
 
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .
@@ -58,7 +57,7 @@ test-e2e: $(KIND) $(HELM3) build
 	@$(INFO) running e2e tests
 	@echo E2E_IMAGES=$$E2E_IMAGES
 	# echo E2E_IMAGES=$$E2E_IMAGES > e2e.env
-	go test $(PROJECT_REPO)/test/... -tags=e2e -test.v  -count=1
+	HANA_BINDINGS=$$HANA_BINDINGS go test $(PROJECT_REPO)/test/... -tags=e2e -test.v  -count=1
 	@$(OK) e2e tests passed
 
 # Update the submodules, such as the common build scripts.
