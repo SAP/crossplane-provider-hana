@@ -31,6 +31,17 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Check HANA_BINDINGS secret
+        run: |
+          if [ -z "$HANA_BINDINGS" ]; then
+            echo "ERROR: HANA_BINDINGS is empty or not set"
+            exit 1
+          else
+            echo "HANA_BINDINGS is set (length: ${#HANA_BINDINGS})"
+          fi
+        env:
+          HANA_BINDINGS: ${{ secrets.HANA_BINDINGS }}
+
       - name: Run build and e2e test
         run: make e2e.run
         env:
