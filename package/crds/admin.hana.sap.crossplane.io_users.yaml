@@ -178,10 +178,10 @@ spec:
                     x-kubernetes-list-type: set
                   usergroup:
                     default: DEFAULT
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
+                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
                     type: string
                   username:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
+                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable

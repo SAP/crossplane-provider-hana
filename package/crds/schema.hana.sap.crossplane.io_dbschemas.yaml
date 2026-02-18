@@ -74,10 +74,9 @@ spec:
                 description: DbSchemaParameters are the configurable fields of a Dbschema.
                 properties:
                   owner:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
+                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
                     type: string
                   schemaName:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable

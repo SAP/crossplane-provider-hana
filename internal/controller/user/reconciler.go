@@ -328,8 +328,8 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating user resource", "name", cr.Name, "username", cr.Spec.ForProvider.Username)
 
-	desired := buildDesiredParameters(cr)
-	observed := buildObservedParameters(cr)
+	desired := c.buildDesiredParameters(cr)
+	observed := c.buildObservedParameters(cr)
 
 	observed, err := privilege.FilterManagedPrivileges(observed, cr.Spec.ForProvider.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
 
@@ -372,10 +372,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 func (c *external) updatePrivileges(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
 	// Update privileges if needed
-	if !utils.ArraysEqual(observed.Privileges, desired.Privileges) {
-		toGrant := utils.ArrayDiff(desired.Privileges, observed.Privileges)
-		toRevoke := utils.ArrayDiff(observed.Privileges, desired.Privileges)
-
+	if isEqual, toGrant, toRevoke := utils.ArraysBothDiff(desired.Privileges, observed.Privileges); !isEqual {
 		c.log.Info("Updating user privileges",
 			"name", cr.Name,
 			"username", desired.Username,
@@ -396,10 +393,7 @@ func (c *external) updatePrivileges(ctx context.Context, cr *v1alpha1.User, desi
 
 func (c *external) updateRoles(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
 	// Update roles if needed
-	if !utils.ArraysEqual(observed.Roles, desired.Roles) {
-		toGrant := utils.ArrayDiff(desired.Roles, observed.Roles)
-		toRevoke := utils.ArrayDiff(observed.Roles, desired.Roles)
-
+	if isEqual, toGrant, toRevoke := utils.ArraysBothDiff(desired.Roles, observed.Roles); !isEqual {
 		c.log.Info("Updating user roles",
 			"name", cr.Name,
 			"username", desired.Username,
@@ -421,10 +415,7 @@ func (c *external) updateRoles(ctx context.Context, cr *v1alpha1.User, desired *
 
 func (c *external) updateParameters(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
 	// Update parameters if needed
-	if !utils.MapsEqual(observed.Parameters, desired.Parameters) {
-		parametersToSet := utils.MapDiff(desired.Parameters, observed.Parameters)
-		parametersToClear := utils.MapDiff(observed.Parameters, desired.Parameters)
-
+	if isEqual, parametersToSet, parametersToClear := utils.MapsBothDiff(desired.Parameters, observed.Parameters); !isEqual {
 		c.log.Info("Updating user parameters",
 			"name", cr.Name,
 			"username", desired.Username,
@@ -466,19 +457,20 @@ func (c *external) updateX509Providers(ctx context.Context, cr *v1alpha1.User, d
 	desiredProviders := desired.Authentication.X509Providers
 	observedProviders := observed.X509Providers
 
-	providersToAdd, err := c.ResolveUserMappings(ctx, utils.ArrayDiff(desiredProviders, observedProviders), cr.GetNamespace())
+	isEqual, providerMappingsToAdd, providerMappingsToRemove := utils.ArraysBothDiff(desiredProviders, observedProviders)
+	providersToAdd, err := c.ResolveUserMappings(ctx, providerMappingsToAdd, cr.GetNamespace())
 	if err != nil {
 		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
 		return fmt.Errorf(errUpdateUser, err)
 	}
 
-	providersToRemove, err := c.ResolveUserMappings(ctx, utils.ArrayDiff(observedProviders, desiredProviders), cr.GetNamespace())
+	providersToRemove, err := c.ResolveUserMappings(ctx, providerMappingsToRemove, cr.GetNamespace())
 	if err != nil {
 		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
 		return fmt.Errorf(errUpdateUser, err)
 	}
 
-	if len(providersToAdd)+len(providersToRemove) > 0 {
+	if !isEqual {
 		c.log.Info("Updating user X.509 providers",
 			"name", cr.Name,
 			"username", desired.Username,
@@ -540,13 +532,50 @@ func (c *external) updatePassword(ctx context.Context, cr *v1alpha1.User, desire
 	return nil
 }
 
-func buildDesiredParameters(cr *v1alpha1.User) *v1alpha1.UserParameters {
+func (c *external) transformParameters(parameters map[string]string) map[string]string {
+	// Validate and format parameters
+	stringKeys := []string{
+		"CLIENT",
+		"LOCALE",
+		"TIME ZONE",
+		"EMAIL ADDRESS",
+	}
+	integerKeys := []string{
+		"STATEMENT MEMORY LIMIT",
+		"STATEMENT THREAD LIMIT",
+	}
+
+	filteredParameters := make(map[string]string, len(parameters))
+
+	upperParameters := utils.MapKeysToUpper(parameters)
+	for key, value := range upperParameters {
+		isKnownIntegerKey := slices.Contains(integerKeys, key)
+		isKnownStringKey := slices.Contains(stringKeys, key)
+		if !isKnownIntegerKey && !isKnownStringKey {
+			c.log.Debug("Unknown parameter key, no specific validation applied", "key", key)
+		}
+		if isKnownIntegerKey {
+			// Validate integer
+			if _, err := fmt.Sscanf(value, "%d", new(int)); err != nil {
+				c.log.Debug("Invalid integer parameter", "key", key, "value", value)
+				continue
+			}
+		}
+		filteredParameters[key] = value
+	}
+	return filteredParameters
+}
+
+func (c *external) buildDesiredParameters(cr *v1alpha1.User) *v1alpha1.UserParameters {
 	parameters := handleDefaults(cr)
 	return parameters
 }
 
-func buildObservedParameters(cr *v1alpha1.User) *v1alpha1.UserObservation {
-	return cr.Status.AtProvider.DeepCopy()
+func (c *external) buildObservedParameters(cr *v1alpha1.User) *v1alpha1.UserObservation {
+	observed := cr.Status.AtProvider.DeepCopy()
+
+	observed.Parameters = c.transformParameters(observed.Parameters)
+	return observed
 }
 
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {

@@ -77,6 +77,7 @@ spec:
                     items:
                       type: string
                     type: array
+                    x-kubernetes-list-type: set
                   noGrantToCreator:
                     type: boolean
                     x-kubernetes-validations:
@@ -86,14 +87,13 @@ spec:
                     items:
                       type: string
                     type: array
+                    x-kubernetes-list-type: set
                   roleName:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable
                       rule: self == oldSelf
                   schema:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable

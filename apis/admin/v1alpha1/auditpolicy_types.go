@@ -17,12 +17,16 @@ import (
 type AuditPolicyParameters struct {
 	PolicyName string `json:"policyName"`
 
+	// +kubebuilder:validation:items:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
+	// +listType=set
 	AuditActions []string `json:"auditActions"`
 
 	// +kubebuilder:default:=ALL
+	// +kubebuilder:validation:Enum:=SUCCESSFUL;UNSUCCESSFUL;ALL
 	AuditStatus string `json:"auditStatus,omitempty"`
 
 	// +kubebuilder:default:=CRITICAL
+	// +kubebuilder:validation:Enum:=EMERGENCY;ALERT;CRITICAL;WARNING;INFO
 	AuditLevel string `json:"auditLevel,omitempty"`
 
 	// +kubebuilder:default:=7
