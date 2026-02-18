@@ -1,8 +1,6 @@
 module github.com/SAP/crossplane-provider-hana
 
-go 1.25.0
-
-toolchain go1.25.7
+go 1.26
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
