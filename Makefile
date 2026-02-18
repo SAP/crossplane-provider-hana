@@ -57,6 +57,7 @@ e2e.run: test-e2e
 test-e2e: $(KIND) $(HELM3) build
 	@$(INFO) running e2e tests
 	@echo E2E_IMAGES=$$E2E_IMAGES
+	@echo HANA_BINDINGS length=$${#HANA_BINDINGS}
 	# echo E2E_IMAGES=$$E2E_IMAGES > e2e.env
 	go test $(PROJECT_REPO)/test/... -tags=e2e -test.v  -count=1
 	@$(OK) e2e tests passed
