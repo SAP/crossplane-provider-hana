@@ -120,7 +120,7 @@ type Authentication struct {
 #### Example Resource Configurations
 
 ```yaml
-apiVersion: admin.hana.orchestrate.cloud.sap/v1alpha1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: X509Provider
 metadata:
   name: my-x509provider
@@ -133,7 +133,7 @@ spec:
   providerConfigRef:
     name: hana-provider-config
 ---
-apiVersion: admin.hana.orchestrate.cloud.sap/v1alpha1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: PersonalSecurityEnvironment
 metadata:
   name: my-pse
@@ -148,7 +148,7 @@ spec:
   providerConfigRef:
     name: hana-provider-config
 ---
-apiVersion: admin.hana.orchestrate.cloud.sap/v1alpha1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: User
 metadata:
   name: my-user
