@@ -23,7 +23,7 @@ type AdminAPICredentials struct {
 type UAAConfig struct {
 	URL          string `json:"url"`
 	ClientID     string `json:"clientid"`
-	ClientSecret string `json:"clientsecret"`
+	ClientSecret string `json:"clientsecret"` //nolint:gosec // G117: This is a legitimate OAuth2 client secret field
 }
 
 // Client is the interface for HANA Cloud REST API operations

@@ -47,24 +47,6 @@ users:
 `
 }
 
-// mockHanaCloudClient is a mock implementation of hanacloud.Client for testing
-type mockHanaCloudClient struct {
-	connectErr        error
-	instanceMappingClient *mockInstanceMappingClient
-}
-
-func (m *mockHanaCloudClient) Connect(ctx context.Context, creds hanacloud.AdminAPICredentials) error {
-	return m.connectErr
-}
-
-func (m *mockHanaCloudClient) InstanceMapping() instancemapping.Client {
-	return m.instanceMappingClient
-}
-
-func (m *mockHanaCloudClient) Disconnect() error {
-	return nil
-}
-
 // mockInstanceMappingClient is a mock implementation of instancemapping.Client
 type mockInstanceMappingClient struct {
 	listFunc   func(ctx context.Context, serviceInstanceID string) ([]instancemapping.InstanceMapping, error)
@@ -365,7 +347,10 @@ func TestExtractKymaData(t *testing.T) {
 			"url":          "https://uaa.example.com",
 		},
 	}
-	adminAPIJSON, _ := json.Marshal(adminAPICreds)
+	adminAPIJSON, err := json.Marshal(adminAPICreds)
+	if err != nil {
+		t.Fatalf("Failed to marshal admin API credentials: %v", err)
+	}
 
 	tests := []struct {
 		name        string
@@ -438,11 +423,11 @@ func TestExtractKymaData(t *testing.T) {
 				},
 			},
 			wantData: &kymaExtractedData{
-				serviceInstanceID:     "test-instance-id",
-				clusterID:             "test-cluster-id",
-				serviceInstanceName:   "hana-instance",
-				serviceInstanceReady:  true,
-				adminAPICredentials:   hanacloud.AdminAPICredentials{},
+				serviceInstanceID:    "test-instance-id",
+				clusterID:            "test-cluster-id",
+				serviceInstanceName:  "hana-instance",
+				serviceInstanceReady: true,
+				adminAPICredentials:  hanacloud.AdminAPICredentials{},
 			},
 			wantErr: false,
 		},

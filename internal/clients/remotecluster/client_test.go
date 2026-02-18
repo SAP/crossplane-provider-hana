@@ -45,33 +45,33 @@ func invalidKubeconfig() []byte {
 
 func TestCreateRemoteClient(t *testing.T) {
 	tests := []struct {
-		name          string
+		name           string
 		kubeconfigData []byte
-		wantErr       bool
-		errContains   string
+		wantErr        bool
+		errContains    string
 	}{
 		{
-			name:          "valid kubeconfig creates client successfully",
+			name:           "valid kubeconfig creates client successfully",
 			kubeconfigData: validKubeconfig(),
-			wantErr:       false,
+			wantErr:        false,
 		},
 		{
-			name:          "invalid kubeconfig returns error",
+			name:           "invalid kubeconfig returns error",
 			kubeconfigData: invalidKubeconfig(),
-			wantErr:       true,
-			errContains:   "failed to create REST config from kubeconfig",
+			wantErr:        true,
+			errContains:    "failed to create REST config from kubeconfig",
 		},
 		{
-			name:          "empty kubeconfig returns error",
+			name:           "empty kubeconfig returns error",
 			kubeconfigData: []byte{},
-			wantErr:       true,
-			errContains:   "failed to create REST config from kubeconfig",
+			wantErr:        true,
+			errContains:    "failed to create REST config from kubeconfig",
 		},
 		{
-			name:          "nil kubeconfig returns error",
+			name:           "nil kubeconfig returns error",
 			kubeconfigData: nil,
-			wantErr:       true,
-			errContains:   "failed to create REST config from kubeconfig",
+			wantErr:        true,
+			errContains:    "failed to create REST config from kubeconfig",
 		},
 	}
 
