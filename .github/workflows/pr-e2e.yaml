@@ -24,3 +24,5 @@ jobs:
     uses: ./.github/workflows/e2e_test.yaml
     with:
       checkout-ref: ${{ github.event.pull_request.head.sha }}
+    secrets:
+      HANA_BINDINGS: ${{ secrets.HANA_BINDINGS }}
