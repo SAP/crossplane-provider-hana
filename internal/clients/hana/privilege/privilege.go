@@ -372,60 +372,74 @@ type privilegePattern struct {
 // - <column_key_privilege> ON CLIENTSIDE ENCRYPTION COLUMN KEY <column_encryption_key_name>
 // - STRUCTURED PRIVILEGE <structured_privilege>
 // - USERGROUP OPERATOR ON USERGROUP <usergroup_name>
+// Reusable identifier patterns
+const (
+	// Matches any identifier: quoted string or unquoted (any non-whitespace chars)
+	// This allows special characters like _SYS_STATISTICS without requiring quotes in the spec
+	// Double-quote escaping is handled separately in SQL command construction
+	anyIdentifierPattern = `(?:"[^"]+"|[^\s]+)`
+	// Matches privilege names (letters and spaces, non-greedy to avoid consuming options)
+	privilegeNamePattern = `[A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?`
+)
+
 var privilegePatterns = []privilegePattern{
 	// USERGROUP OPERATOR ON USERGROUP <name>
+	// Most specific pattern first to avoid mismatches
 	{
-		re: regexp.MustCompile(`(?i)^\s*(USERGROUP\s+OPERATOR)\s+ON\s+USERGROUP\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(USERGROUP\s+OPERATOR)\s+ON\s+USERGROUP\s+` + anyIdentifierPattern + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: UserGroupPrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
 		},
 	},
-	// Column key privilege: USAGE ON CLIENTSIDE ENCRYPTION COLUMN KEY <name>, currently only USAGE is supported.
+	// USAGE ON CLIENTSIDE ENCRYPTION COLUMN KEY <name>
+	// Specific keyword sequence prevents false matches
 	{
-		re: regexp.MustCompile(`(?i)^\s*(USAGE)\b\s+ON\s+CLIENTSIDE\s+ENCRYPTION\s+COLUMN\s+KEY\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(USAGE)\s+ON\s+CLIENTSIDE\s+ENCRYPTION\s+COLUMN\s+KEY\s+` + anyIdentifierPattern + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: ColumnKeyPrivilegeType, Name: "USAGE", Identifier: m[2], IsGrantable: m[3] != ""}
 		},
 	},
-	// Remote source privilege
+	// Remote source privilege: <privilege> ON REMOTE SOURCE <name>
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+REMOTE\s+SOURCE\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(` + privilegeNamePattern + `)\s+ON\s+REMOTE\s+SOURCE\s+` + anyIdentifierPattern + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: SourcePrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
 		},
 	},
-	// Schema privilege
+	// Schema privilege: <privilege> ON SCHEMA <name>
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+SCHEMA\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(` + privilegeNamePattern + `)\s+ON\s+SCHEMA\s+` + anyIdentifierPattern + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: SchemaPrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
 		},
 	},
-	// Object privilege with schema qualification
+	// Object privilege with schema qualification: <privilege> ON <schema>.<object>
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)\.("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(` + privilegeNamePattern + `)\s+ON\s+` + anyIdentifierPattern + `\.` + anyIdentifierPattern + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: fmt.Sprintf("%s.%s", m[2], m[3]), IsGrantable: m[4] != ""}
 		},
 	},
-	// Object privilege without schema (use default schema)
+	// STRUCTURED PRIVILEGE <name>
+	// Must come before generic object privilege to avoid mismatches
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
-		build: func(m []string, defaultSchema DefaultSchema) Privilege {
-			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: fmt.Sprintf("%s.%s", defaultSchema, m[2]), IsGrantable: m[3] != ""}
-		},
-	},
-	// Structured privilege: STRUCTURED PRIVILEGE <name>
-	{
-		re: regexp.MustCompile(`(?i)^\s*STRUCTURED\s+PRIVILEGE\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*STRUCTURED\s+PRIVILEGE\s+` + anyIdentifierPattern + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: StructuredPrivilegeType, Name: "STRUCTURED PRIVILEGE", Identifier: m[1], IsGrantable: m[2] != ""}
 		},
 	},
-	// System privilege (standalone)
+	// Object privilege without schema: <privilege> ON <object> (uses default schema)
+	// Must have ON keyword to avoid matching system privileges
 	{
-		// Changed [A-Za-z\s]* to [A-Za-z\s]*? (added a question mark to enable non-greedy matching)
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?(?:\.[A-Za-z][A-Za-z0-9_]*)?)` + adminOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(` + privilegeNamePattern + `)\s+ON\s+` + anyIdentifierPattern + grantOptionRegex + `\s*$`),
+		build: func(m []string, defaultSchema DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: fmt.Sprintf("%s.%s", defaultSchema, m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// System privilege (standalone, no ON keyword)
+	// Must be last as it's the most permissive pattern
+	{
+		re: regexp.MustCompile(`(?i)^\s*(` + privilegeNamePattern + `(?:\.[A-Za-z][A-Za-z0-9_]*)?)` + adminOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: SystemPrivilegeType, Name: m[1], IsGrantable: m[2] != ""}
 		},
