@@ -11,6 +11,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/auditpolicy"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/dbschema"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/kymainstancemapping"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/personalsecurityenvironment"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/role"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/user"
@@ -21,6 +22,7 @@ import (
 // Setup creates all HANA controllers with the supplied logger and adds
 // them to the supplied manager.
 func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+	// SQL-based controllers
 	for _, setup := range []func(ctrl.Manager, controller.Options, xsql.DB) error{
 		role.Setup,
 		usergroup.Setup,
@@ -34,5 +36,10 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 			return err
 		}
 	}
+	// Non SQL controller
+	if err := kymainstancemapping.Setup(mgr, o); err != nil {
+		return err
+	}
+
 	return nil
 }
