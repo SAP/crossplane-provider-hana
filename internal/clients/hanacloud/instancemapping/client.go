@@ -16,16 +16,21 @@ import (
 type InstanceMapping struct {
 	Platform    string `json:"platform"`
 	PrimaryID   string `json:"primaryID"`
-	SecondaryID string `json:"secondaryID"`
+	SecondaryID *string `json:"secondaryID,omitempty"`
 	IsDefault   bool   `json:"isDefault"`
+}
+
+// listMappingsResponse wraps the API response for listing instance mappings
+type listMappingsResponse struct {
+	Mappings []InstanceMapping `json:"mappings"`
 }
 
 // CreateMappingRequest is the request body for creating a mapping
 type CreateMappingRequest struct {
-	Platform    string `json:"platform"`
-	PrimaryID   string `json:"primaryID"`
-	SecondaryID string `json:"secondaryID"`
-	IsDefault   bool   `json:"isDefault"`
+	Platform    string  `json:"platform"`
+	PrimaryID   string  `json:"primaryID"`
+	SecondaryID *string `json:"secondaryID"`
+	IsDefault   bool    `json:"isDefault"`
 }
 
 // Client is the interface for instance mapping operations
@@ -79,12 +84,19 @@ func (c *instanceMappingClient) List(ctx context.Context, serviceInstanceID stri
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var mappings []InstanceMapping
-	if err := json.NewDecoder(resp.Body).Decode(&mappings); err != nil {
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Unmarshal into wrapper struct (API returns {"mappings": [...]})
+	var response listMappingsResponse
+	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return mappings, nil
+	return response.Mappings, nil
 }
 
 // Create creates a new instance mapping

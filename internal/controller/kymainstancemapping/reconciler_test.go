@@ -25,6 +25,11 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud/instancemapping"
 )
 
+// stringPtr returns a pointer to the given string value
+func stringPtr(s string) *string {
+	return &s
+}
+
 // validKubeconfig returns a minimal valid kubeconfig for testing
 func validKubeconfig() string {
 	return `
@@ -109,7 +114,7 @@ func TestConnector_Connect(t *testing.T) {
 							Name:      "admin-binding",
 							Namespace: "default",
 						},
-						TargetNamespace: "target-ns",
+						TargetNamespace: stringPtr("target-ns"),
 					},
 				},
 			},
@@ -166,7 +171,7 @@ func TestConnector_Connect(t *testing.T) {
 							Name:      "admin-binding",
 							Namespace: "default",
 						},
-						TargetNamespace: "target-ns",
+						TargetNamespace: stringPtr("target-ns"),
 					},
 				},
 			},
@@ -254,7 +259,7 @@ func TestExternal_Observe(t *testing.T) {
 			cr: &v1alpha1.KymaInstanceMapping{
 				Spec: v1alpha1.KymaInstanceMappingSpec{
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
-						TargetNamespace: "target-ns",
+						TargetNamespace: stringPtr("target-ns"),
 					},
 				},
 				Status: v1alpha1.KymaInstanceMappingStatus{
@@ -269,7 +274,7 @@ func TestExternal_Observe(t *testing.T) {
 			mockListResult: []instancemapping.InstanceMapping{
 				{
 					PrimaryID:   "test-cluster-id",
-					SecondaryID: "target-ns",
+					SecondaryID: stringPtr("target-ns"),
 				},
 			},
 			want:    true,
@@ -280,7 +285,7 @@ func TestExternal_Observe(t *testing.T) {
 			cr: &v1alpha1.KymaInstanceMapping{
 				Spec: v1alpha1.KymaInstanceMappingSpec{
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
-						TargetNamespace: "target-ns",
+						TargetNamespace: stringPtr("target-ns"),
 					},
 				},
 				Status: v1alpha1.KymaInstanceMappingStatus{
@@ -418,7 +423,7 @@ func TestExtractKymaData(t *testing.T) {
 							Name:      "admin-binding",
 							Namespace: "default",
 						},
-						TargetNamespace: "target-ns",
+						TargetNamespace: stringPtr("target-ns"),
 					},
 				},
 			},

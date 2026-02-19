@@ -54,6 +54,18 @@ const (
 	errDeleteMapping          = "cannot delete instance mapping: %w"
 )
 
+// stringPtrEqual compares two optional string pointers for equality.
+// Returns true if both are nil or both point to the same string value.
+func stringPtrEqual(a, b *string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
 // Setup adds a controller that reconciles KymaInstanceMapping managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	name := managed.ControllerName(v1alpha1.KymaInstanceMappingGroupKind)
@@ -289,7 +301,7 @@ func isServiceInstanceReady(si *servicescloudsapv1.ServiceInstance) bool {
 
 // parseAdminAPICredentials extracts admin API credentials from secret data
 func parseAdminAPICredentials(data map[string][]byte) (hanacloud.AdminAPICredentials, error) {
-	urlBytes, ok := data["url"]
+	urlBytes, ok := data["baseurl"]
 	if !ok {
 		return hanacloud.AdminAPICredentials{}, errors.New(errMissingAdminAPIData)
 	}
@@ -301,7 +313,7 @@ func parseAdminAPICredentials(data map[string][]byte) (hanacloud.AdminAPICredent
 	// Combine into format expected by hanacloud.ParseAdminAPICredentials
 	// The secret contains: url (string) and uaa (JSON)
 	// We need to combine them into a single JSON structure
-	combinedJSON := fmt.Sprintf(`{"url":"%s","uaa":%s}`, string(urlBytes), string(uaaBytes))
+	combinedJSON := fmt.Sprintf(`{"baseurl":"%s","uaa":%s}`, string(urlBytes), string(uaaBytes))
 
 	// Use the existing parser
 	creds, err := hanacloud.ParseAdminAPICredentials([]byte(combinedJSON))
@@ -332,10 +344,13 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.New(errNotKymaInstanceMapping)
 	}
 
+	// Use TargetNamespace if specified, otherwise nil (secondary ID is optional)
+	targetNamespace := cr.Spec.ForProvider.TargetNamespace
+
 	e.log.Info("Observing instance mapping",
 		"name", cr.Name,
 		"serviceInstanceID", e.kymaData.serviceInstanceID,
-		"namespace", cr.Spec.ForProvider.TargetNamespace,
+		"namespace", targetNamespace,
 		"clusterID", e.kymaData.clusterID)
 
 	// List mappings for this service instance
@@ -346,7 +361,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	// Look for our specific mapping
 	for _, mapping := range mappings {
-		if mapping.PrimaryID == e.kymaData.clusterID && mapping.SecondaryID == cr.Spec.ForProvider.TargetNamespace {
+		if mapping.PrimaryID == e.kymaData.clusterID && stringPtrEqual(mapping.SecondaryID, targetNamespace) {
 			// Mapping exists
 			e.log.Debug("Instance mapping found",
 				"serviceInstanceID", e.kymaData.serviceInstanceID,
@@ -375,7 +390,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	e.log.Debug("Instance mapping not found",
 		"serviceInstanceID", e.kymaData.serviceInstanceID,
 		"clusterID", e.kymaData.clusterID,
-		"namespace", cr.Spec.ForProvider.TargetNamespace)
+		"namespace", targetNamespace)
 
 	return managed.ExternalObservation{
 		ResourceExists: false,
@@ -388,16 +403,19 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.New(errNotKymaInstanceMapping)
 	}
 
+	// Use TargetNamespace if specified, otherwise default to ServiceInstance namespace
+	targetNamespace := cr.Spec.ForProvider.TargetNamespace
+
 	e.log.Info("Creating instance mapping",
 		"name", cr.Name,
 		"serviceInstanceID", e.kymaData.serviceInstanceID,
-		"namespace", cr.Spec.ForProvider.TargetNamespace,
+		"namespace", targetNamespace,
 		"clusterID", e.kymaData.clusterID)
 
 	req := instancemapping.CreateMappingRequest{
 		Platform:    "kubernetes",
 		PrimaryID:   e.kymaData.clusterID,
-		SecondaryID: cr.Spec.ForProvider.TargetNamespace,
+		SecondaryID: targetNamespace,
 		IsDefault:   cr.Spec.ForProvider.IsDefault,
 	}
 
@@ -421,13 +439,19 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalDelete{}, errors.New(errNotKymaInstanceMapping)
 	}
 
+	// Use TargetNamespace if specified, otherwise default to ServiceInstance namespace
+	targetNamespace := ""
+	if cr.Spec.ForProvider.TargetNamespace != nil {
+		targetNamespace = *cr.Spec.ForProvider.TargetNamespace
+	}
+
 	e.log.Info("Deleting instance mapping",
 		"name", cr.Name,
 		"serviceInstanceID", e.kymaData.serviceInstanceID,
-		"namespace", cr.Spec.ForProvider.TargetNamespace,
+		"namespace", targetNamespace,
 		"clusterID", e.kymaData.clusterID)
 
-	if err := e.client.Delete(ctx, e.kymaData.serviceInstanceID, e.kymaData.clusterID, cr.Spec.ForProvider.TargetNamespace); err != nil {
+	if err := e.client.Delete(ctx, e.kymaData.serviceInstanceID, e.kymaData.clusterID, targetNamespace); err != nil {
 		return managed.ExternalDelete{}, fmt.Errorf(errDeleteMapping, err)
 	}
 
