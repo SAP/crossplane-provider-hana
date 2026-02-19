@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/SAP/go-hdb v1.14.22
+	github.com/SAP/go-hdb v1.15.0
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/crossplane-contrib/xp-testing v1.9.0
 	github.com/crossplane/crossplane-runtime v1.20.0
