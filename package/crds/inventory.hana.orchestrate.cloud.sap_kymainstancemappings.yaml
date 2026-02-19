@@ -160,8 +160,9 @@ spec:
                     - namespace
                     type: object
                   targetNamespace:
-                    description: TargetNamespace is the Kubernetes namespace to map
-                      (immutable)
+                    description: |-
+                      TargetNamespace is the Kubernetes namespace to map (immutable)
+                      If not specified, defaults to the namespace of the ServiceInstance
                     type: string
                     x-kubernetes-validations:
                     - message: targetNamespace is immutable
@@ -169,7 +170,6 @@ spec:
                 required:
                 - adminBindingRef
                 - serviceInstanceRef
-                - targetNamespace
                 type: object
               managementPolicies:
                 default:
@@ -358,7 +358,7 @@ spec:
                             description: PrimaryID is the cluster ID
                             type: string
                           secondaryID:
-                            description: SecondaryID is the namespace
+                            description: SecondaryID is the namespace (optional)
                             type: string
                           serviceInstanceID:
                             description: ServiceInstanceID is the GUID of the HANA
@@ -366,7 +366,6 @@ spec:
                             type: string
                         required:
                         - primaryID
-                        - secondaryID
                         - serviceInstanceID
                         type: object
                       ready:

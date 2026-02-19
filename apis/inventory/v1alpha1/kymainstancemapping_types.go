@@ -56,9 +56,10 @@ type KymaInstanceMappingParameters struct {
 	ServiceInstanceRef ResourceReference `json:"serviceInstanceRef"`
 
 	// TargetNamespace is the Kubernetes namespace to map (immutable)
-	// +kubebuilder:validation:Required
+	// If not specified, defaults to the namespace of the ServiceInstance
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="targetNamespace is immutable"
-	TargetNamespace string `json:"targetNamespace"`
+	TargetNamespace *string `json:"targetNamespace,omitempty"`
 
 	// ClusterIDConfigMapRef references the ConfigMap containing CLUSTER_ID
 	// Defaults to kyma-system/sap-btp-operator-config if not specified
@@ -96,8 +97,9 @@ type MappingID struct {
 	ServiceInstanceID string `json:"serviceInstanceID"`
 	// PrimaryID is the cluster ID
 	PrimaryID string `json:"primaryID"`
-	// SecondaryID is the namespace
-	SecondaryID string `json:"secondaryID"`
+	// SecondaryID is the namespace (optional)
+	// +kubebuilder:validation:Optional
+	SecondaryID *string `json:"secondaryID,omitempty"`
 }
 
 // HANACloudObservation contains information about the HANA Cloud mapping
