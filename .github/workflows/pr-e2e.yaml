@@ -25,5 +25,6 @@ jobs:
     uses: ./.github/workflows/e2e_test.yaml
     with:
       checkout-ref: ${{ github.event.pull_request.head.sha }}
+      environment: ${{ github.event_name == 'pull_request_target' && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) && 'pr-e2e-no-approval' || 'pr-e2e-approval' }}
     secrets:
       HANA_BINDINGS: ${{ secrets.HANA_BINDINGS }}
