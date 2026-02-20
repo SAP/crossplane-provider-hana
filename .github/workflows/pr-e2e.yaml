@@ -18,6 +18,7 @@ on:
 # on pull_request_target, the GITHUB_TOKEN has read/write access to the repository content by default, so restrict it to read only
 permissions:
   contents: read
+  actions: read  # Required by the reusable workflow for Turnstyle
 
 jobs:
   run-e2e-test:
