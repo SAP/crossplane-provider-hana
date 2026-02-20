@@ -16,7 +16,7 @@ on:
     - '*.md'
 
 concurrency:
-  group: ${{ github.repository }}-e2e-tests
+  group: ${{ github.repository }}-${{ github.workflow }}
 
 # on pull_request_target, the GITHUB_TOKEN has read/write access to the repository content by default, so restrict it to read only
 permissions:
