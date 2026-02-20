@@ -37,7 +37,7 @@ jobs:
           go-version: '1.26'
 
       - name: Wait for other e2e tests on shared HANA DB
-        uses: softprops/turnstyle@v2
+        uses: softprops/turnstyle@v3
         with:
           same-branch-only: false
           abort-after-seconds: 7200
