@@ -17,7 +17,7 @@ on:
         required: true
 
 concurrency:
-  group: ${{ github.workflow }}
+  group: ${{ github.repository }}-e2e-tests
 
 permissions:
   contents: read
