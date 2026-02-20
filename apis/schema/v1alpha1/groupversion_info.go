@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 // Package v1alpha1 contains the v1alpha1 group Sample resources of the hana provider.
