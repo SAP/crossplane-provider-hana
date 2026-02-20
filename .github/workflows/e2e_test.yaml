@@ -15,6 +15,10 @@ on:
     secrets:
       HANA_BINDINGS:
         required: true
+
+concurrency:
+  group: ${{ github.workflow }}
+
 permissions:
   contents: read
 
