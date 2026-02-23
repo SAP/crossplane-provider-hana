@@ -12,6 +12,11 @@ on:
         default: ''
         required: false
         type: string
+      environment:
+        description: 'the environment to run in'
+        default: 'pr-e2e-approval'
+        required: false
+        type: string
     secrets:
       HANA_BINDINGS:
         required: true
@@ -23,6 +28,7 @@ permissions:
 jobs:
   e2e-tests:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - name: checkout repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
