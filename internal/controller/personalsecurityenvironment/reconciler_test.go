@@ -137,8 +137,8 @@ func TestObserve(t *testing.T) {
 							Name:             "test-pse",
 							X509ProviderName: testProvider,
 							CertificateRefs: []v1alpha1.CertificateRef{
-								{ID: intPtr(1), Name: stringPtr("cert1")},
-								{ID: intPtr(2), Name: stringPtr("cert2")},
+								{ID: new(1), Name: new("cert1")},
+								{ID: new(2), Name: new("cert2")},
 							},
 						}, nil
 					},
@@ -166,8 +166,8 @@ func TestObserve(t *testing.T) {
 								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
-								{ID: intPtr(1), Name: stringPtr("cert1")},
-								{ID: intPtr(2), Name: stringPtr("cert2")},
+								{ID: new(1), Name: new("cert1")},
+								{ID: new(2), Name: new("cert2")},
 							},
 						},
 					},
@@ -189,7 +189,7 @@ func TestObserve(t *testing.T) {
 							Name:             "test-pse",
 							X509ProviderName: "old-provider",
 							CertificateRefs: []v1alpha1.CertificateRef{
-								{ID: intPtr(1), Name: stringPtr("cert1")},
+								{ID: new(1), Name: new("cert1")},
 							},
 						}, nil
 					},
@@ -217,8 +217,8 @@ func TestObserve(t *testing.T) {
 								ProviderRef: &xpv1.Reference{Name: "new-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
-								{ID: intPtr(1), Name: stringPtr("cert1")},
-								{ID: intPtr(2), Name: stringPtr("cert2")},
+								{ID: new(1), Name: new("cert1")},
+								{ID: new(2), Name: new("cert2")},
 							},
 						},
 					},
@@ -509,7 +509,7 @@ func TestUpdate(t *testing.T) {
 								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
-								{ID: intPtr(1), Name: stringPtr("cert1")},
+								{ID: new(1), Name: new("cert1")},
 							},
 						},
 					},
@@ -518,7 +518,7 @@ func TestUpdate(t *testing.T) {
 							Name:             "test-pse",
 							X509ProviderName: testProvider,
 							CertificateRefs: []v1alpha1.CertificateRef{
-								{ID: intPtr(2), Name: stringPtr("cert2")},
+								{ID: new(2), Name: new("cert2")},
 							},
 						},
 					},
@@ -559,7 +559,7 @@ func TestUpdate(t *testing.T) {
 								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
-								{ID: intPtr(1), Name: stringPtr("cert1")},
+								{ID: new(1), Name: new("cert1")},
 							},
 						},
 					},
@@ -568,7 +568,7 @@ func TestUpdate(t *testing.T) {
 							Name:             "test-pse",
 							X509ProviderName: testProvider,
 							CertificateRefs: []v1alpha1.CertificateRef{
-								{ID: intPtr(2), Name: stringPtr("cert2")},
+								{ID: new(2), Name: new("cert2")},
 							},
 						},
 					},
@@ -701,15 +701,6 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-// Helper functions for testing
-func stringPtr(s string) *string {
-	return &s
-}
-
-func intPtr(i int) *int {
-	return &i
-}
-
 // mockLogger is a mock implementation of logging.Logger
 type mockLogger struct {
 	msgs []string
@@ -723,7 +714,7 @@ func (l *mockLogger) Info(msg string, keysAndValues ...any) {
 	l.msgs = append(l.msgs, msg)
 }
 
-func (l *mockLogger) WithValues(_ ...interface{}) logging.Logger { return l }
+func (l *mockLogger) WithValues(_ ...any) logging.Logger { return l }
 
 // mockPersonalSecurityEnvironmentClient implements the personalsecurityenvironment.PersonalSecurityEnvironmentClient interface for testing
 type mockPersonalSecurityEnvironmentClient struct {
@@ -785,7 +776,7 @@ func TestCertListDifference(t *testing.T) {
 			args: args{
 				a: []v1alpha1.CertificateRef{},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
+					{ID: new(1), Name: new("cert1")},
 				},
 			},
 			want: nil,
@@ -794,14 +785,14 @@ func TestCertListDifference(t *testing.T) {
 			reason: "Should return all elements from first slice when second is empty",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
-					{ID: intPtr(2), Name: stringPtr("cert2")},
+					{ID: new(1), Name: new("cert1")},
+					{ID: new(2), Name: new("cert2")},
 				},
 				b: []v1alpha1.CertificateRef{},
 			},
 			want: []v1alpha1.CertificateRef{
-				{ID: intPtr(1), Name: stringPtr("cert1")},
-				{ID: intPtr(2), Name: stringPtr("cert2")},
+				{ID: new(1), Name: new("cert1")},
+				{ID: new(2), Name: new("cert2")},
 			},
 		},
 		"BothNil": {
@@ -816,89 +807,89 @@ func TestCertListDifference(t *testing.T) {
 			reason: "Should not return certificates that match by ID",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
-					{ID: intPtr(2), Name: stringPtr("cert2")},
+					{ID: new(1), Name: new("cert1")},
+					{ID: new(2), Name: new("cert2")},
 				},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("different-name")},
+					{ID: new(1), Name: new("different-name")},
 				},
 			},
 			want: []v1alpha1.CertificateRef{
-				{ID: intPtr(2), Name: stringPtr("cert2")},
+				{ID: new(2), Name: new("cert2")},
 			},
 		},
 		"MatchByName": {
 			reason: "Should not return certificates that match by Name",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
-					{ID: intPtr(2), Name: stringPtr("cert2")},
+					{ID: new(1), Name: new("cert1")},
+					{ID: new(2), Name: new("cert2")},
 				},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(99), Name: stringPtr("cert1")},
+					{ID: new(99), Name: new("cert1")},
 				},
 			},
 			want: []v1alpha1.CertificateRef{
-				{ID: intPtr(2), Name: stringPtr("cert2")},
+				{ID: new(2), Name: new("cert2")},
 			},
 		},
 		"MatchByIDOnly": {
 			reason: "Should match by ID when only ID is set",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1)},
-					{ID: intPtr(2)},
+					{ID: new(1)},
+					{ID: new(2)},
 				},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(1)},
+					{ID: new(1)},
 				},
 			},
 			want: []v1alpha1.CertificateRef{
-				{ID: intPtr(2)},
+				{ID: new(2)},
 			},
 		},
 		"MatchByNameOnly": {
 			reason: "Should match by Name when only Name is set",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{Name: stringPtr("cert1")},
-					{Name: stringPtr("cert2")},
+					{Name: new("cert1")},
+					{Name: new("cert2")},
 				},
 				b: []v1alpha1.CertificateRef{
-					{Name: stringPtr("cert2")},
+					{Name: new("cert2")},
 				},
 			},
 			want: []v1alpha1.CertificateRef{
-				{Name: stringPtr("cert1")},
+				{Name: new("cert1")},
 			},
 		},
 		"NoMatches": {
 			reason: "Should return all elements when there are no matches",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
-					{ID: intPtr(2), Name: stringPtr("cert2")},
+					{ID: new(1), Name: new("cert1")},
+					{ID: new(2), Name: new("cert2")},
 				},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(3), Name: stringPtr("cert3")},
-					{ID: intPtr(4), Name: stringPtr("cert4")},
+					{ID: new(3), Name: new("cert3")},
+					{ID: new(4), Name: new("cert4")},
 				},
 			},
 			want: []v1alpha1.CertificateRef{
-				{ID: intPtr(1), Name: stringPtr("cert1")},
-				{ID: intPtr(2), Name: stringPtr("cert2")},
+				{ID: new(1), Name: new("cert1")},
+				{ID: new(2), Name: new("cert2")},
 			},
 		},
 		"AllMatch": {
 			reason: "Should return empty slice when all elements match",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
-					{ID: intPtr(2), Name: stringPtr("cert2")},
+					{ID: new(1), Name: new("cert1")},
+					{ID: new(2), Name: new("cert2")},
 				},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
-					{ID: intPtr(2), Name: stringPtr("cert2")},
+					{ID: new(1), Name: new("cert1")},
+					{ID: new(2), Name: new("cert2")},
 				},
 			},
 			want: nil,
@@ -907,31 +898,31 @@ func TestCertListDifference(t *testing.T) {
 			reason: "Should return only elements that don't match",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
-					{ID: intPtr(2), Name: stringPtr("cert2")},
-					{ID: intPtr(3), Name: stringPtr("cert3")},
+					{ID: new(1), Name: new("cert1")},
+					{ID: new(2), Name: new("cert2")},
+					{ID: new(3), Name: new("cert3")},
 				},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(2), Name: stringPtr("cert2")},
+					{ID: new(2), Name: new("cert2")},
 				},
 			},
 			want: []v1alpha1.CertificateRef{
-				{ID: intPtr(1), Name: stringPtr("cert1")},
-				{ID: intPtr(3), Name: stringPtr("cert3")},
+				{ID: new(1), Name: new("cert1")},
+				{ID: new(3), Name: new("cert3")},
 			},
 		},
 		"EmptyNameNotMatched": {
 			reason: "Should not match when Name is empty string",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("")},
+					{ID: new(1), Name: new("")},
 				},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(2), Name: stringPtr("")},
+					{ID: new(2), Name: new("")},
 				},
 			},
 			want: []v1alpha1.CertificateRef{
-				{ID: intPtr(1), Name: stringPtr("")},
+				{ID: new(1), Name: new("")},
 			},
 		},
 		"NilIDAndNilName": {
@@ -952,17 +943,17 @@ func TestCertListDifference(t *testing.T) {
 			reason: "Should correctly handle mixed matching by ID and Name",
 			args: args{
 				a: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
-					{ID: intPtr(2), Name: stringPtr("cert2")},
-					{ID: intPtr(3), Name: stringPtr("cert3")},
+					{ID: new(1), Name: new("cert1")},
+					{ID: new(2), Name: new("cert2")},
+					{ID: new(3), Name: new("cert3")},
 				},
 				b: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("different")}, // matches by ID
-					{ID: intPtr(99), Name: stringPtr("cert3")},    // matches by Name
+					{ID: new(1), Name: new("different")}, // matches by ID
+					{ID: new(99), Name: new("cert3")},    // matches by Name
 				},
 			},
 			want: []v1alpha1.CertificateRef{
-				{ID: intPtr(2), Name: stringPtr("cert2")},
+				{ID: new(2), Name: new("cert2")},
 			},
 		},
 	}

@@ -71,7 +71,7 @@ type DbSchemaList struct {
 
 // Dbschema type metadata.
 var (
-	DbSchemaKind             = reflect.TypeOf(DbSchema{}).Name()
+	DbSchemaKind             = reflect.TypeFor[DbSchema]().Name()
 	DbSchemaGroupKind        = schema.GroupKind{Group: Group, Kind: DbSchemaKind}.String()
 	DbSchemaKindAPIVersion   = DbSchemaKind + "." + SchemeGroupVersion.String()
 	DbSchemaGroupVersionKind = SchemeGroupVersion.WithKind(DbSchemaKind)

@@ -119,8 +119,8 @@ func TestObserve(t *testing.T) {
 				client: &mockX509ProviderClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.X509ProviderParameters) (*v1alpha1.X509ProviderObservation, error) {
 						return &v1alpha1.X509ProviderObservation{
-							Name:          stringPtr("test-provider"),
-							Issuer:        stringPtr("CN=Test CA"),
+							Name:          new("test-provider"),
+							Issuer:        new("CN=Test CA"),
 							MatchingRules: []string{"rule1", "rule2"},
 						}, nil
 					},
@@ -151,8 +151,8 @@ func TestObserve(t *testing.T) {
 				client: &mockX509ProviderClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.X509ProviderParameters) (*v1alpha1.X509ProviderObservation, error) {
 						return &v1alpha1.X509ProviderObservation{
-							Name:          stringPtr("test-provider"),
-							Issuer:        stringPtr("CN=Old CA"),
+							Name:          new("test-provider"),
+							Issuer:        new("CN=Old CA"),
 							MatchingRules: []string{"old-rule"},
 						}, nil
 					},
@@ -351,8 +351,8 @@ func TestUpdate(t *testing.T) {
 					},
 					Status: v1alpha1.X509ProviderStatus{
 						AtProvider: v1alpha1.X509ProviderObservation{
-							Name:   stringPtr("test-provider"),
-							Issuer: stringPtr("CN=Old CA"),
+							Name:   new("test-provider"),
+							Issuer: new("CN=Old CA"),
 						},
 					},
 				},
@@ -381,8 +381,8 @@ func TestUpdate(t *testing.T) {
 					},
 					Status: v1alpha1.X509ProviderStatus{
 						AtProvider: v1alpha1.X509ProviderObservation{
-							Name:   stringPtr("test-provider"),
-							Issuer: stringPtr("CN=Old CA"),
+							Name:   new("test-provider"),
+							Issuer: new("CN=Old CA"),
 						},
 					},
 				},
@@ -505,11 +505,6 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-// Helper functions for testing
-func stringPtr(s string) *string {
-	return &s
-}
-
 // mockLogger is a mock implementation of logging.Logger
 type mockLogger struct {
 	msgs []string
@@ -523,7 +518,7 @@ func (l *mockLogger) Info(msg string, keysAndValues ...any) {
 	l.msgs = append(l.msgs, msg)
 }
 
-func (l *mockLogger) WithValues(_ ...interface{}) logging.Logger { return l }
+func (l *mockLogger) WithValues(_ ...any) logging.Logger { return l }
 
 // mockX509ProviderClient implements the x509provider.X509ProviderClient interface for testing
 type mockX509ProviderClient struct {

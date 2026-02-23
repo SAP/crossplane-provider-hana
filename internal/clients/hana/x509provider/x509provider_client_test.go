@@ -124,8 +124,8 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.X509ProviderObservation{
-					Name:          stringPtr("test-provider"),
-					Issuer:        stringPtr("CN=Test CA"),
+					Name:          new("test-provider"),
+					Issuer:        new("CN=Test CA"),
 					MatchingRules: []string{"rule1", "rule2"},
 				},
 				err: nil,
@@ -156,8 +156,8 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.X509ProviderObservation{
-					Name:          stringPtr("simple-provider"),
-					Issuer:        stringPtr("CN=Simple CA"),
+					Name:          new("simple-provider"),
+					Issuer:        new("CN=Simple CA"),
 					MatchingRules: nil,
 				},
 				err: nil,
@@ -348,8 +348,8 @@ func TestUpdate(t *testing.T) {
 					Issuer: "CN=New CA",
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:   stringPtr("test-provider"),
-					Issuer: stringPtr("CN=Old CA"),
+					Name:   new("test-provider"),
+					Issuer: new("CN=Old CA"),
 				},
 			},
 			want: want{
@@ -375,8 +375,8 @@ func TestUpdate(t *testing.T) {
 					MatchingRules: []string{"new-rule"},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          stringPtr("test-provider"),
-					Issuer:        stringPtr("CN=Test CA"),
+					Name:          new("test-provider"),
+					Issuer:        new("CN=Test CA"),
 					MatchingRules: []string{"old-rule"},
 				},
 			},
@@ -404,8 +404,8 @@ func TestUpdate(t *testing.T) {
 					MatchingRules: []string{"rule1", "rule2"},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          stringPtr("test-provider"),
-					Issuer:        stringPtr("CN=Old CA"),
+					Name:          new("test-provider"),
+					Issuer:        new("CN=Old CA"),
 					MatchingRules: []string{"rule1", "rule2"},
 				},
 			},
@@ -433,8 +433,8 @@ func TestUpdate(t *testing.T) {
 					MatchingRules: []string{"new-rule1", "new-rule2"},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          stringPtr("test-provider"),
-					Issuer:        stringPtr("CN=Test CA"),
+					Name:          new("test-provider"),
+					Issuer:        new("CN=Test CA"),
 					MatchingRules: []string{"old-rule"},
 				},
 			},
@@ -461,8 +461,8 @@ func TestUpdate(t *testing.T) {
 					MatchingRules: []string{"new-rule"},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          stringPtr("test-provider"),
-					Issuer:        stringPtr("CN=Old CA"),
+					Name:          new("test-provider"),
+					Issuer:        new("CN=Old CA"),
 					MatchingRules: []string{"old-rule"},
 				},
 			},
@@ -490,8 +490,8 @@ func TestUpdate(t *testing.T) {
 					MatchingRules: []string{},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          stringPtr("test-provider"),
-					Issuer:        stringPtr("CN=Test CA"),
+					Name:          new("test-provider"),
+					Issuer:        new("CN=Test CA"),
 					MatchingRules: []string{"rule1"},
 				},
 			},
@@ -515,8 +515,8 @@ func TestUpdate(t *testing.T) {
 					MatchingRules: []string{"rule1", "rule2"},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          stringPtr("test-provider"),
-					Issuer:        stringPtr("CN=Test CA"),
+					Name:          new("test-provider"),
+					Issuer:        new("CN=Test CA"),
 					MatchingRules: []string{"rule1", "rule2"},
 				},
 			},
@@ -632,9 +632,4 @@ func TestDelete(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Helper functions for testing
-func stringPtr(s string) *string {
-	return &s
 }
