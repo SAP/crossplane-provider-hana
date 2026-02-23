@@ -19,8 +19,9 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 )
 
-var testTime = metav1.Now() // nolint: contextcheck
+var testTime = metav1.Now()
 
+// nolint: contextcheck
 func TestRead(t *testing.T) {
 	errBoom := errors.New("boom")
 
