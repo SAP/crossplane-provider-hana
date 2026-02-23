@@ -9,7 +9,7 @@ Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 package v1alpha1
 
 import (
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	"github.com/crossplane/crossplane-runtime/apis/common/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
