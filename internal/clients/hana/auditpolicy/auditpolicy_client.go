@@ -64,11 +64,9 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.AuditPolicyParame
 			observed.AuditTrailRetention = &rp
 		}
 		if isActive == "TRUE" {
-			active := true
-			observed.Enabled = &active
+			observed.Enabled = new(true)
 		} else {
-			active := false
-			observed.Enabled = &active
+			observed.Enabled = new(false)
 		}
 	}
 

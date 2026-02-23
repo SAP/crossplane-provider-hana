@@ -94,7 +94,7 @@ type X509ProviderList struct {
 
 // X509Provider type metadata.
 var (
-	X509ProviderKind             = reflect.TypeOf(X509Provider{}).Name()
+	X509ProviderKind             = reflect.TypeFor[X509Provider]().Name()
 	X509ProviderGroupKind        = schema.GroupKind{Group: Group, Kind: X509ProviderKind}.String()
 	X509ProviderKindAPIVersion   = X509ProviderKind + "." + SchemeGroupVersion.String()
 	X509ProviderGroupVersionKind = SchemeGroupVersion.WithKind(X509ProviderKind)

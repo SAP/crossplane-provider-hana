@@ -19,18 +19,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 )
 
-var testTime = metav1.Now()
+var testTime = metav1.Now() // nolint: contextcheck
 
-// Helper functions for creating pointers
-func stringPtr(s string) *string {
-	return &s
-}
-
-func boolPtr(b bool) *bool {
-	return &b
-}
-
-// nolint: contextcheck
 func TestRead(t *testing.T) {
 	errBoom := errors.New("boom")
 
@@ -164,17 +154,17 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.UserObservation{
-					Username:                       stringPtr("TEST_USER"),
-					RestrictedUser:                 boolPtr(false),
+					Username:                       new("TEST_USER"),
+					RestrictedUser:                 new(false),
 					LastPasswordChangeTime:         testTime,
 					CreatedAt:                      testTime,
 					Privileges:                     make([]string, 0),
 					Roles:                          make([]string, 0),
 					Parameters:                     map[string]string{"LOCALE": "en_US", "TIME ZONE": "UTC"},
-					Usergroup:                      stringPtr("TEST_GROUP"),
-					PasswordUpToDate:               boolPtr(true),
-					IsPasswordLifetimeCheckEnabled: boolPtr(false),
-					IsPasswordEnabled:              boolPtr(true),
+					Usergroup:                      new("TEST_GROUP"),
+					PasswordUpToDate:               new(true),
+					IsPasswordLifetimeCheckEnabled: new(false),
+					IsPasswordEnabled:              new(true),
 				},
 				err: nil,
 			},
@@ -213,17 +203,17 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.UserObservation{
-					Username:                       stringPtr("POWER_USER"),
-					RestrictedUser:                 boolPtr(false),
+					Username:                       new("POWER_USER"),
+					RestrictedUser:                 new(false),
 					LastPasswordChangeTime:         testTime,
 					CreatedAt:                      testTime,
 					Privileges:                     make([]string, 0),
 					Roles:                          make([]string, 0),
 					Parameters:                     make(map[string]string),
-					Usergroup:                      stringPtr(""),
-					PasswordUpToDate:               boolPtr(true),
-					IsPasswordLifetimeCheckEnabled: boolPtr(false),
-					IsPasswordEnabled:              boolPtr(true),
+					Usergroup:                      new(""),
+					PasswordUpToDate:               new(true),
+					IsPasswordLifetimeCheckEnabled: new(false),
+					IsPasswordEnabled:              new(true),
 				},
 				err: nil,
 			},
@@ -261,17 +251,17 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.UserObservation{
-					Username:                       stringPtr("RESTRICTED_USER"),
-					RestrictedUser:                 boolPtr(true),
+					Username:                       new("RESTRICTED_USER"),
+					RestrictedUser:                 new(true),
 					LastPasswordChangeTime:         testTime,
 					CreatedAt:                      testTime,
 					Privileges:                     make([]string, 0),
 					Roles:                          make([]string, 0),
 					Parameters:                     make(map[string]string),
-					Usergroup:                      stringPtr(""),
-					PasswordUpToDate:               boolPtr(true),
-					IsPasswordLifetimeCheckEnabled: boolPtr(false),
-					IsPasswordEnabled:              boolPtr(true),
+					Usergroup:                      new(""),
+					PasswordUpToDate:               new(true),
+					IsPasswordLifetimeCheckEnabled: new(false),
+					IsPasswordEnabled:              new(true),
 				},
 				err: nil,
 			},
@@ -322,17 +312,17 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.UserObservation{
-					Username:                       stringPtr("X509_USER"),
-					RestrictedUser:                 boolPtr(false),
+					Username:                       new("X509_USER"),
+					RestrictedUser:                 new(false),
 					LastPasswordChangeTime:         testTime,
 					CreatedAt:                      testTime,
 					Privileges:                     make([]string, 0),
 					Roles:                          make([]string, 0),
 					Parameters:                     make(map[string]string),
-					Usergroup:                      stringPtr("X509_GROUP"),
+					Usergroup:                      new("X509_GROUP"),
 					PasswordUpToDate:               nil,
-					IsPasswordLifetimeCheckEnabled: boolPtr(true),
-					IsPasswordEnabled:              boolPtr(false),
+					IsPasswordLifetimeCheckEnabled: new(true),
+					IsPasswordEnabled:              new(false),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
 							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
@@ -392,17 +382,17 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.UserObservation{
-					Username:                       stringPtr("HYBRID_USER"),
-					RestrictedUser:                 boolPtr(false),
+					Username:                       new("HYBRID_USER"),
+					RestrictedUser:                 new(false),
 					LastPasswordChangeTime:         testTime,
 					CreatedAt:                      testTime,
 					Privileges:                     make([]string, 0),
 					Roles:                          make([]string, 0),
 					Parameters:                     make(map[string]string),
-					Usergroup:                      stringPtr("HYBRID_GROUP"),
-					PasswordUpToDate:               boolPtr(true),
-					IsPasswordLifetimeCheckEnabled: boolPtr(true),
-					IsPasswordEnabled:              boolPtr(true),
+					Usergroup:                      new("HYBRID_GROUP"),
+					PasswordUpToDate:               new(true),
+					IsPasswordLifetimeCheckEnabled: new(true),
+					IsPasswordEnabled:              new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
 							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "MAIN_PROVIDER"},
@@ -444,17 +434,17 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.UserObservation{
-					Username:                       stringPtr("ERROR_USER"),
-					RestrictedUser:                 boolPtr(false),
+					Username:                       new("ERROR_USER"),
+					RestrictedUser:                 new(false),
 					LastPasswordChangeTime:         testTime,
 					CreatedAt:                      testTime,
 					Privileges:                     make([]string, 0),
 					Roles:                          make([]string, 0),
 					Parameters:                     make(map[string]string),
-					Usergroup:                      stringPtr(""),
-					PasswordUpToDate:               boolPtr(false),
-					IsPasswordLifetimeCheckEnabled: boolPtr(false),
-					IsPasswordEnabled:              boolPtr(true),
+					Usergroup:                      new(""),
+					PasswordUpToDate:               new(false),
+					IsPasswordLifetimeCheckEnabled: new(false),
+					IsPasswordEnabled:              new(true),
 				},
 				err: fmt.Errorf("failed to query x509 providers: %w", errBoom),
 			},
