@@ -77,6 +77,9 @@ spec:
                   disableUserAdmin:
                     type: boolean
                   enableParameterSet:
+                    enum:
+                    - ""
+                    - password policy
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable
@@ -91,7 +94,6 @@ spec:
                       type: string
                     type: object
                   usergroupName:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable
