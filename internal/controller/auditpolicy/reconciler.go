@@ -352,7 +352,6 @@ func (c *external) buildDesiredParameters(cr *v1alpha1.AuditPolicy) (*v1alpha1.A
 	if err != nil {
 		return nil, err
 	}
-
 	return &v1alpha1.AuditPolicyParameters{
 		PolicyName:          strings.ToUpper(cr.Spec.ForProvider.PolicyName),
 		AuditStatus:         strings.ToUpper(cr.Spec.ForProvider.AuditStatus),
