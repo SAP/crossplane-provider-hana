@@ -4,7 +4,7 @@ metadata:
   name: example-schema
 spec:
   forProvider:
-    schemaName: EXAMPLE
+    schemaName: E2E_EXAMPLE_SCHEMA
     owner: DBADMIN
   providerConfigRef:
     name: example

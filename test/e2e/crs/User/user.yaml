@@ -11,6 +11,6 @@ spec:
           key: password
           name: e2e-test-user-secret
           namespace: default
-    username: E2ETESTUSER
+    username: E2E_EXAMPLE_USER
   providerConfigRef:
     name: example
