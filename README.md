@@ -6,9 +6,7 @@
 
 ## About this project
 
-`crossplane-provider-hana` is a [Crossplane](https://crossplane.io/) Provider for managing SAP HANA Cloud resources and instance mappings. It provides Kubernetes-native management of:
-
-- **HANA Database Resources**: Users, roles, schemas, audit policies, and security configurations
+`crossplane-provider-hana` is a [Crossplane](https://crossplane.io/) Provider for managing SAP HANA resources.
 
 See the [examples directory](./examples/) for detailed usage guides and example manifests.
 
