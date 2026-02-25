@@ -33,12 +33,12 @@ import (
 type UserTestConfig struct {
 	TestConfig *resources.ResourceTestConfig
 	Resource   *k8sresources.Resources
-	Secrets    []*corev1.Secret
+	Secret     *corev1.Secret
 	Objects    []k8s.Object
 
-	DBSchemas []string // Track schema names
-	DBObjects []string // Track object names
-	db        xsql.DB
+	DBSchema string // Track schema names
+	DBObject string // Track object names
+	db       xsql.DB
 }
 
 func TestUser(t *testing.T) {
@@ -80,8 +80,8 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 
 		defaultSchemaName := user.Spec.ForProvider.Username
 
-		schemaName := c.DBSchemas[0]
-		objectName := c.DBObjects[0]
+		schemaName := c.DBSchema
+		objectName := c.DBObject
 
 		privileges := user.Spec.ForProvider.Privileges
 		privileges = append(privileges,
@@ -168,7 +168,7 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 		return ctx
 	}
 
-	schemaName := "E2ENEWSCHEMA"
+	schemaName := "E2E_EXAMPLE_SCHEMA_NEW"
 	var schemaNamePlaceholder string
 	row := c.db.QueryRowContext(ctx, "SELECT SCHEMA_NAME FROM SCHEMAS WHERE SCHEMA_NAME = ?", schemaName)
 	if err := row.Scan(&schemaNamePlaceholder); xsql.IsNoRows(err) {
@@ -182,9 +182,9 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 		t.Errorf("failed to query schema: %v", err)
 		return ctx
 	}
-	c.DBSchemas = append(c.DBSchemas, schemaName)
+	c.DBSchema = schemaName
 
-	objectName := "E2ENEWTABLE"
+	objectName := "E2E_EXAMPLE_TABLE_NEW"
 	var objectNamePlaceholder string
 	row = c.db.QueryRowContext(ctx, "SELECT SCHEMA_NAME, TABLE_NAME FROM TABLES WHERE SCHEMA_NAME = ? AND TABLE_NAME = ?", schemaName, objectName)
 	if err := row.Scan(&schemaNamePlaceholder, &objectNamePlaceholder); xsql.IsNoRows(err) {
@@ -198,7 +198,7 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 		t.Errorf("failed to query table: %v", err)
 		return ctx
 	}
-	c.DBObjects = append(c.DBObjects, objectName)
+	c.DBObject = objectName
 
 	for _, obj := range objects {
 		user, ok := obj.(*v1alpha1.User)
@@ -233,7 +233,7 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 			t.Errorf("failed to create secret: %v", err)
 		}
 
-		c.Secrets = append(c.Secrets, secret)
+		c.Secret = secret
 	}
 
 	return ctx
@@ -242,15 +242,13 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 func (c *UserTestConfig) TeardownUser(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 	t.Logf("Teardown: Remove User Secrets")
 
-	for _, secret := range c.Secrets {
-		if err := c.Resource.Delete(ctx, secret); err != nil {
-			t.Errorf("failed to delete secret: %v", err)
-		}
+	if err := c.Resource.Delete(ctx, c.Secret); err != nil {
+		t.Errorf("failed to delete secret: %v", err)
 	}
 
-	if len(c.DBSchemas) > 0 && len(c.DBObjects) > 0 {
-		schemaName := c.DBSchemas[0]
-		objectName := c.DBObjects[0]
+	if c.DBSchema != "" && c.DBObject != "" {
+		schemaName := c.DBSchema
+		objectName := c.DBObject
 
 		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("DROP TABLE %s.%s", schemaName, objectName)); err != nil {
 			t.Errorf("failed to drop table %s: %v", objectName, err)
