@@ -76,7 +76,7 @@ make dev
 
 ### Client
 
-The [HANA client repo](https://github.com/SAP/go-hdb) is used for this provider.
+The [go-hdb client](https://github.com/SAP/go-hdb) is used by this provider.
 
 ## Testing
 
