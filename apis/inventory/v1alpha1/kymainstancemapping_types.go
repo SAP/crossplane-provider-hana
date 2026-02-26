@@ -70,6 +70,12 @@ type KymaInstanceMappingParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=false
 	IsDefault bool `json:"isDefault,omitempty"`
+
+	// CredentialsSecretNamespace is the namespace where the intermediate credentials
+	// Secret and InstanceMapping CR will be created.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="crossplane-system"
+	CredentialsSecretNamespace string `json:"credentialsSecretNamespace,omitempty"`
 }
 
 // KymaClusterObservation contains information extracted from the remote Kyma cluster
@@ -113,6 +119,29 @@ type HANACloudObservation struct {
 	Ready bool `json:"ready,omitempty"`
 }
 
+// ChildResourcesReference contains references to child resources created by KymaInstanceMapping
+type ChildResourcesReference struct {
+	// InstanceMappingName is the name of the created InstanceMapping CR
+	// +kubebuilder:validation:Optional
+	InstanceMappingName string `json:"instanceMappingName,omitempty"`
+
+	// CredentialsSecretName is the name of the created credentials Secret
+	// +kubebuilder:validation:Optional
+	CredentialsSecretName string `json:"credentialsSecretName,omitempty"`
+
+	// CredentialsSecretNamespace is the namespace of the created credentials Secret
+	// +kubebuilder:validation:Optional
+	CredentialsSecretNamespace string `json:"credentialsSecretNamespace,omitempty"`
+
+	// InstanceMappingReady indicates if the child InstanceMapping is ready
+	// +kubebuilder:validation:Optional
+	InstanceMappingReady bool `json:"instanceMappingReady,omitempty"`
+
+	// InstanceMappingSynced indicates if the child InstanceMapping is synced
+	// +kubebuilder:validation:Optional
+	InstanceMappingSynced bool `json:"instanceMappingSynced,omitempty"`
+}
+
 // KymaInstanceMappingObservation are the observable fields of a KymaInstanceMapping.
 type KymaInstanceMappingObservation struct {
 	// Kyma contains information extracted from the remote Kyma cluster
@@ -122,6 +151,10 @@ type KymaInstanceMappingObservation struct {
 	// Hana contains information about the HANA Cloud mapping status
 	// +kubebuilder:validation:Optional
 	Hana *HANACloudObservation `json:"hana,omitempty"`
+
+	// ChildResources contains references to the created child resources (Secret and InstanceMapping)
+	// +kubebuilder:validation:Optional
+	ChildResources *ChildResourcesReference `json:"childResources,omitempty"`
 }
 
 // A KymaInstanceMappingSpec defines the desired state of a KymaInstanceMapping.

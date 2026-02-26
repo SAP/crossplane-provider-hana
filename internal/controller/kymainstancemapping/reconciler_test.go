@@ -22,7 +22,6 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/inventory/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud"
-	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud/instancemapping"
 )
 
 // stringPtr returns a pointer to the given string value
@@ -50,34 +49,6 @@ users:
   user:
     token: test-token
 `
-}
-
-// mockInstanceMappingClient is a mock implementation of instancemapping.Client
-type mockInstanceMappingClient struct {
-	listFunc   func(ctx context.Context, serviceInstanceID string) ([]instancemapping.InstanceMapping, error)
-	createFunc func(ctx context.Context, serviceInstanceID string, req instancemapping.CreateMappingRequest) error
-	deleteFunc func(ctx context.Context, serviceInstanceID string, primaryID string, secondaryID string) error
-}
-
-func (m *mockInstanceMappingClient) List(ctx context.Context, serviceInstanceID string) ([]instancemapping.InstanceMapping, error) {
-	if m.listFunc != nil {
-		return m.listFunc(ctx, serviceInstanceID)
-	}
-	return []instancemapping.InstanceMapping{}, nil
-}
-
-func (m *mockInstanceMappingClient) Create(ctx context.Context, serviceInstanceID string, req instancemapping.CreateMappingRequest) error {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, serviceInstanceID, req)
-	}
-	return nil
-}
-
-func (m *mockInstanceMappingClient) Delete(ctx context.Context, serviceInstanceID string, primaryID string, secondaryID string) error {
-	if m.deleteFunc != nil {
-		return m.deleteFunc(ctx, serviceInstanceID, primaryID, secondaryID)
-	}
-	return nil
 }
 
 func TestConnector_Connect(t *testing.T) {
@@ -227,7 +198,7 @@ func TestConnector_Connect(t *testing.T) {
 // mockTracker is a mock implementation of resource.Tracker
 type mockTracker struct{}
 
-func (m *mockTracker) Track(ctx context.Context, mg resource.Managed) error {
+func (m *mockTracker) Track(_ context.Context, _ resource.Managed) error {
 	return nil
 }
 
@@ -249,75 +220,89 @@ func TestExternal_Observe(t *testing.T) {
 	tests := []struct {
 		name           string
 		cr             *v1alpha1.KymaInstanceMapping
-		mockListResult []instancemapping.InstanceMapping
-		mockListErr    error
+		existingIM     *v1alpha1.InstanceMapping
 		want           bool // want ResourceExists
 		wantErr        bool
 	}{
 		{
-			name: "mapping exists",
+			name: "child InstanceMapping exists and is ready",
 			cr: &v1alpha1.KymaInstanceMapping{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-mapping",
+					UID:  "test-uid",
+				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
 						TargetNamespace: stringPtr("target-ns"),
 					},
 				},
-				Status: v1alpha1.KymaInstanceMappingStatus{
-					AtProvider: v1alpha1.KymaInstanceMappingObservation{
-						Kyma: &v1alpha1.KymaClusterObservation{
-							ServiceInstanceID: "test-instance-id",
-							ClusterID:         "test-cluster-id",
-						},
+			},
+			existingIM: &v1alpha1.InstanceMapping{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-mapping-mapping",
+				},
+				Spec: v1alpha1.InstanceMappingSpec{
+					ForProvider: v1alpha1.InstanceMappingParameters{
+						ServiceInstanceID: "test-instance-id",
+						Platform:          "kubernetes",
+						PrimaryID:         "test-cluster-id",
+						SecondaryID:       stringPtr("target-ns"),
 					},
 				},
-			},
-			mockListResult: []instancemapping.InstanceMapping{
-				{
-					PrimaryID:   "test-cluster-id",
-					SecondaryID: stringPtr("target-ns"),
+				Status: v1alpha1.InstanceMappingStatus{
+					ResourceStatus: xpv1.ResourceStatus{
+						ConditionedStatus: xpv1.ConditionedStatus{
+							Conditions: []xpv1.Condition{
+								{Type: xpv1.TypeReady, Status: corev1.ConditionTrue},
+								{Type: xpv1.TypeSynced, Status: corev1.ConditionTrue},
+							},
+						},
+					},
+					AtProvider: v1alpha1.InstanceMappingObservation{
+						MappingExists: true,
+					},
 				},
 			},
 			want:    true,
 			wantErr: false,
 		},
 		{
-			name: "mapping does not exist",
+			name: "child InstanceMapping does not exist",
 			cr: &v1alpha1.KymaInstanceMapping{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-mapping",
+					UID:  "test-uid",
+				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
 						TargetNamespace: stringPtr("target-ns"),
 					},
 				},
-				Status: v1alpha1.KymaInstanceMappingStatus{
-					AtProvider: v1alpha1.KymaInstanceMappingObservation{
-						Kyma: &v1alpha1.KymaClusterObservation{
-							ServiceInstanceID: "test-instance-id",
-							ClusterID:         "test-cluster-id",
-						},
-					},
-				},
 			},
-			mockListResult: []instancemapping.InstanceMapping{},
-			want:           false,
-			wantErr:        false,
+			existingIM: nil,
+			want:       false,
+			wantErr:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockClient := &mockInstanceMappingClient{
-				listFunc: func(ctx context.Context, serviceInstanceID string) ([]instancemapping.InstanceMapping, error) {
-					return tt.mockListResult, tt.mockListErr
-				},
+			scheme := runtime.NewScheme()
+			_ = v1alpha1.SchemeBuilder.AddToScheme(scheme)
+			_ = corev1.AddToScheme(scheme)
+
+			builder := fake.NewClientBuilder().WithScheme(scheme)
+			if tt.existingIM != nil {
+				builder = builder.WithObjects(tt.existingIM)
 			}
+			fakeClient := builder.Build()
 
 			e := &external{
-				managementClient: nil, // Not used in Observe
-				clusterClient:    nil, // Not used in Observe
-				client:           mockClient,
+				managementClient: fakeClient,
+				clusterClient:    nil,
 				kymaData: &kymaExtractedData{
-					serviceInstanceID: tt.cr.Status.AtProvider.Kyma.ServiceInstanceID,
-					clusterID:         tt.cr.Status.AtProvider.Kyma.ClusterID,
+					serviceInstanceID: "test-instance-id",
+					clusterID:         "test-cluster-id",
 				},
 				log: logging.NewNopLogger(),
 			}
@@ -338,6 +323,111 @@ func TestExternal_Observe(t *testing.T) {
 
 			if obs.ResourceExists != tt.want {
 				t.Errorf("Observe() ResourceExists = %v, want %v", obs.ResourceExists, tt.want)
+			}
+
+			// Verify status is updated when InstanceMapping exists
+			if tt.existingIM != nil && tt.cr.Status.AtProvider.ChildResources != nil {
+				if tt.cr.Status.AtProvider.ChildResources.InstanceMappingName != tt.existingIM.Name {
+					t.Errorf("ChildResources.InstanceMappingName = %v, want %v",
+						tt.cr.Status.AtProvider.ChildResources.InstanceMappingName, tt.existingIM.Name)
+				}
+			}
+		})
+	}
+}
+
+func TestExternal_Create(t *testing.T) {
+	tests := []struct {
+		name    string
+		cr      *v1alpha1.KymaInstanceMapping
+		wantErr bool
+	}{
+		{
+			name: "successfully creates child resources",
+			cr: &v1alpha1.KymaInstanceMapping{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-mapping",
+					UID:  "test-uid",
+				},
+				Spec: v1alpha1.KymaInstanceMappingSpec{
+					ForProvider: v1alpha1.KymaInstanceMappingParameters{
+						TargetNamespace:            stringPtr("target-ns"),
+						IsDefault:                  false,
+						CredentialsSecretNamespace: "crossplane-system",
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			_ = v1alpha1.SchemeBuilder.AddToScheme(scheme)
+			_ = corev1.AddToScheme(scheme)
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+			e := &external{
+				managementClient: fakeClient,
+				clusterClient:    nil,
+				kymaData: &kymaExtractedData{
+					serviceInstanceID: "test-instance-id",
+					clusterID:         "test-cluster-id",
+					adminAPICredentials: hanacloud.AdminAPICredentials{
+						BaseURL: "api.hana.example.com",
+						UAA: hanacloud.UAAConfig{
+							URL:          "https://uaa.example.com",
+							ClientID:     "test-client",
+							ClientSecret: "test-secret",
+						},
+					},
+				},
+				log: logging.NewNopLogger(),
+			}
+
+			_, err := e.Create(context.Background(), tt.cr)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Create() expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Create() unexpected error = %v", err)
+				return
+			}
+
+			// Verify Secret was created
+			secret := &corev1.Secret{}
+			err = fakeClient.Get(context.Background(), client.ObjectKey{
+				Name:      tt.cr.Name + "-admin-creds",
+				Namespace: "crossplane-system",
+			}, secret)
+			if err != nil {
+				t.Errorf("Create() failed to create credentials secret: %v", err)
+			}
+
+			// Verify InstanceMapping was created
+			im := &v1alpha1.InstanceMapping{}
+			err = fakeClient.Get(context.Background(), client.ObjectKey{
+				Name: tt.cr.Name + "-mapping",
+			}, im)
+			if err != nil {
+				t.Errorf("Create() failed to create InstanceMapping: %v", err)
+			}
+
+			// Verify InstanceMapping spec
+			if im.Spec.ForProvider.ServiceInstanceID != "test-instance-id" {
+				t.Errorf("InstanceMapping.ServiceInstanceID = %v, want %v",
+					im.Spec.ForProvider.ServiceInstanceID, "test-instance-id")
+			}
+			if im.Spec.ForProvider.PrimaryID != "test-cluster-id" {
+				t.Errorf("InstanceMapping.PrimaryID = %v, want %v",
+					im.Spec.ForProvider.PrimaryID, "test-cluster-id")
 			}
 		})
 	}
@@ -398,8 +488,8 @@ func TestExtractKymaData(t *testing.T) {
 						Namespace: "default",
 					},
 					Data: map[string][]byte{
-						"url": []byte("https://hana-cloud-api.example.com"),
-						"uaa": adminAPIJSON,
+						"baseurl": []byte("https://hana-cloud-api.example.com"),
+						"uaa":     adminAPIJSON,
 					},
 				},
 				&corev1.ConfigMap{

@@ -11,6 +11,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/auditpolicy"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/dbschema"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/instancemapping"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/kymainstancemapping"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/personalsecurityenvironment"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/role"
@@ -36,7 +37,10 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 			return err
 		}
 	}
-	// Non SQL controller
+	// Non SQL controllers
+	if err := instancemapping.Setup(mgr, o); err != nil {
+		return err
+	}
 	if err := kymainstancemapping.Setup(mgr, o); err != nil {
 		return err
 	}
