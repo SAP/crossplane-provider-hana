@@ -1,0 +1,17 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: PersonalSecurityEnvironment
+metadata:
+  name: my-pse
+  namespace: default
+spec:
+  forProvider:
+    name: X509_PSE
+    x509ProviderRef:
+      providerRef:
+        name: x509provider
+    certificateRefs:
+      # Use either name or id to reference certificates
+      - name: MY_CERT
+      # - id: 123456
+  providerConfigRef:
+    name: example
