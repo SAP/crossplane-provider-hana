@@ -113,6 +113,12 @@ spec:
                     - name
                     - namespace
                     type: object
+                  credentialsSecretNamespace:
+                    default: crossplane-system
+                    description: |-
+                      CredentialsSecretNamespace is the namespace where the intermediate credentials
+                      Secret and InstanceMapping CR will be created.
+                    type: string
                   isDefault:
                     default: false
                     description: IsDefault sets this mapping as the default for the
@@ -346,6 +352,31 @@ spec:
                 description: KymaInstanceMappingObservation are the observable fields
                   of a KymaInstanceMapping.
                 properties:
+                  childResources:
+                    description: ChildResources contains references to the created
+                      child resources (Secret and InstanceMapping)
+                    properties:
+                      credentialsSecretName:
+                        description: CredentialsSecretName is the name of the created
+                          credentials Secret
+                        type: string
+                      credentialsSecretNamespace:
+                        description: CredentialsSecretNamespace is the namespace of
+                          the created credentials Secret
+                        type: string
+                      instanceMappingName:
+                        description: InstanceMappingName is the name of the created
+                          InstanceMapping CR
+                        type: string
+                      instanceMappingReady:
+                        description: InstanceMappingReady indicates if the child InstanceMapping
+                          is ready
+                        type: boolean
+                      instanceMappingSynced:
+                        description: InstanceMappingSynced indicates if the child
+                          InstanceMapping is synced
+                        type: boolean
+                    type: object
                   hana:
                     description: Hana contains information about the HANA Cloud mapping
                       status

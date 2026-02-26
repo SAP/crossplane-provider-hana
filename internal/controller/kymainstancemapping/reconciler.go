@@ -6,6 +6,7 @@ package kymainstancemapping
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -18,15 +19,16 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/SAP/crossplane-provider-hana/apis/inventory/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud"
-	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud/instancemapping"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/remotecluster"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
@@ -34,12 +36,10 @@ import (
 const (
 	errNotKymaInstanceMapping = "managed resource is not a KymaInstanceMapping custom resource"
 	errTrackPCUsage           = "cannot track ProviderConfig usage: %w"
-	errGetPC                  = "cannot get ProviderConfig: %w"
 	errGetKubeconfigSecret    = "cannot get kubeconfig secret: %w"
 	errMissingKubeconfigKey   = "kubeconfig key %q not found in secret"
 	errCreateRemoteClient     = "cannot create remote cluster client: %w"
 	errGetServiceInstance     = "cannot get ServiceInstance from remote cluster: %w"
-	errInstanceNotReady       = "ServiceInstance on remote cluster is not ready"
 	errMissingInstanceID      = "ServiceInstance on remote cluster has no instanceID"
 	errGetServiceBinding      = "cannot get ServiceBinding from remote cluster: %w"
 	errGetAdminSecret         = "cannot get admin API credentials secret from remote cluster: %w"
@@ -48,23 +48,21 @@ const (
 	errGetConfigMap           = "cannot get ConfigMap from remote cluster: %w"
 	errClusterIDNotFound      = "CLUSTER_ID not found in ConfigMap"
 	errExtractKymaData        = "cannot extract data from Kyma cluster: %w"
-	errConnectHANACloud       = "cannot connect to HANA Cloud API: %w"
-	errListMappings           = "cannot list instance mappings: %w"
-	errCreateMapping          = "cannot create instance mapping: %w"
-	errDeleteMapping          = "cannot delete instance mapping: %w"
-)
+	errCreateCredentialsSecret = "cannot create credentials secret: %w"
+	errCreateInstanceMapping   = "cannot create InstanceMapping: %w"
+	errGetInstanceMapping      = "cannot get InstanceMapping: %w"
+	errUpdateCredentialsSecret = "cannot update credentials secret: %w"
 
-// stringPtrEqual compares two optional string pointers for equality.
-// Returns true if both are nil or both point to the same string value.
-func stringPtrEqual(a, b *string) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return *a == *b
-}
+	// Resource naming suffixes
+	credentialsSecretSuffix = "-admin-creds"
+	instanceMappingSuffix   = "-mapping"
+
+	// Default namespace for child resources
+	defaultCredentialsNamespace = "crossplane-system"
+
+	// Key for credentials in the secret
+	credentialsKey = "credentials"
+)
 
 // Setup adds a controller that reconciles KymaInstanceMapping managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
@@ -90,6 +88,8 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		For(&v1alpha1.KymaInstanceMapping{}).
+		Owns(&v1alpha1.InstanceMapping{}).
+		Owns(&corev1.Secret{}).
 		Complete(r)
 }
 
@@ -109,15 +109,9 @@ type kymaExtractedData struct {
 	adminAPICredentials  hanacloud.AdminAPICredentials
 }
 
-// Connect establishes connections to either the local or remote Kyma cluster and HANA Cloud API.
-// It follows this flow:
-// 1. Track ProviderConfig usage
-// 2. Determine cluster client (local or remote based on KymaConnectionRef)
-//   - If KymaConnectionRef is nil, use local cluster (c.kube)
-//   - If KymaConnectionRef is provided, read kubeconfig and create remote client
-//
-// 3. Extract all needed data from cluster (ServiceInstance, ServiceBinding, ConfigMap)
-// 4. Create a new HANA Cloud client and connect using extracted credentials
+// Connect establishes connections to either the local or remote Kyma cluster.
+// It extracts all needed data from cluster (ServiceInstance, ServiceBinding, ConfigMap)
+// but does NOT connect to HANA Cloud API - that's done by the child InstanceMapping.
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
 	cr, ok := mg.(*v1alpha1.KymaInstanceMapping)
 	if !ok {
@@ -158,16 +152,6 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, fmt.Errorf(errExtractKymaData, extractErr)
 	}
 
-	// Create a new HANA Cloud client for this reconcile
-	cloudClient := hanacloud.New(c.log.WithValues("mapping", cr.Name))
-
-	// Connect to HANA Cloud API using extracted credentials
-	if err := cloudClient.Connect(ctx, kymaData.adminAPICredentials); err != nil {
-		return nil, fmt.Errorf(errConnectHANACloud, err)
-	}
-
-	c.log.Info("Connected to HANA Cloud Admin API", "mapping", cr.Name)
-
 	// Update CR status with extracted Kyma data
 	cr.Status.AtProvider.Kyma = &v1alpha1.KymaClusterObservation{
 		ServiceInstanceID:    kymaData.serviceInstanceID,
@@ -179,16 +163,13 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	return &external{
 		managementClient: c.kube,
 		clusterClient:    clusterClient,
-		client:           cloudClient.InstanceMapping(),
 		kymaData:         kymaData,
 		log:              c.log,
 	}, nil
 }
 
 // getKubeconfigData reads the kubeconfig from the secret on the management cluster.
-// Returns nil if KymaConnectionRef is not specified (indicating local cluster usage).
 func (c *connector) getKubeconfigData(ctx context.Context, cr *v1alpha1.KymaInstanceMapping) ([]byte, error) {
-	// Check if KymaConnectionRef is specified
 	if cr.Spec.ForProvider.KymaConnectionRef == nil {
 		return nil, nil
 	}
@@ -228,7 +209,6 @@ func extractKymaData(ctx context.Context, remoteClient client.Client, cr *v1alph
 		return nil, fmt.Errorf(errGetServiceInstance, err)
 	}
 
-	// Check if ServiceInstance is ready
 	data.serviceInstanceReady = isServiceInstanceReady(serviceInstance)
 	data.serviceInstanceName = serviceInstance.Name
 
@@ -265,7 +245,6 @@ func extractKymaData(ctx context.Context, remoteClient client.Client, cr *v1alph
 	// 4. Get ConfigMap to extract CLUSTER_ID
 	cmRef := cr.Spec.ForProvider.ClusterIDConfigMapRef
 	if cmRef == nil {
-		// Default to BTP operator ConfigMap
 		cmRef = &v1alpha1.ResourceReference{
 			Namespace: "kyma-system",
 			Name:      "sap-btp-operator-config",
@@ -310,12 +289,8 @@ func parseAdminAPICredentials(data map[string][]byte) (hanacloud.AdminAPICredent
 		return hanacloud.AdminAPICredentials{}, errors.New(errMissingAdminAPIData)
 	}
 
-	// Combine into format expected by hanacloud.ParseAdminAPICredentials
-	// The secret contains: url (string) and uaa (JSON)
-	// We need to combine them into a single JSON structure
 	combinedJSON := fmt.Sprintf(`{"baseurl":"%s","uaa":%s}`, string(urlBytes), string(uaaBytes))
 
-	// Use the existing parser
 	creds, err := hanacloud.ParseAdminAPICredentials([]byte(combinedJSON))
 	if err != nil {
 		return hanacloud.AdminAPICredentials{}, err
@@ -327,15 +302,27 @@ func parseAdminAPICredentials(data map[string][]byte) (hanacloud.AdminAPICredent
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
-	managementClient client.Client // Client for management cluster
-	clusterClient    client.Client // Client for cluster (local or remote)
-	client           instancemapping.Client
+	managementClient client.Client
+	clusterClient    client.Client
 	kymaData         *kymaExtractedData
 	log              logging.Logger
 }
 
-func (e *external) Disconnect(ctx context.Context) error {
+func (e *external) Disconnect(_ context.Context) error {
 	return nil
+}
+
+// getCredentialsNamespace returns the namespace for child resources
+func getCredentialsNamespace(cr *v1alpha1.KymaInstanceMapping) string {
+	if cr.Spec.ForProvider.CredentialsSecretNamespace != "" {
+		return cr.Spec.ForProvider.CredentialsSecretNamespace
+	}
+	return defaultCredentialsNamespace
+}
+
+// getChildResourceNames returns the names for child Secret and InstanceMapping
+func getChildResourceNames(cr *v1alpha1.KymaInstanceMapping) (secretName, imName string) {
+	return cr.Name + credentialsSecretSuffix, cr.Name + instanceMappingSuffix
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -344,56 +331,54 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.New(errNotKymaInstanceMapping)
 	}
 
-	// Use TargetNamespace if specified, otherwise nil (secondary ID is optional)
-	targetNamespace := cr.Spec.ForProvider.TargetNamespace
+	secretName, imName := getChildResourceNames(cr)
+	ns := getCredentialsNamespace(cr)
 
-	e.log.Info("Observing instance mapping",
+	e.log.Info("Observing KymaInstanceMapping",
 		"name", cr.Name,
-		"serviceInstanceID", e.kymaData.serviceInstanceID,
-		"namespace", targetNamespace,
-		"clusterID", e.kymaData.clusterID)
+		"instanceMappingName", imName,
+		"secretName", secretName)
 
-	// List mappings for this service instance
-	mappings, err := e.client.List(ctx, e.kymaData.serviceInstanceID)
+	// Check if child InstanceMapping exists
+	im := &v1alpha1.InstanceMapping{}
+	err := e.managementClient.Get(ctx, types.NamespacedName{Name: imName}, im)
 	if err != nil {
-		return managed.ExternalObservation{}, fmt.Errorf(errListMappings, err)
+		if apierrors.IsNotFound(err) {
+			e.log.Debug("Child InstanceMapping not found", "name", imName)
+			return managed.ExternalObservation{ResourceExists: false}, nil
+		}
+		return managed.ExternalObservation{}, fmt.Errorf(errGetInstanceMapping, err)
 	}
 
-	// Look for our specific mapping
-	for _, mapping := range mappings {
-		if mapping.PrimaryID == e.kymaData.clusterID && stringPtrEqual(mapping.SecondaryID, targetNamespace) {
-			// Mapping exists
-			e.log.Debug("Instance mapping found",
-				"serviceInstanceID", e.kymaData.serviceInstanceID,
-				"primaryID", mapping.PrimaryID,
-				"secondaryID", mapping.SecondaryID)
+	// Update status with child resource references
+	cr.Status.AtProvider.ChildResources = &v1alpha1.ChildResourcesReference{
+		InstanceMappingName:        imName,
+		CredentialsSecretName:      secretName,
+		CredentialsSecretNamespace: ns,
+		InstanceMappingReady:       isConditionTrue(im.Status.Conditions, xpv1.TypeReady),
+		InstanceMappingSynced:      isConditionTrue(im.Status.Conditions, xpv1.TypeSynced),
+	}
 
-			// Update status with mapping details
-			cr.Status.AtProvider.Hana = &v1alpha1.HANACloudObservation{
-				MappingID: &v1alpha1.MappingID{
-					ServiceInstanceID: e.kymaData.serviceInstanceID,
-					PrimaryID:         mapping.PrimaryID,
-					SecondaryID:       mapping.SecondaryID,
-				},
-				Ready: true,
-			}
-			cr.SetConditions(xpv1.Available())
-
-			return managed.ExternalObservation{
-				ResourceExists:   true,
-				ResourceUpToDate: true,
-			}, nil
+	// Propagate status from child InstanceMapping
+	if im.Status.AtProvider.MappingExists {
+		cr.Status.AtProvider.Hana = &v1alpha1.HANACloudObservation{
+			MappingID: &v1alpha1.MappingID{
+				ServiceInstanceID: im.Spec.ForProvider.ServiceInstanceID,
+				PrimaryID:         im.Spec.ForProvider.PrimaryID,
+				SecondaryID:       im.Spec.ForProvider.SecondaryID,
+			},
+			Ready: cr.Status.AtProvider.ChildResources.InstanceMappingReady,
 		}
 	}
 
-	// Mapping does not exist
-	e.log.Debug("Instance mapping not found",
-		"serviceInstanceID", e.kymaData.serviceInstanceID,
-		"clusterID", e.kymaData.clusterID,
-		"namespace", targetNamespace)
+	// Set conditions based on child status
+	if cr.Status.AtProvider.ChildResources.InstanceMappingReady {
+		cr.SetConditions(xpv1.Available())
+	}
 
 	return managed.ExternalObservation{
-		ResourceExists: false,
+		ResourceExists:   true,
+		ResourceUpToDate: true,
 	}, nil
 }
 
@@ -403,59 +388,129 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.New(errNotKymaInstanceMapping)
 	}
 
-	// Use TargetNamespace if specified, otherwise default to ServiceInstance namespace
-	targetNamespace := cr.Spec.ForProvider.TargetNamespace
+	secretName, imName := getChildResourceNames(cr)
+	ns := getCredentialsNamespace(cr)
 
-	e.log.Info("Creating instance mapping",
+	e.log.Info("Creating child resources for KymaInstanceMapping",
 		"name", cr.Name,
-		"serviceInstanceID", e.kymaData.serviceInstanceID,
-		"namespace", targetNamespace,
-		"clusterID", e.kymaData.clusterID)
+		"instanceMappingName", imName,
+		"secretName", secretName,
+		"namespace", ns)
 
-	req := instancemapping.CreateMappingRequest{
-		Platform:    "kubernetes",
-		PrimaryID:   e.kymaData.clusterID,
-		SecondaryID: targetNamespace,
-		IsDefault:   cr.Spec.ForProvider.IsDefault,
+	// Step 1: Create credentials Secret
+	credentialsJSON := buildCredentialsJSON(e.kymaData.adminAPICredentials)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: ns,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         v1alpha1.KymaInstanceMappingGroupVersionKind.GroupVersion().String(),
+					Kind:               v1alpha1.KymaInstanceMappingKind,
+					Name:               cr.Name,
+					UID:                cr.UID,
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			},
+		},
+		Data: map[string][]byte{
+			credentialsKey: credentialsJSON,
+		},
 	}
 
-	if err := e.client.Create(ctx, e.kymaData.serviceInstanceID, req); err != nil {
-		return managed.ExternalCreation{}, fmt.Errorf(errCreateMapping, err)
+	if err := e.managementClient.Create(ctx, secret); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			return managed.ExternalCreation{}, fmt.Errorf(errCreateCredentialsSecret, err)
+		}
+		// Secret exists, update it with fresh credentials
+		existingSecret := &corev1.Secret{}
+		if err := e.managementClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, existingSecret); err != nil {
+			return managed.ExternalCreation{}, fmt.Errorf(errUpdateCredentialsSecret, err)
+		}
+		existingSecret.Data = secret.Data
+		if err := e.managementClient.Update(ctx, existingSecret); err != nil {
+			return managed.ExternalCreation{}, fmt.Errorf(errUpdateCredentialsSecret, err)
+		}
+	}
+
+	// Step 2: Create InstanceMapping CR
+	im := &v1alpha1.InstanceMapping{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: imName,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         v1alpha1.KymaInstanceMappingGroupVersionKind.GroupVersion().String(),
+					Kind:               v1alpha1.KymaInstanceMappingKind,
+					Name:               cr.Name,
+					UID:                cr.UID,
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			},
+		},
+		Spec: v1alpha1.InstanceMappingSpec{
+			ForProvider: v1alpha1.InstanceMappingParameters{
+				ServiceInstanceID: e.kymaData.serviceInstanceID,
+				Platform:          "kubernetes",
+				PrimaryID:         e.kymaData.clusterID,
+				SecondaryID:       cr.Spec.ForProvider.TargetNamespace,
+				IsDefault:         cr.Spec.ForProvider.IsDefault,
+				AdminCredentialsSecretRef: v1alpha1.AdminCredentialsSecretRef{
+					Name:      secretName,
+					Namespace: ns,
+					Key:       credentialsKey,
+				},
+			},
+		},
+	}
+
+	if err := e.managementClient.Create(ctx, im); err != nil && !apierrors.IsAlreadyExists(err) {
+		return managed.ExternalCreation{}, fmt.Errorf(errCreateInstanceMapping, err)
+	}
+
+	// Update status
+	cr.Status.AtProvider.ChildResources = &v1alpha1.ChildResourcesReference{
+		InstanceMappingName:        imName,
+		CredentialsSecretName:      secretName,
+		CredentialsSecretNamespace: ns,
 	}
 
 	cr.SetConditions(xpv1.Creating())
-
 	return managed.ExternalCreation{}, nil
 }
 
-func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	// Instance mappings are immutable - no update needed
+func (e *external) Update(_ context.Context, _ resource.Managed) (managed.ExternalUpdate, error) {
+	// KymaInstanceMapping doesn't need update - child InstanceMapping handles it
 	return managed.ExternalUpdate{}, nil
 }
 
-func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
+func (e *external) Delete(_ context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
 	cr, ok := mg.(*v1alpha1.KymaInstanceMapping)
 	if !ok {
 		return managed.ExternalDelete{}, errors.New(errNotKymaInstanceMapping)
 	}
 
-	// Use TargetNamespace if specified, otherwise default to ServiceInstance namespace
-	targetNamespace := ""
-	if cr.Spec.ForProvider.TargetNamespace != nil {
-		targetNamespace = *cr.Spec.ForProvider.TargetNamespace
-	}
+	e.log.Info("Deleting KymaInstanceMapping - child resources will be garbage collected",
+		"name", cr.Name)
 
-	e.log.Info("Deleting instance mapping",
-		"name", cr.Name,
-		"serviceInstanceID", e.kymaData.serviceInstanceID,
-		"namespace", targetNamespace,
-		"clusterID", e.kymaData.clusterID)
-
-	if err := e.client.Delete(ctx, e.kymaData.serviceInstanceID, e.kymaData.clusterID, targetNamespace); err != nil {
-		return managed.ExternalDelete{}, fmt.Errorf(errDeleteMapping, err)
-	}
-
+	// Owner references will handle cascading delete of Secret and InstanceMapping
 	cr.SetConditions(xpv1.Deleting())
-
 	return managed.ExternalDelete{}, nil
+}
+
+// buildCredentialsJSON creates the JSON credentials blob for the intermediate secret
+func buildCredentialsJSON(creds hanacloud.AdminAPICredentials) []byte {
+	data, _ := json.Marshal(creds)
+	return data
+}
+
+// isConditionTrue checks if a condition of the given type is True
+func isConditionTrue(conditions []xpv1.Condition, condType xpv1.ConditionType) bool {
+	for _, c := range conditions {
+		if c.Type == condType && c.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
