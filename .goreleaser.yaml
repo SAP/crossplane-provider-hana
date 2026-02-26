@@ -21,8 +21,8 @@ builds:
         goarch: "386"
     binary: "{{ .ProjectName }}_v{{ .Version }}"
 archives:
-  - format: zip
-    builds:
+  - formats: zip
+    ids:
       - binary-build
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 changelog:
