@@ -28,6 +28,7 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
 
 const (
@@ -60,7 +61,8 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 		}),
 		managed.WithLogger(log),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name)))),
+		features.ConfigureBetaManagementPolicies(o))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
