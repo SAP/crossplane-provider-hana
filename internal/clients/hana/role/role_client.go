@@ -10,6 +10,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 // RoleClient defines the interface for role client operations
@@ -92,12 +93,12 @@ func observeLdapGroups(ctx context.Context, db xsql.DB, roleName string) (ldapGr
 // Create creates a new role in the db
 func (c Client) Create(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
 
-	query := fmt.Sprintf("CREATE ROLE %s", getRoleName(parameters.Schema, parameters.RoleName))
+	query := fmt.Sprintf(`CREATE ROLE %s`, getRoleName(parameters.Schema, parameters.RoleName))
 
 	if len(parameters.LdapGroups) > 0 {
 		query += " LDAP GROUP"
 		for _, ldapGroup := range parameters.LdapGroups {
-			query += fmt.Sprintf(" '%s',", ldapGroup)
+			query += fmt.Sprintf(" '%s',", utils.EscapeSingleQuotes(ldapGroup))
 		}
 		query = strings.TrimSuffix(query, ",")
 	}
@@ -124,24 +125,24 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.RoleParameters)
 func (c Client) UpdateLdapGroups(ctx context.Context, parameters *v1alpha1.RoleParameters, groupsToAdd, groupsToRemove []string) error {
 
 	if len(groupsToAdd) > 0 {
-		query := fmt.Sprintf("ALTER ROLE %s ADD LDAP GROUP", getRoleName(parameters.Schema, parameters.RoleName))
+		query := fmt.Sprintf(`ALTER ROLE %s ADD LDAP GROUP`, getRoleName(parameters.Schema, parameters.RoleName))
 		for _, ldapGroup := range groupsToAdd {
-			query += fmt.Sprintf(" '%s',", ldapGroup)
+			query += fmt.Sprintf(" '%s',", utils.EscapeSingleQuotes(ldapGroup))
 		}
 		query = strings.TrimSuffix(query, ",")
 		if _, err := c.ExecContext(ctx, query); err != nil {
-			return fmt.Errorf("failed to add ldap groups: %w", err)
+			return err
 		}
 	}
 
 	if len(groupsToRemove) > 0 {
 		query := fmt.Sprintf("ALTER ROLE %s DROP LDAP GROUP", getRoleName(parameters.Schema, parameters.RoleName))
 		for _, ldapGroup := range groupsToRemove {
-			query += fmt.Sprintf(" '%s',", ldapGroup)
+			query += fmt.Sprintf(" '%s',", utils.EscapeSingleQuotes(ldapGroup))
 		}
 		query = strings.TrimSuffix(query, ",")
 		if _, err := c.ExecContext(ctx, query); err != nil {
-			return fmt.Errorf("failed to remove ldap groups: %w", err)
+			return err
 		}
 	}
 
@@ -185,8 +186,10 @@ func (c Client) Delete(ctx context.Context, parameters *v1alpha1.RoleParameters)
 }
 
 func getRoleName(schemaName, roleName string) string {
+	roleNameEscaped := fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(roleName))
 	if schemaName != "" {
-		return fmt.Sprintf("%s.%s", schemaName, roleName)
+		schemaNameEscaped := fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(schemaName))
+		return fmt.Sprintf("%s.%s", schemaNameEscaped, roleNameEscaped)
 	}
-	return roleName
+	return roleNameEscaped
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/schema/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 // DbSchemaClient defines the interface for dbschema client operations
@@ -43,7 +44,7 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.DbSchemaParameter
 // Create a new schema
 func (c Client) Create(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) error {
 
-	query := fmt.Sprintf("CREATE SCHEMA %s", parameters.SchemaName)
+	query := fmt.Sprintf(`CREATE SCHEMA "%s"`, utils.EscapeDoubleQuotes(parameters.SchemaName))
 
 	if parameters.Owner != "" {
 		query += fmt.Sprintf(" OWNED BY %s", parameters.Owner)
@@ -57,7 +58,7 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.DbSchemaParamet
 // Delete an existing schema
 func (c Client) Delete(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) error {
 
-	query := fmt.Sprintf("DROP SCHEMA %s", parameters.SchemaName)
+	query := fmt.Sprintf(`DROP SCHEMA "%s"`, utils.EscapeDoubleQuotes(parameters.SchemaName))
 
 	_, err := c.ExecContext(ctx, query)
 

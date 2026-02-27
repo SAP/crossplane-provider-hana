@@ -6,13 +6,13 @@ package role
 
 import (
 	"context"
-	"reflect"
 	"strings"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/role"
 
@@ -146,12 +146,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	c.log.Info("Observing role resource", "name", cr.Name)
 
-	parameters := &v1alpha1.RoleParameters{
-		RoleName:   strings.ToUpper(cr.Spec.ForProvider.RoleName),
-		Schema:     strings.ToUpper(cr.Spec.ForProvider.Schema),
-		Privileges: arrayToUpper(cr.Spec.ForProvider.Privileges),
-		LdapGroups: arrayToUpper(cr.Spec.ForProvider.LdapGroups),
-	}
+	parameters := buildDesiredParameters(cr)
 
 	observed, err := c.client.Read(ctx, parameters)
 
@@ -185,40 +180,13 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 }
 
 func upToDate(observed *v1alpha1.RoleObservation, desired *v1alpha1.RoleParameters) bool {
-	if !equalArrays(observed.Privileges, desired.Privileges) {
+	if !utils.ArraysEqual(observed.Privileges, desired.Privileges) {
 		return false
 	}
-	if !equalArrays(observed.LdapGroups, desired.LdapGroups) {
+	if !utils.ArraysEqual(observed.LdapGroups, desired.LdapGroups) {
 		return false
 	}
 	return true
-}
-
-func equalArrays(arr1, arr2 []string) bool {
-	if len(arr1) != len(arr2) {
-		return false
-	}
-
-	set1 := arrayToSet(arr1)
-	set2 := arrayToSet(arr2)
-
-	return reflect.DeepEqual(set1, set2)
-}
-
-func arrayToSet(arr []string) map[string]bool {
-	set := make(map[string]bool)
-	for _, item := range arr {
-		set[item] = true
-	}
-	return set
-}
-
-func arrayToUpper(arr []string) []string {
-	upperArr := make([]string, len(arr))
-	for i, item := range arr {
-		upperArr[i] = strings.ToUpper(item)
-	}
-	return upperArr
 }
 
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
@@ -231,13 +199,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	cr.SetConditions(xpv1.Creating())
 
-	parameters := &v1alpha1.RoleParameters{
-		RoleName:         cr.Spec.ForProvider.RoleName,
-		Schema:           cr.Spec.ForProvider.Schema,
-		Privileges:       cr.Spec.ForProvider.Privileges,
-		LdapGroups:       cr.Spec.ForProvider.LdapGroups,
-		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
-	}
+	parameters := buildDesiredParameters(cr)
 
 	c.log.Info("Creating role with parameters",
 		"roleName", parameters.RoleName,
@@ -272,30 +234,24 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating role resource", "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
 
-	parameters := &v1alpha1.RoleParameters{
-		RoleName:   strings.ToUpper(cr.Spec.ForProvider.RoleName),
-		Schema:     strings.ToUpper(cr.Spec.ForProvider.Schema),
-		Privileges: arrayToUpper(cr.Spec.ForProvider.Privileges),
-		LdapGroups: arrayToUpper(cr.Spec.ForProvider.LdapGroups),
-	}
+	parameters := buildDesiredParameters(cr)
 
 	observedLdapGroups := cr.Status.AtProvider.LdapGroups
 	desiredLdapGroups := parameters.LdapGroups
 
 	observedPrivileges := cr.Status.AtProvider.Privileges
 	desiredPrivileges := parameters.Privileges
+	// roleClient has additional functions not defined in global interface
+	roleClient, _ := c.client.(role.Client)
 
-	if !equalArrays(observedLdapGroups, desiredLdapGroups) {
-		groupsToAdd := stringArrayDifference(desiredLdapGroups, observedLdapGroups)
-		groupsToRemove := stringArrayDifference(observedLdapGroups, desiredLdapGroups)
-
-		c.log.Info("Updating role LDAP groups",
+	if isEqual, groupsToAdd, groupsToRemove := utils.ArraysBothDiff(desiredLdapGroups, observedLdapGroups); !isEqual {
+		c.log.Debug("Updating role LDAP groups",
 			"name", cr.Name,
 			"roleName", parameters.RoleName,
 			"groupsToAdd", groupsToAdd,
 			"groupsToRemove", groupsToRemove)
 
-		err := c.client.UpdateLdapGroups(ctx, parameters, groupsToAdd, groupsToRemove)
+		err := roleClient.UpdateLdapGroups(ctx, parameters, groupsToAdd, groupsToRemove)
 		if err != nil {
 			c.log.Info("Error updating role LDAP groups", "name", cr.Name, "error", err)
 			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
@@ -304,10 +260,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		c.log.Info("Updated role LDAP groups", "name", cr.Name, "roleName", parameters.RoleName)
 	}
 
-	if !equalArrays(observedPrivileges, desiredPrivileges) {
-		privilegesToAdd := stringArrayDifference(desiredPrivileges, observedPrivileges)
-		privilegesToRemove := stringArrayDifference(observedPrivileges, desiredPrivileges)
-
+	if isEqual, privilegesToAdd, privilegesToRemove := utils.ArraysBothDiff(desiredPrivileges, observedPrivileges); !isEqual {
 		c.log.Info("Updating role privileges",
 			"name", cr.Name,
 			"roleName", parameters.RoleName,
@@ -327,24 +280,6 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	return managed.ExternalUpdate{}, nil
 }
 
-func stringArrayDifference(arr1, arr2 []string) []string {
-	set := make(map[string]bool)
-
-	for _, item := range arr2 {
-		set[item] = true
-	}
-
-	var difference []string
-
-	for _, item := range arr1 {
-		if _, found := set[item]; !found {
-			difference = append(difference, item)
-		}
-	}
-
-	return difference
-}
-
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
 	cr, ok := mg.(*v1alpha1.Role)
 	if !ok {
@@ -353,20 +288,27 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Deleting role resource", "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
 
-	parameters := &v1alpha1.RoleParameters{
-		RoleName: cr.Spec.ForProvider.RoleName,
-		Schema:   cr.Spec.ForProvider.Schema,
-	}
+	parameters := buildDesiredParameters(cr)
 
 	cr.SetConditions(xpv1.Deleting())
 
 	err := c.client.Delete(ctx, parameters)
 
 	if err != nil {
-		c.log.Info("Error deleting role", "name", cr.Name, "error", err)
+		c.log.Debug("Error deleting role", "name", cr.Name, "error", err)
 		return managed.ExternalDelete{}, fmt.Errorf(errDropRole, err)
 	}
 
 	c.log.Info("Successfully deleted role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalDelete{}, err
+}
+
+func buildDesiredParameters(cr *v1alpha1.Role) *v1alpha1.RoleParameters {
+	return &v1alpha1.RoleParameters{
+		RoleName:         strings.ToUpper(cr.Spec.ForProvider.RoleName),
+		Schema:           strings.ToUpper(cr.Spec.ForProvider.Schema),
+		Privileges:       utils.ArrayToUpper(cr.Spec.ForProvider.Privileges),
+		LdapGroups:       utils.ArrayToUpper(cr.Spec.ForProvider.LdapGroups),
+		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
+	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 const (
@@ -493,7 +494,7 @@ func groupPrivilegesByTypeAndIdentifier(privileges []Privilege) []PrivilegeGroup
 }
 
 func GetDefaultPrivilege(defaultSchema string) string {
-	return fmt.Sprintf(`CREATE ANY ON SCHEMA %s WITH GRANT OPTION`, defaultSchema)
+	return fmt.Sprintf(`CREATE ANY ON SCHEMA "%s" WITH GRANT OPTION`, utils.EscapeDoubleQuotes(defaultSchema))
 }
 
 // FilterManagedPrivileges filters the observed privileges based on the management policy
