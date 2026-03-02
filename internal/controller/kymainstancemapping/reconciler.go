@@ -34,20 +34,20 @@ import (
 )
 
 const (
-	errNotKymaInstanceMapping = "managed resource is not a KymaInstanceMapping custom resource"
-	errTrackPCUsage           = "cannot track ProviderConfig usage: %w"
-	errGetKubeconfigSecret    = "cannot get kubeconfig secret: %w"
-	errMissingKubeconfigKey   = "kubeconfig key %q not found in secret"
-	errCreateRemoteClient     = "cannot create remote cluster client: %w"
-	errGetServiceInstance     = "cannot get ServiceInstance from remote cluster: %w"
-	errMissingInstanceID      = "ServiceInstance on remote cluster has no instanceID"
-	errGetServiceBinding      = "cannot get ServiceBinding from remote cluster: %w"
-	errGetAdminSecret         = "cannot get admin API credentials secret from remote cluster: %w"
-	errMissingAdminAPIData    = "admin API credentials secret missing required keys"
-	errParseAdminAPI          = "cannot parse admin API credentials: %w"
-	errGetConfigMap           = "cannot get ConfigMap from remote cluster: %w"
-	errClusterIDNotFound      = "CLUSTER_ID not found in ConfigMap"
-	errExtractKymaData        = "cannot extract data from Kyma cluster: %w"
+	errNotKymaInstanceMapping  = "managed resource is not a KymaInstanceMapping custom resource"
+	errTrackPCUsage            = "cannot track ProviderConfig usage: %w"
+	errGetKubeconfigSecret     = "cannot get kubeconfig secret: %w"
+	errMissingKubeconfigKey    = "kubeconfig key %q not found in secret"
+	errCreateRemoteClient      = "cannot create remote cluster client: %w"
+	errGetServiceInstance      = "cannot get ServiceInstance from remote cluster: %w"
+	errMissingInstanceID       = "ServiceInstance on remote cluster has no instanceID"
+	errGetServiceBinding       = "cannot get ServiceBinding from remote cluster: %w"
+	errGetAdminSecret          = "cannot get admin API credentials secret from remote cluster: %w"
+	errMissingAdminAPIData     = "admin API credentials secret missing required keys"
+	errParseAdminAPI           = "cannot parse admin API credentials: %w"
+	errGetConfigMap            = "cannot get ConfigMap from remote cluster: %w"
+	errClusterIDNotFound       = "CLUSTER_ID not found in ConfigMap"
+	errExtractKymaData         = "cannot extract data from Kyma cluster: %w"
 	errCreateCredentialsSecret = "cannot create credentials secret: %w"
 	errCreateInstanceMapping   = "cannot create InstanceMapping: %w"
 	errGetInstanceMapping      = "cannot get InstanceMapping: %w"
@@ -76,11 +76,11 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	log := o.Logger.WithValues("controller", name)
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.KymaInstanceMappingGroupVersionKind),
-		managed.WithExternalConnecter(&connector{
-			kube:  mgr.GetClient(),
-			usage: resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
-			log:   log,
-		}),
+		managed.WithExternalConnecter(NewConnector(
+			mgr.GetClient(),
+			resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
+			log,
+		)),
 		managed.WithLogger(log),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
 		managed.WithConnectionPublishers(cps...))
@@ -93,11 +93,20 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		Complete(r)
 }
 
-// A connector is expected to produce an ExternalClient when its Connect method is called.
-type connector struct {
+// Connector is exported for testing.
+type Connector struct {
 	kube  client.Client
 	usage resource.Tracker
 	log   logging.Logger
+}
+
+// NewConnector creates a Connector for testing.
+func NewConnector(kube client.Client, usage resource.Tracker, log logging.Logger) *Connector {
+	return &Connector{
+		kube:  kube,
+		usage: usage,
+		log:   log,
+	}
 }
 
 // kymaExtractedData holds all data extracted from the remote Kyma cluster
@@ -112,7 +121,7 @@ type kymaExtractedData struct {
 // Connect establishes connections to either the local or remote Kyma cluster.
 // It extracts all needed data from cluster (ServiceInstance, ServiceBinding, ConfigMap)
 // but does NOT connect to HANA Cloud API - that's done by the child InstanceMapping.
-func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
+func (c *Connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
 	cr, ok := mg.(*v1alpha1.KymaInstanceMapping)
 	if !ok {
 		return nil, errors.New(errNotKymaInstanceMapping)
@@ -160,7 +169,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		ServiceInstanceReady: kymaData.serviceInstanceReady,
 	}
 
-	return &external{
+	return &External{
 		managementClient: c.kube,
 		clusterClient:    clusterClient,
 		kymaData:         kymaData,
@@ -169,7 +178,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 }
 
 // getKubeconfigData reads the kubeconfig from the secret on the management cluster.
-func (c *connector) getKubeconfigData(ctx context.Context, cr *v1alpha1.KymaInstanceMapping) ([]byte, error) {
+func (c *Connector) getKubeconfigData(ctx context.Context, cr *v1alpha1.KymaInstanceMapping) ([]byte, error) {
 	if cr.Spec.ForProvider.KymaConnectionRef == nil {
 		return nil, nil
 	}
@@ -299,16 +308,15 @@ func parseAdminAPICredentials(data map[string][]byte) (hanacloud.AdminAPICredent
 	return creds, nil
 }
 
-// An ExternalClient observes, then either creates, updates, or deletes an
-// external resource to ensure it reflects the managed resource's desired state.
-type external struct {
+// External is exported for testing.
+type External struct {
 	managementClient client.Client
 	clusterClient    client.Client
 	kymaData         *kymaExtractedData
 	log              logging.Logger
 }
 
-func (e *external) Disconnect(_ context.Context) error {
+func (e *External) Disconnect(_ context.Context) error {
 	return nil
 }
 
@@ -325,7 +333,7 @@ func getChildResourceNames(cr *v1alpha1.KymaInstanceMapping) (secretName, imName
 	return cr.Name + credentialsSecretSuffix, cr.Name + instanceMappingSuffix
 }
 
-func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
+func (e *External) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
 	cr, ok := mg.(*v1alpha1.KymaInstanceMapping)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotKymaInstanceMapping)
@@ -382,7 +390,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}, nil
 }
 
-func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
+func (e *External) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
 	cr, ok := mg.(*v1alpha1.KymaInstanceMapping)
 	if !ok {
 		return managed.ExternalCreation{}, errors.New(errNotKymaInstanceMapping)
@@ -480,12 +488,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	return managed.ExternalCreation{}, nil
 }
 
-func (e *external) Update(_ context.Context, _ resource.Managed) (managed.ExternalUpdate, error) {
+func (e *External) Update(_ context.Context, _ resource.Managed) (managed.ExternalUpdate, error) {
 	// KymaInstanceMapping doesn't need update - child InstanceMapping handles it
 	return managed.ExternalUpdate{}, nil
 }
 
-func (e *external) Delete(_ context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
+func (e *External) Delete(_ context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
 	cr, ok := mg.(*v1alpha1.KymaInstanceMapping)
 	if !ok {
 		return managed.ExternalDelete{}, errors.New(errNotKymaInstanceMapping)
@@ -501,7 +509,11 @@ func (e *external) Delete(_ context.Context, mg resource.Managed) (managed.Exter
 
 // buildCredentialsJSON creates the JSON credentials blob for the intermediate secret
 func buildCredentialsJSON(creds hanacloud.AdminAPICredentials) []byte {
-	data, _ := json.Marshal(creds)
+	data, err := json.Marshal(creds)
+	if err != nil {
+		// This should never happen with AdminAPICredentials struct
+		return []byte("{}")
+	}
 	return data
 }
 

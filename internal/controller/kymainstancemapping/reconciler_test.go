@@ -7,6 +7,7 @@ package kymainstancemapping
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	servicescloudsapv1 "github.com/SAP/sap-btp-service-operator/api/v1"
@@ -169,7 +170,7 @@ func TestConnector_Connect(t *testing.T) {
 				WithObjects(tt.objects...).
 				Build()
 
-			c := &connector{
+			c := &Connector{
 				kube:  fakeClient,
 				usage: &mockTracker{},
 				log:   logging.NewNopLogger(),
@@ -182,7 +183,7 @@ func TestConnector_Connect(t *testing.T) {
 					t.Errorf("Connect() expected error but got none")
 					return
 				}
-				if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Connect() error = %v, want error containing %q", err, tt.errMsg)
 				}
 				return
@@ -202,27 +203,13 @@ func (m *mockTracker) Track(_ context.Context, _ resource.Managed) error {
 	return nil
 }
 
-// contains checks if s contains substr
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && findSubstring(s, substr)
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 func TestExternal_Observe(t *testing.T) {
 	tests := []struct {
-		name           string
-		cr             *v1alpha1.KymaInstanceMapping
-		existingIM     *v1alpha1.InstanceMapping
-		want           bool // want ResourceExists
-		wantErr        bool
+		name       string
+		cr         *v1alpha1.KymaInstanceMapping
+		existingIM *v1alpha1.InstanceMapping
+		want       bool // want ResourceExists
+		wantErr    bool
 	}{
 		{
 			name: "child InstanceMapping exists and is ready",
@@ -297,7 +284,7 @@ func TestExternal_Observe(t *testing.T) {
 			}
 			fakeClient := builder.Build()
 
-			e := &external{
+			e := &External{
 				managementClient: fakeClient,
 				clusterClient:    nil,
 				kymaData: &kymaExtractedData{
@@ -369,7 +356,7 @@ func TestExternal_Create(t *testing.T) {
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-			e := &external{
+			e := &External{
 				managementClient: fakeClient,
 				clusterClient:    nil,
 				kymaData: &kymaExtractedData{
@@ -434,17 +421,14 @@ func TestExternal_Create(t *testing.T) {
 }
 
 func TestExtractKymaData(t *testing.T) {
-	adminAPICreds := map[string]interface{}{
-		"url": "https://hana-cloud-api.example.com",
-		"uaa": map[string]interface{}{
-			"clientid":     "test-client",
-			"clientsecret": "test-secret",
-			"url":          "https://uaa.example.com",
-		},
+	uaaConfig := map[string]interface{}{
+		"url":          "https://uaa.example.com",
+		"clientid":     "test-client",
+		"clientsecret": "test-secret",
 	}
-	adminAPIJSON, err := json.Marshal(adminAPICreds)
+	uaaJSON, err := json.Marshal(uaaConfig)
 	if err != nil {
-		t.Fatalf("Failed to marshal admin API credentials: %v", err)
+		t.Fatalf("Failed to marshal UAA config: %v", err)
 	}
 
 	tests := []struct {
@@ -489,7 +473,7 @@ func TestExtractKymaData(t *testing.T) {
 					},
 					Data: map[string][]byte{
 						"baseurl": []byte("https://hana-cloud-api.example.com"),
-						"uaa":     adminAPIJSON,
+						"uaa":     uaaJSON,
 					},
 				},
 				&corev1.ConfigMap{
@@ -522,7 +506,14 @@ func TestExtractKymaData(t *testing.T) {
 				clusterID:            "test-cluster-id",
 				serviceInstanceName:  "hana-instance",
 				serviceInstanceReady: true,
-				adminAPICredentials:  hanacloud.AdminAPICredentials{},
+				adminAPICredentials: hanacloud.AdminAPICredentials{
+					BaseURL: "https://hana-cloud-api.example.com",
+					UAA: hanacloud.UAAConfig{
+						URL:          "https://uaa.example.com",
+						ClientID:     "test-client",
+						ClientSecret: "test-secret",
+					},
+				},
 			},
 			wantErr: false,
 		},
@@ -566,7 +557,7 @@ func TestExtractKymaData(t *testing.T) {
 					t.Errorf("extractKymaData() expected error but got none")
 					return
 				}
-				if tt.errContains != "" && !contains(err.Error(), tt.errContains) {
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
 					t.Errorf("extractKymaData() error = %v, want error containing %q", err, tt.errContains)
 				}
 				return
@@ -593,6 +584,19 @@ func TestExtractKymaData(t *testing.T) {
 			}
 			if data.serviceInstanceReady != tt.wantData.serviceInstanceReady {
 				t.Errorf("serviceInstanceReady = %v, want %v", data.serviceInstanceReady, tt.wantData.serviceInstanceReady)
+			}
+			// Verify adminAPICredentials
+			if data.adminAPICredentials.BaseURL != tt.wantData.adminAPICredentials.BaseURL {
+				t.Errorf("adminAPICredentials.BaseURL = %v, want %v", data.adminAPICredentials.BaseURL, tt.wantData.adminAPICredentials.BaseURL)
+			}
+			if data.adminAPICredentials.UAA.URL != tt.wantData.adminAPICredentials.UAA.URL {
+				t.Errorf("adminAPICredentials.UAA.URL = %v, want %v", data.adminAPICredentials.UAA.URL, tt.wantData.adminAPICredentials.UAA.URL)
+			}
+			if data.adminAPICredentials.UAA.ClientID != tt.wantData.adminAPICredentials.UAA.ClientID {
+				t.Errorf("adminAPICredentials.UAA.ClientID = %v, want %v", data.adminAPICredentials.UAA.ClientID, tt.wantData.adminAPICredentials.UAA.ClientID)
+			}
+			if data.adminAPICredentials.UAA.ClientSecret != tt.wantData.adminAPICredentials.UAA.ClientSecret {
+				t.Errorf("adminAPICredentials.UAA.ClientSecret = %v, want %v", data.adminAPICredentials.UAA.ClientSecret, tt.wantData.adminAPICredentials.UAA.ClientSecret)
 			}
 		})
 	}

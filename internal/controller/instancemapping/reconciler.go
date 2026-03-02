@@ -37,6 +37,19 @@ const (
 	errDeleteMapping         = "cannot delete instance mapping: %w"
 )
 
+// ClientFactory creates an instancemapping.Client from credentials.
+// This allows injecting mock clients for testing.
+type ClientFactory func(ctx context.Context, creds hanacloud.AdminAPICredentials, log logging.Logger) (imclient.Client, error)
+
+// DefaultClientFactory creates a real HANA Cloud client.
+func DefaultClientFactory(ctx context.Context, creds hanacloud.AdminAPICredentials, log logging.Logger) (imclient.Client, error) {
+	client := hanacloud.New(log)
+	if err := client.Connect(ctx, creds); err != nil {
+		return nil, err
+	}
+	return client.InstanceMapping(), nil
+}
+
 // Setup adds a controller that reconciles InstanceMapping managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	name := managed.ControllerName(v1alpha1.InstanceMappingGroupKind)
@@ -44,10 +57,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	log := o.Logger.WithValues("controller", name)
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.InstanceMappingGroupVersionKind),
-		managed.WithExternalConnecter(&connector{
-			kube: mgr.GetClient(),
-			log:  log,
-		}),
+		managed.WithExternalConnecter(NewConnector(mgr.GetClient(), log, nil)),
 		managed.WithLogger(log),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
 
@@ -57,15 +67,30 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		Complete(r)
 }
 
-// connector produces an ExternalClient when its Connect method is called.
-type connector struct {
-	kube client.Client
-	log  logging.Logger
+// Connector produces an ExternalClient when its Connect method is called.
+// Connector is exported for testing.
+type Connector struct {
+	kube          client.Client
+	log           logging.Logger
+	clientFactory ClientFactory
+}
+
+// NewConnector creates a Connector with the given client factory.
+// If factory is nil, DefaultClientFactory is used.
+func NewConnector(kube client.Client, log logging.Logger, factory ClientFactory) *Connector {
+	if factory == nil {
+		factory = DefaultClientFactory
+	}
+	return &Connector{
+		kube:          kube,
+		log:           log,
+		clientFactory: factory,
+	}
 }
 
 // Connect establishes a connection to the HANA Cloud Admin API using credentials
 // from the referenced Secret.
-func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
+func (c *Connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
 	cr, ok := mg.(*v1alpha1.InstanceMapping)
 	if !ok {
 		return nil, errors.New(errNotInstanceMapping)
@@ -92,16 +117,16 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, fmt.Errorf(errParseCredentials, err)
 	}
 
-	// Create HANA Cloud client
-	cloudClient := hanacloud.New(c.log.WithValues("instancemapping", cr.Name))
-	if err := cloudClient.Connect(ctx, creds); err != nil {
+	// Create client using factory
+	imClient, err := c.clientFactory(ctx, creds, c.log.WithValues("instancemapping", cr.Name))
+	if err != nil {
 		return nil, fmt.Errorf(errConnectHANACloud, err)
 	}
 
 	c.log.Info("Connected to HANA Cloud Admin API", "instancemapping", cr.Name)
 
 	return &external{
-		client: cloudClient.InstanceMapping(),
+		client: imClient,
 		log:    c.log,
 	}, nil
 }

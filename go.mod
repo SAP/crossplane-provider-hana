@@ -12,6 +12,7 @@ require (
 	github.com/crossplane/crossplane-tools v0.0.0-20250422201939-01c86c11b835
 	github.com/google/go-cmp v0.7.0
 	github.com/pkg/errors v0.9.1
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.48.0
 	golang.org/x/oauth2 v0.34.0
 	k8s.io/api v0.35.0
