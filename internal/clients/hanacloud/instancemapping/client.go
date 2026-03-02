@@ -14,10 +14,10 @@ import (
 
 // InstanceMapping represents a mapping between a HANA instance and a Kubernetes namespace
 type InstanceMapping struct {
-	Platform    string `json:"platform"`
-	PrimaryID   string `json:"primaryID"`
+	Platform    string  `json:"platform"`
+	PrimaryID   string  `json:"primaryID"`
 	SecondaryID *string `json:"secondaryID,omitempty"`
-	IsDefault   bool   `json:"isDefault"`
+	IsDefault   bool    `json:"isDefault"`
 }
 
 // listMappingsResponse wraps the API response for listing instance mappings
