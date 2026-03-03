@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
@@ -82,7 +82,7 @@ type UsergroupList struct {
 
 // Usergroup type metadata.
 var (
-	UsergroupKind             = reflect.TypeOf(Usergroup{}).Name()
+	UsergroupKind             = reflect.TypeFor[Usergroup]().Name()
 	UsergroupGroupKind        = schema.GroupKind{Group: Group, Kind: UsergroupKind}.String()
 	UsergroupKindAPIVersion   = UsergroupKind + "." + SchemeGroupVersion.String()
 	UsergroupGroupVersionKind = SchemeGroupVersion.WithKind(UsergroupKind)

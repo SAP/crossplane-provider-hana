@@ -18,15 +18,6 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 )
 
-// Helper functions for creating pointers
-func stringPtr(s string) *string {
-	return &s
-}
-
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 func TestPrivilegeClient_Grant(t *testing.T) {
 	errBoom := errors.New("boom")
 	cases := map[string]struct {
@@ -569,7 +560,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Strict policy should return observed privileges unchanged",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT", "INSERT", "UPDATE"},
 				},
 				specPrivileges: []string{"SELECT"},
@@ -578,7 +569,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT", "INSERT", "UPDATE"},
 				},
 				err: nil,
@@ -588,7 +579,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Lax policy should filter to only spec privileges",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{GetDefaultPrivilege("test_user"), "SELECT", "INSERT", "UPDATE", "DELETE"},
 				},
 				specPrivileges: []string{"INSERT", "SELECT"},
@@ -597,7 +588,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"INSERT", "SELECT"},
 				},
 				err: nil,
@@ -607,7 +598,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Lax policy should include previous privileges",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT", "INSERT", "UPDATE", "DELETE"},
 				},
 				specPrivileges: []string{"UPDATE", "SELECT"},
@@ -616,7 +607,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"SELECT", "UPDATE"},
 				},
 				err: nil,
@@ -626,7 +617,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Lax policy should handle overlapping spec and prev privileges",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT", "INSERT", "UPDATE", "DELETE"},
 				},
 				specPrivileges: []string{"SELECT", "INSERT"},
@@ -635,7 +626,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"SELECT", "INSERT", "UPDATE"},
 				},
 				err: nil,
@@ -645,7 +636,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Lax policy should return empty privileges when none are managed",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"DELETE", "TRUNCATE", "ALTER"},
 				},
 				specPrivileges: []string{"SELECT"},
@@ -654,7 +645,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{},
 				},
 				err: nil,
@@ -664,7 +655,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Lax policy should handle empty observed privileges",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{},
 				},
 				specPrivileges: []string{"CREATE ANY", "SELECT"},
@@ -673,7 +664,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{},
 				},
 				err: nil,
@@ -683,7 +674,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Lax policy should return empty privileges when spec and prev are empty",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT", "INSERT"},
 				},
 				specPrivileges: []string{},
@@ -692,7 +683,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{},
 				},
 				err: nil,
@@ -702,7 +693,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Unknown policy should return an error",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT"},
 				},
 				specPrivileges: []string{"SELECT"},
@@ -711,7 +702,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT"},
 				},
 				err: fmt.Errorf(ErrUnknownPrivilegeManagementPolicy, "unknown"),
@@ -721,7 +712,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Empty policy should return an error",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT"},
 				},
 				specPrivileges: []string{"SELECT"},
@@ -730,7 +721,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"CREATE ANY", "SELECT"},
 				},
 				err: fmt.Errorf(ErrUnknownPrivilegeManagementPolicy, ""),
@@ -740,14 +731,14 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Lax policy should preserve other fields in UserObservation",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:               stringPtr("test_user"),
-					RestrictedUser:         boolPtr(true),
+					Username:               new("test_user"),
+					RestrictedUser:         new(true),
 					LastPasswordChangeTime: testTime,
 					CreatedAt:              testTime,
 					Privileges:             []string{"CREATE ANY", "SELECT", "INSERT", "DELETE"},
 					Roles:                  []string{"PUBLIC", "ADMIN"},
 					Parameters:             map[string]string{"param1": "value1"},
-					Usergroup:              stringPtr("TEST_GROUP"),
+					Usergroup:              new("TEST_GROUP"),
 				},
 				specPrivileges: []string{"SELECT"},
 				prevPrivileges: []string{},
@@ -755,14 +746,14 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:               stringPtr("test_user"),
-					RestrictedUser:         boolPtr(true),
+					Username:               new("test_user"),
+					RestrictedUser:         new(true),
 					LastPasswordChangeTime: testTime,
 					CreatedAt:              testTime,
 					Privileges:             []string{"SELECT"},
 					Roles:                  []string{"PUBLIC", "ADMIN"},
 					Parameters:             map[string]string{"param1": "value1"},
-					Usergroup:              stringPtr("TEST_GROUP"),
+					Usergroup:              new("TEST_GROUP"),
 				},
 				err: nil,
 			},
@@ -771,14 +762,14 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "Strict policy should preserve other fields in UserObservation",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:               stringPtr("test_user"),
-					RestrictedUser:         boolPtr(false),
+					Username:               new("test_user"),
+					RestrictedUser:         new(false),
 					LastPasswordChangeTime: testTime,
 					CreatedAt:              testTime,
 					Privileges:             []string{"CREATE ANY", "SELECT", "INSERT", "DELETE"},
 					Roles:                  []string{"PUBLIC"},
 					Parameters:             map[string]string{"param1": "value1", "param2": "value2"},
-					Usergroup:              stringPtr("DEFAULT"),
+					Usergroup:              new("DEFAULT"),
 				},
 				specPrivileges: []string{"SELECT"},
 				prevPrivileges: []string{"INSERT"},
@@ -786,14 +777,14 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:               stringPtr("test_user"),
-					RestrictedUser:         boolPtr(false),
+					Username:               new("test_user"),
+					RestrictedUser:         new(false),
 					LastPasswordChangeTime: testTime,
 					CreatedAt:              testTime,
 					Privileges:             []string{"CREATE ANY", "SELECT", "INSERT", "DELETE"},
 					Roles:                  []string{"PUBLIC"},
 					Parameters:             map[string]string{"param1": "value1", "param2": "value2"},
-					Usergroup:              stringPtr("DEFAULT"),
+					Usergroup:              new("DEFAULT"),
 				},
 				err: nil,
 			},
@@ -802,7 +793,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			reason: "When transitioning from strict to lax policy, default privileges should not become managed",
 			args: args{
 				observed: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{GetDefaultPrivilege("test_user"), "SELECT", "INSERT", "UPDATE"},
 				},
 				specPrivileges: []string{"SELECT", "INSERT"},
@@ -811,7 +802,7 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
-					Username:   stringPtr("test_user"),
+					Username:   new("test_user"),
 					Privileges: []string{"SELECT", "INSERT", "UPDATE"},
 				},
 				err: nil,

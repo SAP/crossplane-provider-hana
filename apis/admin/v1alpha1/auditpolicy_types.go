@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
@@ -94,7 +94,7 @@ type AuditPolicyList struct {
 
 // AuditPolicy type metadata.
 var (
-	AuditPolicyKind             = reflect.TypeOf(AuditPolicy{}).Name()
+	AuditPolicyKind             = reflect.TypeFor[AuditPolicy]().Name()
 	AuditPolicyGroupKind        = schema.GroupKind{Group: Group, Kind: AuditPolicyKind}.String()
 	AuditPolicyKindAPIVersion   = AuditPolicyKind + "." + SchemeGroupVersion.String()
 	AuditPolicyGroupVersionKind = SchemeGroupVersion.WithKind(AuditPolicyKind)

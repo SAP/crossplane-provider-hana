@@ -1,0 +1,14 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: X509Provider
+metadata:
+  name: x509provider
+  namespace: default
+spec:
+  forProvider:
+    name: X509_PROVIDER
+    issuer: CN=example-issuer, O=example-org, C=US
+    matchingRules:
+      - CN=*
+      - CN=*, SP=abc
+  providerConfigRef:
+    name: example

@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
@@ -87,7 +87,7 @@ type RoleList struct {
 
 // Role type metadata.
 var (
-	RoleKind             = reflect.TypeOf(Role{}).Name()
+	RoleKind             = reflect.TypeFor[Role]().Name()
 	RoleGroupKind        = schema.GroupKind{Group: Group, Kind: RoleKind}.String()
 	RoleKindAPIVersion   = RoleKind + "." + SchemeGroupVersion.String()
 	RoleGroupVersionKind = SchemeGroupVersion.WithKind(RoleKind)

@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
@@ -67,7 +67,7 @@ func (in *StoreConfig) SetConditions(c ...xpv1.Condition) {
 
 // StoreConfig type metadata.
 var (
-	StoreConfigKind             = reflect.TypeOf(StoreConfig{}).Name()
+	StoreConfigKind             = reflect.TypeFor[StoreConfig]().Name()
 	StoreConfigGroupKind        = schema.GroupKind{Group: Group, Kind: StoreConfigKind}.String()
 	StoreConfigKindAPIVersion   = StoreConfigKind + "." + SchemeGroupVersion.String()
 	StoreConfigGroupVersionKind = SchemeGroupVersion.WithKind(StoreConfigKind)
