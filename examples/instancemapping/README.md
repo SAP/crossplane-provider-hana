@@ -1,8 +1,21 @@
 # Instance Mapping Examples
 
-This directory contains examples for mapping HANA Cloud instances to Kubernetes namespaces.
+This directory contains examples for mapping HANA Cloud instances to Kubernetes namespaces or Cloud Foundry spaces.
 
-## KymaInstanceMapping
+## InstanceMapping (Low-Level)
+
+InstanceMapping is the low-level CR that directly manages HANA Cloud instance mappings via the Admin API.
+
+### Cloud Foundry
+
+- [instancemapping-cloudfoundry.yaml](instancemapping-cloudfoundry.yaml) - Map a HANA instance to a CF org/space
+- [kro-cloudfoundry-rgd.yaml](kro-cloudfoundry-rgd.yaml) - KRO ResourceGraphDefinition for automatic GUID extraction from CF Provider
+
+### Kubernetes
+
+For Kubernetes environments, use KymaInstanceMapping which automatically extracts configuration from Kyma resources.
+
+## KymaInstanceMapping (Kyma/BTP)
 
 KymaInstanceMapping supports two deployment patterns:
 
@@ -23,6 +36,6 @@ See [providerconfig.yaml](providerconfig.yaml) for setting up SQL credentials. N
 
 ## Architecture Note
 
-Based on customer feedback, KymaInstanceMapping is the preferred approach for instance mapping.
-It supports both single-cluster and cross-cluster deployments by connecting to the target
-cluster to fetch HANA Cloud instance details.
+- **KymaInstanceMapping**: Preferred for Kubernetes/Kyma environments. Automatically extracts instance ID, credentials, and cluster ID from BTP Service Operator resources.
+- **InstanceMapping**: Use directly for Cloud Foundry or when you have raw credentials and instance details.
+
