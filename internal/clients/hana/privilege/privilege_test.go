@@ -170,7 +170,7 @@ func TestPrivilegeClient_QueryPrivileges(t *testing.T) {
 				AddRow("TABLE", "SELECT", sql.NullString{String: "SCHEMA1", Valid: true}, sql.NullString{String: "OBJ1", Valid: true}, true).
 				AddRow("TABLE", "UPDATE", sql.NullString{String: "SCHEMA2", Valid: true}, sql.NullString{String: "OBJ2", Valid: true}, false).
 				AddRow("USERGROUP", "OPERATOR", sql.NullString{Valid: false}, sql.NullString{String: "mygroup", Valid: true}, true),
-			want:    []string{"SELECT ON SCHEMA1.OBJ1 WITH GRANT OPTION", "UPDATE ON SCHEMA2.OBJ2", "USERGROUP OPERATOR ON USERGROUP mygroup WITH GRANT OPTION"},
+			want:    []string{"SELECT ON \"SCHEMA1\".\"OBJ1\" WITH GRANT OPTION", "UPDATE ON \"SCHEMA2\".\"OBJ2\"", "USERGROUP OPERATOR ON USERGROUP \"mygroup\" WITH GRANT OPTION"},
 			wantErr: false,
 		},
 		"SchemaAndSourcePrivileges": {
@@ -178,7 +178,7 @@ func TestPrivilegeClient_QueryPrivileges(t *testing.T) {
 			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", "IS_GRANTABLE"}).
 				AddRow("SCHEMA", "SELECT", sql.NullString{String: "SCHEMA1", Valid: true}, sql.NullString{Valid: false}, true).
 				AddRow("SOURCE", "LINKED DATABASE", sql.NullString{Valid: false}, sql.NullString{String: "myremotesys", Valid: true}, false),
-			want:    []string{"SELECT ON SCHEMA SCHEMA1 WITH GRANT OPTION", "LINKED DATABASE ON REMOTE SOURCE myremotesys"},
+			want:    []string{"SELECT ON SCHEMA \"SCHEMA1\" WITH GRANT OPTION", "LINKED DATABASE ON REMOTE SOURCE \"myremotesys\""},
 			wantErr: false,
 		},
 		"QueryError": {
@@ -335,7 +335,7 @@ func Test_stringToPrivilege(t *testing.T) {
 		{
 			name: "ObjectPrivilege",
 			in:   "SELECT ON myobj",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "defaultschema.myobj"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "defaultschema", SubIdentifier: "myobj"},
 			ok:   true,
 		},
 		{
@@ -437,10 +437,10 @@ func Test_groupPrivilegesByType(t *testing.T) {
 	// Should group by type and identifier
 	expectPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`SELECT, INSERT|INSERT, SELECT`),
-		regexp.MustCompile(`SELECT ON SCHEMA myschema`),
+		regexp.MustCompile(`SELECT ON SCHEMA "myschema"`),
 		regexp.MustCompile(`USAGE ON CLIENTSIDE ENCRYPTION COLUMN KEY my_cek`),
-		regexp.MustCompile(`LINKED DATABASE ON REMOTE SOURCE myremotesys`),
-		regexp.MustCompile(`USERGROUP OPERATOR ON USERGROUP mygroup`),
+		regexp.MustCompile(`LINKED DATABASE ON REMOTE SOURCE "myremotesys"`),
+		regexp.MustCompile(`USERGROUP OPERATOR ON USERGROUP "mygroup"`),
 		regexp.MustCompile(`STRUCTURED PRIVILEGE mystruct`),
 	}
 	for _, pattern := range expectPatterns {
@@ -472,10 +472,10 @@ func Test_groupPrivilegesByTypeAndIdentifier(t *testing.T) {
 	got := groupPrivilegesByTypeAndIdentifier(privs)
 	expectPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`SELECT, INSERT|INSERT, SELECT`),
-		regexp.MustCompile(`SELECT ON SCHEMA myschema`),
+		regexp.MustCompile(`SELECT ON SCHEMA "myschema"`),
 		regexp.MustCompile(`USAGE ON CLIENTSIDE ENCRYPTION COLUMN KEY my_cek`),
-		regexp.MustCompile(`LINKED DATABASE ON REMOTE SOURCE myremotesys`),
-		regexp.MustCompile(`USERGROUP OPERATOR ON USERGROUP mygroup`),
+		regexp.MustCompile(`LINKED DATABASE ON REMOTE SOURCE "myremotesys"`),
+		regexp.MustCompile(`USERGROUP OPERATOR ON USERGROUP "mygroup"`),
 		regexp.MustCompile(`STRUCTURED PRIVILEGE mystruct`),
 	}
 	for _, pattern := range expectPatterns {
@@ -494,9 +494,9 @@ func Test_groupPrivilegesByTypeAndIdentifier(t *testing.T) {
 
 func Test_groupPrivilegesByTypeAndIdentifier_GrantableSplit(t *testing.T) {
 	privs := []Privilege{
-		{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "S1.T1", IsGrantable: true},
-		{Type: ObjectPrivilegeType, Name: "INSERT", Identifier: "S1.T1", IsGrantable: true},
-		{Type: ObjectPrivilegeType, Name: "UPDATE", Identifier: "S1.T1", IsGrantable: false},
+		{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "S1", SubIdentifier: "T1", IsGrantable: true},
+		{Type: ObjectPrivilegeType, Name: "INSERT", Identifier: "S1", SubIdentifier: "T1", IsGrantable: true},
+		{Type: ObjectPrivilegeType, Name: "UPDATE", Identifier: "S1", SubIdentifier: "T1", IsGrantable: false},
 		{Type: SchemaPrivilegeType, Name: "SELECT", Identifier: "S1", IsGrantable: false},
 		{Type: SchemaPrivilegeType, Name: "INSERT", Identifier: "S1", IsGrantable: true},
 	}
@@ -507,14 +507,14 @@ func Test_groupPrivilegesByTypeAndIdentifier_GrantableSplit(t *testing.T) {
 	var schemaGrantable, schemaNonGrantable *PrivilegeGroup
 	for i := range got {
 		g := got[i]
-		if g.Type == ObjectPrivilegeType && regexp.MustCompile(`ON S1.T1`).MatchString(g.Body) {
+		if g.Type == ObjectPrivilegeType && regexp.MustCompile(`ON "S1"\."T1"`).MatchString(g.Body) {
 			if g.IsGrantable {
 				objGrantable = &g
 			} else {
 				objNonGrantable = &g
 			}
 		}
-		if g.Type == SchemaPrivilegeType && regexp.MustCompile(`ON SCHEMA S1`).MatchString(g.Body) {
+		if g.Type == SchemaPrivilegeType && regexp.MustCompile(`ON SCHEMA "S1"`).MatchString(g.Body) {
 			if g.IsGrantable {
 				schemaGrantable = &g
 			} else {
@@ -528,10 +528,10 @@ func Test_groupPrivilegesByTypeAndIdentifier_GrantableSplit(t *testing.T) {
 	if objNonGrantable == nil || !regexp.MustCompile(`UPDATE`).MatchString(objNonGrantable.Body) || objNonGrantable.IsGrantable {
 		t.Errorf("expected non-grantable group for S1.T1 with UPDATE, got: %#v", objNonGrantable)
 	}
-	if schemaGrantable == nil || !regexp.MustCompile(`INSERT ON SCHEMA S1`).MatchString(schemaGrantable.Body) || !schemaGrantable.IsGrantable {
+	if schemaGrantable == nil || !regexp.MustCompile(`INSERT ON SCHEMA "S1"`).MatchString(schemaGrantable.Body) || !schemaGrantable.IsGrantable {
 		t.Errorf("expected grantable schema group for S1 with INSERT, got: %#v", schemaGrantable)
 	}
-	if schemaNonGrantable == nil || !regexp.MustCompile(`SELECT ON SCHEMA S1`).MatchString(schemaNonGrantable.Body) || schemaNonGrantable.IsGrantable {
+	if schemaNonGrantable == nil || !regexp.MustCompile(`SELECT ON SCHEMA "S1"`).MatchString(schemaNonGrantable.Body) || schemaNonGrantable.IsGrantable {
 		t.Errorf("expected non-grantable schema group for S1 with SELECT, got: %#v", schemaNonGrantable)
 	}
 }
@@ -870,12 +870,12 @@ func TestFormatPrivilegeStrings_WithGrantableOptions(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := []string{
-		"SELECT ON SCHEMA myschema WITH GRANT OPTION",
-		"INSERT ON S1.myobj WITH GRANT OPTION",
+		`SELECT ON SCHEMA "myschema" WITH GRANT OPTION`,
+		`INSERT ON "S1"."myobj" WITH GRANT OPTION`,
 		"CREATE SCHEMA WITH ADMIN OPTION",
 		"STRUCTURED PRIVILEGE mystruct WITH GRANT OPTION",
 		"USAGE ON CLIENTSIDE ENCRYPTION COLUMN KEY my_cek WITH GRANT OPTION",
-		"USERGROUP OPERATOR ON USERGROUP mygroup WITH GRANT OPTION",
+		`USERGROUP OPERATOR ON USERGROUP "mygroup" WITH GRANT OPTION`,
 		"ROLE ADMIN WITH ADMIN OPTION",
 	}
 	if !cmp.Equal(want, got, cmpopts.SortSlices(func(a, b string) bool { return a < b })) {
@@ -926,6 +926,146 @@ func TestParseRoleString_WithOptions(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("parseRoleString(%q) got %+v, want %+v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatPrivilegeStrings_WithQuoteTrimming(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    []string
+		expected []string
+		wantErr  bool
+	}{
+		{
+			name: "BasicQuotedPrivileges",
+			input: []string{
+				`"INSERT ON SCHEMA NEW_SCHEMA"`,
+				`"SELECT ON SCHEMA OLD_SCHEMA"`,
+			},
+			expected: []string{
+				`INSERT ON SCHEMA "NEW_SCHEMA"`,
+				`SELECT ON SCHEMA "OLD_SCHEMA"`,
+			},
+			wantErr: false,
+		},
+		{
+			name: "QuotedPrivilegesWithInnerQuotes",
+			input: []string{
+				`"INSERT ON SCHEMA MY_SCHEMA"`,
+				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+			},
+			expected: []string{
+				`INSERT ON SCHEMA "MY_SCHEMA"`,
+				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+			},
+			wantErr: false,
+		},
+		{
+			name: "MixedQuotedAndUnquoted",
+			input: []string{
+				`"INSERT ON SCHEMA NEW_SCHEMA"`,
+				`SELECT ON SCHEMA OLD_SCHEMA`,
+				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+			},
+			expected: []string{
+				`INSERT ON SCHEMA "NEW_SCHEMA"`,
+				`SELECT ON SCHEMA "OLD_SCHEMA"`,
+				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+			},
+			wantErr: false,
+		},
+		{
+			name: "QuotedWithGrantOptions",
+			input: []string{
+				`"INSERT ON SCHEMA NEW_SCHEMA WITH GRANT OPTION"`,
+				`"CREATE SCHEMA WITH ADMIN OPTION"`,
+			},
+			expected: []string{
+				`INSERT ON SCHEMA "NEW_SCHEMA" WITH GRANT OPTION`,
+				`CREATE SCHEMA WITH ADMIN OPTION`,
+			},
+			wantErr: false,
+		},
+		{
+			name: "UserSpecificPrivileges",
+			input: []string{
+				`"INSERT ON SCHEMA MY_SCHEMA"`,
+				`"INSERT ON NEW_TABLE"`,
+				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+			},
+			expected: []string{
+				`INSERT ON SCHEMA "MY_SCHEMA"`,
+				`INSERT ON "testuser"."NEW_TABLE"`,
+				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+			},
+			wantErr: false,
+		},
+		{
+			name: "UserOriginalExample",
+			input: []string{
+				`"INSERT ON SCHEMA NEW_SCHEMA"`,
+				`"INSERT ON NEW_TABLE"`,
+				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+			},
+			expected: []string{
+				`INSERT ON SCHEMA "NEW_SCHEMA"`,
+				`INSERT ON "testuser"."NEW_TABLE"`,
+				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+			},
+			wantErr: false,
+		},
+		{
+			name: "UserActualScenario",
+			input: []string{
+				`"INSERT ON SCHEMA NEW_SCHEMA"`,
+				`"INSERT ON NEW_SCHEMA.NEW_TABLE"`,
+				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+			},
+			expected: []string{
+				`INSERT ON SCHEMA "NEW_SCHEMA"`,
+				`INSERT ON "NEW_SCHEMA"."NEW_TABLE"`,
+				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+			},
+			wantErr: false,
+		},
+		{
+			name: "EmptyQuotes",
+			input: []string{
+				`""`,
+			},
+			expected: []string{},
+			wantErr:  true, // Empty privilege should cause parse error
+		},
+		{
+			name: "UnclosedQuotes",
+			input: []string{
+				`"INSERT ON SCHEMA NEW_SCHEMA`,
+			},
+			expected: []string{},
+			wantErr:  true, // Should fail to parse unclosed quote
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatPrivilegeStringsWithPreprocessing(tc.input, "testuser")
+
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for input %v, got nil", tc.input)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error for input %v: %v", tc.input, err)
+			}
+
+			// Sort both slices for comparison since order doesn't matter
+			if !cmp.Equal(tc.expected, got, cmpopts.SortSlices(func(a, b string) bool { return a < b })) {
+				t.Errorf("FormatPrivilegeStringsWithPreprocessing(%v) got = %v, want %v", tc.input, got, tc.expected)
 			}
 		})
 	}

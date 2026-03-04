@@ -11,7 +11,6 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
-	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/crossplane-contrib/xp-testing/pkg/resources"
 	"github.com/crossplane-contrib/xp-testing/pkg/xpenvfuncs"
@@ -78,8 +77,6 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 			return ctx
 		}
 
-		defaultSchemaName := user.Spec.ForProvider.Username
-
 		schemaName := c.DBSchemas[0]
 		objectName := c.DBObjects[0]
 
@@ -108,10 +105,6 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 		if err != nil {
 			t.Error(err)
 		}
-
-		privileges = append(privileges,
-			privilege.GetDefaultPrivilege(defaultSchemaName),
-		)
 
 		less := func(a, b string) bool { return a < b }
 		equalIgnoreOrder := cmp.Diff(privileges, user.Status.AtProvider.Privileges, cmpopts.SortSlices(less)) == ""
