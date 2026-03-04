@@ -452,7 +452,7 @@ var privilegePatterns = []privilegePattern{
 	{
 		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, defaultSchema DefaultSchema) Privilege {
-			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: string(defaultSchema), SubIdentifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: defaultSchema, SubIdentifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Structured privilege: STRUCTURED PRIVILEGE <name>
