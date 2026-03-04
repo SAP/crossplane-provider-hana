@@ -15,6 +15,9 @@ on:
     paths-ignore:
     - '*.md'
 
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+
 # on pull_request_target, the GITHUB_TOKEN has read/write access to the repository content by default, so restrict it to read only
 permissions:
   contents: read
