@@ -12,6 +12,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 	"github.com/crossplane-contrib/xp-testing/pkg/resources"
 	"github.com/crossplane-contrib/xp-testing/pkg/xpenvfuncs"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
@@ -83,8 +84,8 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 		privileges := user.Spec.ForProvider.Privileges
 		privileges = append(privileges,
 			"AUDIT READ",
-			fmt.Sprintf("CREATE ANY ON SCHEMA %s", schemaName),
-			fmt.Sprintf("INSERT ON %s.%s", schemaName, objectName),
+			fmt.Sprintf(`CREATE ANY ON SCHEMA "%s"`, utils.EscapeDoubleQuotes(schemaName)),
+			fmt.Sprintf(`INSERT ON "%s"."%s"`, utils.EscapeDoubleQuotes(schemaName), utils.EscapeDoubleQuotes(objectName)),
 		)
 
 		user.Spec.ForProvider.Privileges = privileges
