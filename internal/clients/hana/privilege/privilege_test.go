@@ -404,6 +404,95 @@ func Test_stringToPrivilege(t *testing.T) {
 			want: Privilege{Type: SystemPrivilegeType, Name: "CREATE ANY TABLE"},
 			ok:   true,
 		},
+		// PSE privilege tests
+		{
+			name: "PSEPrivilege",
+			in:   "REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY"},
+			ok:   true,
+		},
+		{
+			name: "PSEPrivilegeWithGrantOption",
+			in:   "REFERENCES ON PSE my_pse WITH GRANT OPTION",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "PSE my_pse", IsGrantable: true},
+			ok:   true,
+		},
+		{
+			name: "PSEPrivilegeQuotedName",
+			in:   "REFERENCES ON PSE \"my-pse-with-dashes\"",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "PSE my-pse-with-dashes"},
+			ok:   true,
+		},
+		{
+			name: "PSEPrivilegeCaseInsensitive",
+			in:   "references on pse TestPSE",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "references", Identifier: "PSE TestPSE"},
+			ok:   true,
+		},
+		// JWT PROVIDER privilege tests
+		{
+			name: "JWTProviderPrivilege",
+			in:   "REFERENCES ON JWT PROVIDER my_jwt_provider",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "JWT PROVIDER my_jwt_provider"},
+			ok:   true,
+		},
+		{
+			name: "JWTProviderPrivilegeWithGrantOption",
+			in:   "REFERENCES ON JWT PROVIDER jwt_test WITH GRANT OPTION",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "JWT PROVIDER jwt_test", IsGrantable: true},
+			ok:   true,
+		},
+		{
+			name: "JWTProviderPrivilegeCaseInsensitive",
+			in:   "references on jwt provider MyJWTProvider",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "references", Identifier: "JWT PROVIDER MyJWTProvider"},
+			ok:   true,
+		},
+		// SAML PROVIDER privilege tests
+		{
+			name: "SAMLProviderPrivilege",
+			in:   "REFERENCES ON SAML PROVIDER my_saml_provider",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "SAML PROVIDER my_saml_provider"},
+			ok:   true,
+		},
+		{
+			name: "SAMLProviderPrivilegeWithGrantOption",
+			in:   "REFERENCES ON SAML PROVIDER saml_test WITH GRANT OPTION",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "SAML PROVIDER saml_test", IsGrantable: true},
+			ok:   true,
+		},
+		// X509 PROVIDER privilege tests
+		{
+			name: "X509ProviderPrivilege",
+			in:   "REFERENCES ON X509 PROVIDER my_x509_provider",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "X509 PROVIDER my_x509_provider"},
+			ok:   true,
+		},
+		{
+			name: "X509ProviderPrivilegeWithGrantOption",
+			in:   "REFERENCES ON X509 PROVIDER x509_test WITH GRANT OPTION",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "X509 PROVIDER x509_test", IsGrantable: true},
+			ok:   true,
+		},
+		{
+			name: "X509ProviderPrivilegeCaseInsensitive",
+			in:   "references on x509 provider MyX509Provider",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "references", Identifier: "X509 PROVIDER MyX509Provider"},
+			ok:   true,
+		},
+		// Test different privilege types on PSE
+		{
+			name: "PSEPrivilegeSelect",
+			in:   "SELECT ON PSE test_pse",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "PSE test_pse"},
+			ok:   true,
+		},
+		{
+			name: "PSEPrivilegeInsert",
+			in:   "INSERT ON PSE test_pse",
+			want: Privilege{Type: ObjectPrivilegeType, Name: "INSERT", Identifier: "PSE test_pse"},
+			ok:   true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -855,6 +944,88 @@ func TestFilterManagedPrivilegesNilObservation(t *testing.T) {
 	}
 }
 
+func TestFormatPrivilegeStrings_PSEAndProviderPrivileges(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name: "PSE privileges",
+			input: []string{
+				"REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				"REFERENCES ON PSE my_pse WITH GRANT OPTION",
+				"SELECT ON PSE test_pse",
+			},
+			expected: []string{
+				"REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				"REFERENCES ON PSE my_pse WITH GRANT OPTION",
+				"SELECT ON PSE test_pse",
+			},
+		},
+		{
+			name: "JWT PROVIDER privileges",
+			input: []string{
+				"REFERENCES ON JWT PROVIDER my_jwt_provider",
+				"REFERENCES ON JWT PROVIDER jwt_test WITH GRANT OPTION",
+			},
+			expected: []string{
+				"REFERENCES ON JWT PROVIDER my_jwt_provider",
+				"REFERENCES ON JWT PROVIDER jwt_test WITH GRANT OPTION",
+			},
+		},
+		{
+			name: "SAML PROVIDER privileges",
+			input: []string{
+				"REFERENCES ON SAML PROVIDER my_saml_provider",
+				"REFERENCES ON SAML PROVIDER saml_test WITH GRANT OPTION",
+			},
+			expected: []string{
+				"REFERENCES ON SAML PROVIDER my_saml_provider",
+				"REFERENCES ON SAML PROVIDER saml_test WITH GRANT OPTION",
+			},
+		},
+		{
+			name: "X509 PROVIDER privileges",
+			input: []string{
+				"REFERENCES ON X509 PROVIDER my_x509_provider",
+				"REFERENCES ON X509 PROVIDER x509_test WITH GRANT OPTION",
+			},
+			expected: []string{
+				"REFERENCES ON X509 PROVIDER my_x509_provider",
+				"REFERENCES ON X509 PROVIDER x509_test WITH GRANT OPTION",
+			},
+		},
+		{
+			name: "Mixed PSE and provider privileges",
+			input: []string{
+				"REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				"REFERENCES ON JWT PROVIDER jwt_prov",
+				"REFERENCES ON SAML PROVIDER saml_prov",
+				"REFERENCES ON X509 PROVIDER x509_prov",
+			},
+			expected: []string{
+				"REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				"REFERENCES ON JWT PROVIDER jwt_prov",
+				"REFERENCES ON SAML PROVIDER saml_prov",
+				"REFERENCES ON X509 PROVIDER x509_prov",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatPrivilegeStrings(tc.input, "defaultuser")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !cmp.Equal(tc.expected, got, cmpopts.SortSlices(func(a, b string) bool { return a < b })) {
+				t.Errorf("FormatPrivilegeStrings() got = %v, want %v", got, tc.expected)
+			}
+		})
+	}
+}
+
 func TestFormatPrivilegeStrings_WithGrantableOptions(t *testing.T) {
 	in := []string{
 		"SELECT ON SCHEMA myschema WITH GRANT OPTION",
@@ -1066,6 +1237,194 @@ func TestFormatPrivilegeStrings_WithQuoteTrimming(t *testing.T) {
 			// Sort both slices for comparison since order doesn't matter
 			if !cmp.Equal(tc.expected, got, cmpopts.SortSlices(func(a, b string) bool { return a < b })) {
 				t.Errorf("FormatPrivilegeStringsWithPreprocessing(%v) got = %v, want %v", tc.input, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestHandlePrivilegeRows_PSEAndProviderPrivileges(t *testing.T) {
+	testCases := []struct {
+		name        string
+		objectType  string
+		privilege   string
+		schemaName  sql.NullString
+		objectName  sql.NullString
+		isGrantable bool
+		expected    Privilege
+	}{
+		{
+			name:        "PSE privilege",
+			objectType:  "PSE",
+			privilege:   "REFERENCES",
+			schemaName:  sql.NullString{String: "", Valid: false},
+			objectName:  sql.NullString{String: "_SAP_DB_ACCESS_PSE_CLIENT_IDENTITY", Valid: true},
+			isGrantable: false,
+			expected: Privilege{
+				Type:        ObjectPrivilegeType,
+				Name:        "REFERENCES",
+				Identifier:  "PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				IsGrantable: false,
+			},
+		},
+		{
+			name:        "PSE privilege with grant option",
+			objectType:  "PSE",
+			privilege:   "REFERENCES",
+			schemaName:  sql.NullString{String: "", Valid: false},
+			objectName:  sql.NullString{String: "my_pse", Valid: true},
+			isGrantable: true,
+			expected: Privilege{
+				Type:        ObjectPrivilegeType,
+				Name:        "REFERENCES",
+				Identifier:  "PSE my_pse",
+				IsGrantable: true,
+			},
+		},
+		{
+			name:        "JWT PROVIDER privilege",
+			objectType:  "JWT PROVIDER",
+			privilege:   "REFERENCES",
+			schemaName:  sql.NullString{String: "", Valid: false},
+			objectName:  sql.NullString{String: "my_jwt_provider", Valid: true},
+			isGrantable: false,
+			expected: Privilege{
+				Type:        ObjectPrivilegeType,
+				Name:        "REFERENCES",
+				Identifier:  "JWT PROVIDER my_jwt_provider",
+				IsGrantable: false,
+			},
+		},
+		{
+			name:        "SAML PROVIDER privilege with grant option",
+			objectType:  "SAML PROVIDER",
+			privilege:   "REFERENCES",
+			schemaName:  sql.NullString{String: "", Valid: false},
+			objectName:  sql.NullString{String: "saml_test", Valid: true},
+			isGrantable: true,
+			expected: Privilege{
+				Type:        ObjectPrivilegeType,
+				Name:        "REFERENCES",
+				Identifier:  "SAML PROVIDER saml_test",
+				IsGrantable: true,
+			},
+		},
+		{
+			name:        "X509 PROVIDER privilege",
+			objectType:  "X509 PROVIDER",
+			privilege:   "REFERENCES",
+			schemaName:  sql.NullString{String: "", Valid: false},
+			objectName:  sql.NullString{String: "x509_provider", Valid: true},
+			isGrantable: false,
+			expected: Privilege{
+				Type:        ObjectPrivilegeType,
+				Name:        "REFERENCES",
+				Identifier:  "X509 PROVIDER x509_provider",
+				IsGrantable: false,
+			},
+		},
+		{
+			name:        "Regular system privilege for comparison",
+			objectType:  "SYSTEMPRIVILEGE",
+			privilege:   "CREATE SCHEMA",
+			schemaName:  sql.NullString{String: "", Valid: false},
+			objectName:  sql.NullString{String: "", Valid: false},
+			isGrantable: true,
+			expected: Privilege{
+				Type:        SystemPrivilegeType,
+				Name:        "CREATE SCHEMA",
+				IsGrantable: true,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create mock SQL rows
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("failed to create mock DB: %v", err)
+			}
+			defer db.Close()
+
+			rows := sqlmock.NewRows([]string{"object_type", "privilege", "schema_name", "object_name", "is_grantable"}).
+				AddRow(tc.objectType, tc.privilege, tc.schemaName, tc.objectName, tc.isGrantable)
+
+			mock.ExpectQuery("SELECT").WillReturnRows(rows)
+
+			sqlRows, err := db.QueryContext(context.Background(), "SELECT object_type, privilege, schema_name, object_name, is_grantable FROM dummy")
+			if err != nil {
+				t.Fatalf("failed to create SQL rows: %v", err)
+			}
+			defer sqlRows.Close()
+
+			// Move to first row
+			if !sqlRows.Next() {
+				t.Fatal("no rows returned")
+			}
+
+			// Test the function
+			got, err := handlePrivilegeRows(sqlRows)
+			if err != nil {
+				t.Fatalf("handlePrivilegeRows() error = %v", err)
+			}
+
+			if !reflect.DeepEqual(got, tc.expected) {
+				t.Errorf("handlePrivilegeRows() got = %+v, want %+v", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestFormatSpecialObjectPrivilege(t *testing.T) {
+	testCases := []struct {
+		name       string
+		privilege  string
+		identifier string
+		expected   string
+	}{
+		{
+			name:       "PSE privilege",
+			privilege:  "REFERENCES",
+			identifier: "PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+			expected:   "REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+		},
+		{
+			name:       "JWT PROVIDER privilege",
+			privilege:  "REFERENCES",
+			identifier: "JWT PROVIDER my_jwt_provider",
+			expected:   "REFERENCES ON JWT PROVIDER my_jwt_provider",
+		},
+		{
+			name:       "SAML PROVIDER privilege",
+			privilege:  "REFERENCES",
+			identifier: "SAML PROVIDER my_saml_provider",
+			expected:   "REFERENCES ON SAML PROVIDER my_saml_provider",
+		},
+		{
+			name:       "X509 PROVIDER privilege",
+			privilege:  "REFERENCES",
+			identifier: "X509 PROVIDER my_x509_provider",
+			expected:   "REFERENCES ON X509 PROVIDER my_x509_provider",
+		},
+		{
+			name:       "Regular object privilege",
+			privilege:  "SELECT",
+			identifier: "my_table",
+			expected:   `SELECT ON "my_table"`,
+		},
+		{
+			name:       "Regular object with special chars",
+			privilege:  "INSERT",
+			identifier: "table-with-dashes",
+			expected:   `INSERT ON "table-with-dashes"`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatSpecialObjectPrivilege(tc.privilege, tc.identifier)
+			if got != tc.expected {
+				t.Errorf("formatSpecialObjectPrivilege(%q, %q) = %q, want %q", tc.privilege, tc.identifier, got, tc.expected)
 			}
 		})
 	}
