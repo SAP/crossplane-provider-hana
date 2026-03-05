@@ -78,8 +78,6 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 			return ctx
 		}
 
-		defaultSchemaName := user.Spec.ForProvider.Username
-
 		schemaName := c.DBSchema
 		objectName := c.DBObject
 
