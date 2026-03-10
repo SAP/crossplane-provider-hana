@@ -15,6 +15,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 // Error types for user authentication issues
@@ -296,9 +297,9 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.UserParameters,
 func setParameters(query string, parameters map[string]string) string {
 	newParams := make([]string, 0, len(parameters))
 	for key, value := range parameters {
-		key = strings.ToUpper(key)
-		if slices.Contains(validParams, key) {
-			newParams = append(newParams, fmt.Sprintf("%s = '%s'", key, value))
+		upperKey := strings.ToUpper(key)
+		if slices.Contains(validParams, upperKey) {
+			newParams = append(newParams, fmt.Sprintf("%s = '%s'", upperKey, utils.EscapeSingleQuotes(value)))
 		}
 	}
 	if len(newParams) == 0 {

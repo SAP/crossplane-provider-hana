@@ -4,6 +4,7 @@ metadata:
   name: e2e-test-user
 spec:
   deletionPolicy: Delete
+  privilegeManagementPolicy: lax
   forProvider:
     authentication:
       password:

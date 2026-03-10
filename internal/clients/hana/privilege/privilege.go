@@ -11,6 +11,7 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 const (
@@ -210,10 +211,11 @@ func (c *PrivilegeClient) QueryRoles(ctx context.Context, grantee Grantee, grant
 }
 
 type Privilege struct {
-	Type        PrivilegeType
-	Name        string
-	Identifier  string
-	IsGrantable bool
+	Type          PrivilegeType
+	Name          string
+	Identifier    string
+	SubIdentifier string
+	IsGrantable   bool
 }
 
 type Role struct {
@@ -242,7 +244,8 @@ const (
 )
 
 // Role regex supports: "ROLE_NAME", ROLE_NAME, SCHEMA.ROLE_NAME, and optional WITH ADMIN OPTION
-var roleRegex = regexp.MustCompile(`(?i)^\s*("[^"]+"|[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)?)` + adminOptionRegex + `\s*$`)
+// Updated to handle special identifiers with embedded quotes like "SCHE""M'A"
+var roleRegex = regexp.MustCompile(`(?i)^\s*(` + identifierPattern + `(?:\.` + identifierPattern + `)?)` + adminOptionRegex + `\s*$`)
 
 type PrivilegeType int
 
@@ -277,18 +280,48 @@ func (pt PrivilegeType) String() string {
 	}
 }
 
+// formatSpecialObjectPrivilege handles special object privilege formatting patterns
+func formatSpecialObjectPrivilege(name, identifier string) string {
+	switch {
+	case strings.HasPrefix(identifier, "PSE "):
+		pseName := strings.TrimPrefix(identifier, "PSE ")
+		return fmt.Sprintf(`%s ON PSE %s`, name, pseName)
+	case strings.HasPrefix(identifier, "JWT PROVIDER "):
+		providerName := strings.TrimPrefix(identifier, "JWT PROVIDER ")
+		return fmt.Sprintf(`%s ON JWT PROVIDER %s`, name, providerName)
+	case strings.HasPrefix(identifier, "SAML PROVIDER "):
+		providerName := strings.TrimPrefix(identifier, "SAML PROVIDER ")
+		return fmt.Sprintf(`%s ON SAML PROVIDER %s`, name, providerName)
+	case strings.HasPrefix(identifier, "X509 PROVIDER "):
+		providerName := strings.TrimPrefix(identifier, "X509 PROVIDER ")
+		return fmt.Sprintf(`%s ON X509 PROVIDER %s`, name, providerName)
+	default:
+		// Regular object privilege
+		return fmt.Sprintf(`%s ON "%s"`, name, utils.EscapeDoubleQuotes(identifier))
+	}
+}
+
+// formatObjectPrivilege handles object privilege formatting
+func (p Privilege) formatObjectPrivilege() string {
+	if p.SubIdentifier != "" {
+		// Both parsing and database cases: schema and object are separate fields
+		return fmt.Sprintf(`%s ON "%s"."%s"`, p.Name, utils.EscapeDoubleQuotes(p.Identifier), utils.EscapeDoubleQuotes(p.SubIdentifier))
+	}
+	return formatSpecialObjectPrivilege(p.Name, p.Identifier)
+}
+
 func (p Privilege) baseString() string {
 	switch p.Type {
 	case SystemPrivilegeType:
 		return p.Name
 	case SourcePrivilegeType:
-		return fmt.Sprintf("%s ON REMOTE SOURCE %s", p.Name, p.Identifier)
+		return fmt.Sprintf(`%s ON REMOTE SOURCE "%s"`, p.Name, utils.EscapeDoubleQuotes(p.Identifier))
 	case SchemaPrivilegeType:
-		return fmt.Sprintf("%s ON SCHEMA %s", p.Name, p.Identifier)
+		return fmt.Sprintf(`%s ON SCHEMA "%s"`, p.Name, utils.EscapeDoubleQuotes(p.Identifier))
 	case ObjectPrivilegeType:
-		return fmt.Sprintf("%s ON %s", p.Name, p.Identifier)
+		return p.formatObjectPrivilege()
 	case UserGroupPrivilegeType:
-		return fmt.Sprintf("USERGROUP OPERATOR ON USERGROUP %s", p.Identifier)
+		return fmt.Sprintf(`USERGROUP OPERATOR ON USERGROUP "%s"`, utils.EscapeDoubleQuotes(p.Identifier))
 	case ColumnKeyPrivilegeType:
 		return fmt.Sprintf("%s ON CLIENTSIDE ENCRYPTION COLUMN KEY %s", p.Name, p.Identifier)
 	case StructuredPrivilegeType:
@@ -312,6 +345,23 @@ func (p Privilege) String() string {
 
 func FormatPrivilegeStrings(privilegeStrings []string, username string) ([]string, error) {
 	privileges, err := parsePrivilegeStrings(privilegeStrings, username)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]string, 0, len(privileges))
+	for _, priv := range privileges {
+		res = append(res, priv.String())
+	}
+	return res, nil
+}
+
+// FormatPrivilegeStringsWithPreprocessing safely preprocesses and formats privilege strings.
+// Use this function when processing privilege strings that may contain outer quotes or different escaping.
+func FormatPrivilegeStringsWithPreprocessing(privilegeStrings []string, username string) ([]string, error) {
+	// Pre-process privilege strings to remove outer quotes securely and normalize escaping
+	processedStrings := utils.PreprocessPrivilegeStrings(privilegeStrings)
+
+	privileges, err := parsePrivilegeStrings(processedStrings, username)
 	if err != nil {
 		return nil, err
 	}
@@ -359,6 +409,20 @@ func parseRoleString(roleStr string) (Role, error) {
 	return Role{}, fmt.Errorf(errUnknownRole, roleStr)
 }
 
+// identifierPattern matches both simple identifiers and special identifiers with embedded quotes
+// Special identifiers: "..." where " can be escaped as ""
+// Simple identifiers: Much more permissive to handle system identifiers and edge cases
+const identifierPattern = `(?:"(?:[^"]|"")*"|[^\s]+)`
+
+// cleanIdentifier removes outer quotes from an identifier and unescapes inner quotes
+func cleanIdentifier(identifier string) string {
+	if len(identifier) >= 2 && identifier[0] == '"' && identifier[len(identifier)-1] == '"' {
+		// Remove outer quotes and unescape inner doubled quotes
+		return strings.ReplaceAll(identifier[1:len(identifier)-1], `""`, `"`)
+	}
+	return identifier
+}
+
 type privilegePattern struct {
 	re    *regexp.Regexp
 	build func(m []string, defaultSchema DefaultSchema) Privilege
@@ -375,51 +439,79 @@ type privilegePattern struct {
 var privilegePatterns = []privilegePattern{
 	// USERGROUP OPERATOR ON USERGROUP <name>
 	{
-		re: regexp.MustCompile(`(?i)^\s*(USERGROUP\s+OPERATOR)\s+ON\s+USERGROUP\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(USERGROUP\s+OPERATOR)\s+ON\s+USERGROUP\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: UserGroupPrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
+			return Privilege{Type: UserGroupPrivilegeType, Name: m[1], Identifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Column key privilege: USAGE ON CLIENTSIDE ENCRYPTION COLUMN KEY <name>, currently only USAGE is supported.
 	{
-		re: regexp.MustCompile(`(?i)^\s*(USAGE)\b\s+ON\s+CLIENTSIDE\s+ENCRYPTION\s+COLUMN\s+KEY\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(USAGE)\b\s+ON\s+CLIENTSIDE\s+ENCRYPTION\s+COLUMN\s+KEY\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: ColumnKeyPrivilegeType, Name: "USAGE", Identifier: m[2], IsGrantable: m[3] != ""}
+			return Privilege{Type: ColumnKeyPrivilegeType, Name: "USAGE", Identifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// PSE privilege: <privilege> ON PSE <name> (treated as object privilege)
+	{
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+PSE\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
+		build: func(m []string, _ DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: "PSE " + cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// JWT PROVIDER privilege: <privilege> ON JWT PROVIDER <name> (treated as object privilege)
+	{
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+JWT\s+PROVIDER\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
+		build: func(m []string, _ DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: "JWT PROVIDER " + cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// SAML PROVIDER privilege: <privilege> ON SAML PROVIDER <name> (treated as object privilege)
+	{
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+SAML\s+PROVIDER\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
+		build: func(m []string, _ DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: "SAML PROVIDER " + cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// X509 PROVIDER privilege: <privilege> ON X509 PROVIDER <name> (treated as object privilege)
+	{
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+X509\s+PROVIDER\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
+		build: func(m []string, _ DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: "X509 PROVIDER " + cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Remote source privilege
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+REMOTE\s+SOURCE\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+REMOTE\s+SOURCE\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: SourcePrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
+			return Privilege{Type: SourcePrivilegeType, Name: m[1], Identifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Schema privilege
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+SCHEMA\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+SCHEMA\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: SchemaPrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
+			return Privilege{Type: SchemaPrivilegeType, Name: m[1], Identifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Object privilege with schema qualification
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)\.("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+(` + identifierPattern + `)\.(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: fmt.Sprintf("%s.%s", m[2], m[3]), IsGrantable: m[4] != ""}
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: cleanIdentifier(m[2]), SubIdentifier: cleanIdentifier(m[3]), IsGrantable: m[4] != ""}
 		},
 	},
 	// Object privilege without schema (use default schema)
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, defaultSchema DefaultSchema) Privilege {
-			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: fmt.Sprintf("%s.%s", defaultSchema, m[2]), IsGrantable: m[3] != ""}
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: defaultSchema, SubIdentifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Structured privilege: STRUCTURED PRIVILEGE <name>
 	{
-		re: regexp.MustCompile(`(?i)^\s*STRUCTURED\s+PRIVILEGE\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*STRUCTURED\s+PRIVILEGE\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: StructuredPrivilegeType, Name: "STRUCTURED PRIVILEGE", Identifier: m[1], IsGrantable: m[2] != ""}
+			return Privilege{Type: StructuredPrivilegeType, Name: "STRUCTURED PRIVILEGE", Identifier: cleanIdentifier(m[1]), IsGrantable: m[2] != ""}
 		},
 	},
 	// System privilege (standalone)
@@ -475,14 +567,27 @@ func groupPrivilegesByTypeAndIdentifier(privileges []Privilege) []PrivilegeGroup
 
 	groupsMap := make(map[groupKey][]string)
 	for _, p := range privileges {
-		key := groupKey{p.Type, p.Identifier, p.IsGrantable}
+		// For object privileges, use the full object reference as the identifier
+		identifier := p.Identifier
+		if p.Type == ObjectPrivilegeType && p.SubIdentifier != "" {
+			identifier = p.Identifier + "." + p.SubIdentifier
+		}
+
+		key := groupKey{p.Type, identifier, p.IsGrantable}
 		groupsMap[key] = append(groupsMap[key], p.Name)
 	}
 
 	res := make([]PrivilegeGroup, 0, len(groupsMap))
 	for key, names := range groupsMap {
 		// Generate the base string (e.g. "SELECT, INSERT ON SCHEMA X")
-		temp := Privilege{Type: key.pType, Name: strings.Join(names, ", "), Identifier: key.identifier}
+		var temp Privilege
+		if key.pType == ObjectPrivilegeType && strings.Contains(key.identifier, ".") {
+			// Split back to Identifier and SubIdentifier for object privileges
+			parts := strings.SplitN(key.identifier, ".", 2)
+			temp = Privilege{Type: key.pType, Name: strings.Join(names, ", "), Identifier: parts[0], SubIdentifier: parts[1]}
+		} else {
+			temp = Privilege{Type: key.pType, Name: strings.Join(names, ", "), Identifier: key.identifier}
+		}
 		res = append(res, PrivilegeGroup{
 			Body:        temp.baseString(),
 			IsGrantable: key.isGrantable,
@@ -493,7 +598,7 @@ func groupPrivilegesByTypeAndIdentifier(privileges []Privilege) []PrivilegeGroup
 }
 
 func GetDefaultPrivilege(defaultSchema string) string {
-	return fmt.Sprintf(`CREATE ANY ON SCHEMA %s WITH GRANT OPTION`, defaultSchema)
+	return fmt.Sprintf(`CREATE ANY ON SCHEMA "%s" WITH GRANT OPTION`, defaultSchema)
 }
 
 // FilterManagedPrivileges filters the observed privileges based on the management policy
@@ -520,6 +625,46 @@ func FilterManagedPrivileges(observed *v1alpha1.UserObservation, specPrivileges 
 	}
 }
 
+// createSystemPrivilege creates a system privilege
+func createSystemPrivilege(privilege string, isGrantable bool) Privilege {
+	return Privilege{
+		Type:        SystemPrivilegeType,
+		Name:        privilege,
+		IsGrantable: isGrantable,
+	}
+}
+
+// createSchemaPrivilege creates a schema privilege
+func createSchemaPrivilege(privilege string, schemaName sql.NullString, isGrantable bool) Privilege {
+	return Privilege{
+		Type:        SchemaPrivilegeType,
+		Name:        privilege,
+		Identifier:  schemaName.String,
+		IsGrantable: isGrantable,
+	}
+}
+
+// createSpecialObjectPrivilege creates special object privileges (PSE, JWT/SAML/X509 PROVIDER)
+func createSpecialObjectPrivilege(privilege, objectType string, objectName sql.NullString, isGrantable bool) Privilege {
+	return Privilege{
+		Type:        ObjectPrivilegeType,
+		Name:        privilege,
+		Identifier:  objectType + " " + objectName.String,
+		IsGrantable: isGrantable,
+	}
+}
+
+// createRegularObjectPrivilege creates regular object privileges
+func createRegularObjectPrivilege(privilege string, schemaName, objectName sql.NullString, isGrantable bool) Privilege {
+	return Privilege{
+		Type:          ObjectPrivilegeType,
+		Name:          privilege,
+		Identifier:    schemaName.String,
+		SubIdentifier: objectName.String,
+		IsGrantable:   isGrantable,
+	}
+}
+
 func handlePrivilegeRows(privRows *sql.Rows) (Privilege, error) {
 	var objectType, privilege string
 	var isGrantable bool
@@ -528,35 +673,42 @@ func handlePrivilegeRows(privRows *sql.Rows) (Privilege, error) {
 		return Privilege{}, err
 	}
 
-	p := Privilege{IsGrantable: isGrantable}
 	switch objectType {
 	case "SYSTEMPRIVILEGE":
-		p.Type = SystemPrivilegeType
-		p.Name = privilege
+		return createSystemPrivilege(privilege, isGrantable), nil
 	case "SCHEMA":
-		p.Type = SchemaPrivilegeType
-		p.Name = privilege
-		p.Identifier = schemaName.String
+		return createSchemaPrivilege(privilege, schemaName, isGrantable), nil
 	case "SOURCE":
-		p.Type = SourcePrivilegeType
-		p.Name = privilege
-		p.Identifier = objectName.String
+		return Privilege{
+			Type:        SourcePrivilegeType,
+			Name:        privilege,
+			Identifier:  objectName.String,
+			IsGrantable: isGrantable,
+		}, nil
 	case "USERGROUP":
-		p.Type = UserGroupPrivilegeType
-		p.Name = privilege
-		p.Identifier = objectName.String
+		return Privilege{
+			Type:        UserGroupPrivilegeType,
+			Name:        privilege,
+			Identifier:  objectName.String,
+			IsGrantable: isGrantable,
+		}, nil
 	case "CLIENTSIDE ENCRYPTION COLUMN KEY":
-		p.Type = ColumnKeyPrivilegeType
-		p.Name = privilege
-		p.Identifier = objectName.String
+		return Privilege{
+			Type:        ColumnKeyPrivilegeType,
+			Name:        privilege,
+			Identifier:  objectName.String,
+			IsGrantable: isGrantable,
+		}, nil
 	case "STRUCTURED_PRIVILEGE":
-		p.Type = StructuredPrivilegeType
-		p.Name = "STRUCTURED PRIVILEGE"
-		p.Identifier = objectName.String
+		return Privilege{
+			Type:        StructuredPrivilegeType,
+			Name:        "STRUCTURED PRIVILEGE",
+			Identifier:  objectName.String,
+			IsGrantable: isGrantable,
+		}, nil
+	case "PSE", "JWT PROVIDER", "SAML PROVIDER", "X509 PROVIDER":
+		return createSpecialObjectPrivilege(privilege, objectType, objectName, isGrantable), nil
 	default:
-		p.Type = ObjectPrivilegeType
-		p.Name = privilege
-		p.Identifier = fmt.Sprintf("%s.%s", schemaName.String, objectName.String)
+		return createRegularObjectPrivilege(privilege, schemaName, objectName, isGrantable), nil
 	}
-	return p, nil
 }
