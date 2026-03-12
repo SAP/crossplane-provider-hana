@@ -1,0 +1,129 @@
+---
+sidebar_position: 2
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# User management
+
+In this chapter you will learn how to use **Crossplane** to manage your instances of [HANA Cloud](https://www.sap.com/products/technology-platform/hana.html). 
+We are using the provider to provision `User`s in an existing service instance using the IaD approach. 
+
+See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/main/apis)
+
+## 🚧 Prerequisites 
+- You've created a [managed control plane](/docs/managed-control-planes/get-started/onboard/get-started-mcp) 
+- You've created a [HANA Cloud instance](/docs/user-stories/setup)
+- You've setup the [HANA Provider](/docs/user-stories/setup#install-provider) 
+
+##  Create DB User
+We begin by provisioning a `User` resource.
+
+```yaml title="user.yaml"
+apiVersion: objects.hana.orchestrate.cloud.sap/v1alpha1
+kind: User
+metadata:
+  name: my-orchestrated-user
+spec:
+  forProvider:
+    authentication:
+      password:
+        passwordSecretRef:
+          key: password
+          name: my-orchestrated-user-secret
+          namespace: default
+    username: MYUSER
+  providerConfigRef:
+    name: hana-providerconfig
+```
+
+Make sure that the secret `my-orchestrated-user-secret` exists.
+
+<details>
+<summary>Secret does not exist? Create it like this!</summary>
+```yaml title="user-secret.yaml"
+apiVersion: v1
+kind: Secret
+metadata:
+    namespace: default
+    name: my-orchestrated-user-secret
+type: Opaque
+data:
+    password: dmVyeVNlY3JldFBhc3N3b3Jk # E.g. Base64-encode: verySecretPassword
+```
+```sh
+kubectl create -f user-secret.yaml
+```
+</details>
+
+We now apply the desired resource to our control plane so that the provider provisions it accordingly.
+
+```sh
+kubectl create -f user.yaml
+```
+
+After a few moments the changes are reflected in our HANA Cloud instance.
+
+![img](/img/hana_user.png)
+
+Initially, the list of privileges has nothing except some default privileges which are not managed on the client side.
+
+:::danger Privilege Management Policy
+
+Some exceptional privileges (e.g., `CREATE ANY ON SCHEMA ${USERNAME}`) or roles (e.g., `PUBLIC`) have to remain unchanged. 
+Currently, there are two ways to handle these default privileges or roles. The default settings are given by the following YAML snippet:
+
+```yaml title="user.yaml"
+spec:
+  forProvider:
+    privilegeManagementPolicy: strict
+    privileges:
+      - DEFAULTPRIVILEGE
+      - PRIVILEGE1
+      - PRIVILEGE2
+    roles:
+      - DEFAULTROLE
+      - ROLE1
+```
+
+Per default, the default privileges and roles have to be specified in the custom resource. 
+
+As an alternative, we suggested a new re`lax`ed policy which stands for provider-side handling of the default roles and privileges.
+
+```yaml title="user.yaml"
+spec:
+  forProvider:
+    privilegeManagementPolicy: lax
+    privileges:
+      - PRIVILEGE1
+      - PRIVILEGE2
+    roles:
+      - ROLE1
+```
+
+:::
+
+![img](/img/hana_privilege.png)
+
+To grant or revoke privileges and roles, you can patch new changes on the user resource by updating the list of privileges and roles.
+
+For example, add the following to the YAML file:
+
+```yaml title="user.yaml"
+spec:
+  forProvider:
+    privileges:
+      - AUDIT READ
+```
+
+As a result, the privileges on the HANA Cloud will be updated accordingly.
+
+![img](/img/hana_privilege_added.png)
+
+Adding an item to the list of privileges has an effect of granting a privilege.
+Likewise, removing one from the list has an effect of revoking it.
+
+```yaml
+
+```

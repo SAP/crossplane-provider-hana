@@ -1,0 +1,273 @@
+---
+sidebar_position: 0
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+# Order
+
+In this guide we will take you through the steps of ordering a HANA Cloud instance and setting it up using the [Crossplane HANA provider](https://github.tools.sap/cloud-orchestration/crossplane-provider-hana).
+
+:::note
+You are an platform operator or administrator? Feel free to checkout the [OpenMCP project](https://openmcp-project.github.io/docs/) it's a project that makes it easier to enable more teams in your organization to use Crossplane by providing a managed control plane as a service.
+:::
+
+## 🚧 Prerequisites
+
+- You have a running control plane.
+- You have setup the [BTP provider](/docs/crossplane-provider-btp/docs/user-stories/setup/configure-provider-btp)
+- You have setup a [managed subaccount](/docs/crossplane-provider-btp/docs/user-stories/account/subaccount)
+
+## Service Entitlement
+To create a `ServiceInstance` of HANA Cloud, you need to make sure that your subaccount has the service entitlement.
+
+```yaml {8,9,14}
+apiVersion: account.btp.sap.crossplane.io/v1alpha1
+kind: Entitlement
+metadata:
+  name: hana-cloud-entitlement
+spec:
+  forProvider:
+    serviceName: hana-cloud
+    servicePlanName: hana # select the plan that fits your needs
+    servicePlanUniqueIdentifier: hana-cloud-hana # required if your service plan name is not unique across regions like "hana-cloud-hana" or "hana-cloud-hana-sap_eu-de-1"
+    enable: true
+    subaccountRef:
+      name: my-subaccount
+  providerConfigRef:
+    name: account-provider-config # Please reference your account providerConfig here!
+```
+:::note `servicePlanName`not unique?
+Don't forget to set the `spec.forProvider.servicePlanUniqueIdentifier` field. Use `servicePlanUniqueIdentifier: hana-cloud-hana-sap_eu-de-1` for the SAP Europe Data Center or `servicePlanUniqueIdentifier: hana-cloud-hana` for other supported data centers.
+:::
+## Order ServiceInstance
+
+When ordering a service instance, consider its target runtime that will eventually consume and interact with it.
+
+  <Tabs>
+   <TabItem value="any" label="Any">
+
+    Check out our guide [how to order service instances on BTP](/docs/use-cases/cloudfoundry/deploy-cf#managing-services--) and follow the same steps, ABC
+
+   ```yaml {18,20,25,42} TODO
+  apiVersion: account.btp.sap.crossplane.io/v1alpha1
+  kind: ServiceInstance
+  metadata:
+    name: my-hana
+  spec:
+    forProvider:
+      name: my-hana
+      offeringName: hana-cloud
+      planName: hana
+      serviceManagerRef:
+        name: subaccount-service-manager
+      subaccountRef:
+        name: my-subaccount
+      parameters:
+        data:
+          memory: 48
+          vcpu: 12
+          systempassword: Cloud-12345! # TODO: change
+          whitelistIPs:
+              - 127.0.0.1/0 # TODO: Adjust accordingly
+          enabledservices:
+              scriptserver: true
+          edition: cloud
+    providerConfigRef:
+      name: account-provider-config # Please reference your account providerConfig here!
+  ---
+  apiVersion: account.btp.sap.crossplane.io/v1alpha1
+  kind: ServiceBinding
+  metadata:
+      name: hana-binding
+  spec:
+    forProvider:
+      name: hana-binding
+      serviceInstanceRef:
+        name: my-hana
+      subaccountRef:
+        name: my-subaccount
+    writeConnectionSecretToRef:
+      namespace: default
+      name: hana-binding-secret
+    providerConfigRef:
+      name: account-provider-config # Please reference your account providerConfig here!
+   ```
+
+   </TabItem>
+   <TabItem value="cf" label="CloudFoundry">
+
+   Check out our guide how to deploy workload to Cloud Foundry
+   ```yaml {15}TODO
+  apiVersion: cloudfoundry.crossplane.io/v1alpha1
+  kind: ServiceInstance
+  metadata:
+    name: my-cf-hana
+  spec:
+    forProvider:
+      type: managed
+      name: my-cf-hana
+      spaceRef: 
+        name: my-space
+      servicePlan:
+        offering: destination
+        plan: lite
+    providerConfigRef:
+      name: account-provider-config # Please reference your account providerConfig here!
+   ```
+
+   </TabItem>
+   <TabItem value="kyma" label="Kyma">
+
+   Check out our guide how to deploy workload to Kyma and follow the same steps, but instead of workload, we push our `ServiceInstance` and `ServiceBinding` resources of the BTP Service Operator to the Kyma cluster.
+
+   ```yaml title="hana.yaml" {12,14,19}
+  apiVersion: services.cloud.sap.com/v1
+  kind: ServiceInstance
+  metadata:
+    name: my-hana
+  spec:
+    serviceOfferingName: hana-cloud
+    servicePlanName: hana
+    parameters:
+      data:
+        memory: 48
+        vcpu: 12
+        systempassword: Cloud-12345! ## TODO: change
+        whitelistIPs:
+            - 127.0.0.1/0 ## TODO: Adjust accordingly
+        enabledservices:
+            scriptserver: true
+        edition: cloud
+    providerConfigRef:
+      name: account-provider-config # Please reference your account providerConfig here!
+  ---
+  apiVersion: services.cloud.sap.com/v1
+  kind: ServiceBinding
+  metadata:
+      name: hana-binding
+  spec:
+      serviceInstanceName: my-hana
+      externalName: hana-auto-created
+      secretName: hana-binding-secret
+      ```
+
+   </TabItem>
+  </Tabs>
+
+<details>
+
+<summary>... or manually in BTP cockpit 👷‍♀️</summary>
+
+Login to [SAP Business Technology Platform](https://cockpit.eu10.hana.ondemand.com/cockpit/#/) and open your Global Account.
+Go to `Instances and Subscriptions` > `Create` > `Service: SAP HANA Cloud ['hana-cloud']`
+
+</details>
+:::note Need the secret in a different format?
+Check out our Data Pipelining guide on how to transform it.
+:::
+## Install Provider
+
+In this chapter we manage our HANA Cloud service using the [Crossplane HANA provider](https://github.tools.sap/cloud-orchestration/crossplane-provider-hana) - a fork of the [Crossplane SQL provider](https://github.com/crossplane-contrib/provider-sql) .
+
+<Tabs>
+  <TabItem value="managed" label="managed" default>
+      ```yaml
+      apiVersion: core.openmcp.cloud/v1alpha1
+      kind: ManagedControlPlane
+      metadata:
+        name: <MCP_NAME>
+        namespace: <PROJECT_WORKSPACES_NAMESPACE>
+      spec:
+        components:
+          crossplane:
+            version: :mcp_cv_crossplane:
+            providers:
+              - name: hana
+                version: :mcp_cv_provider-hana:
+      ...
+      ```
+  </TabItem>
+  <TabItem value="unmanaged" label="manually">
+    To use the provider in any control plane **apply the following provider resource**.
+    ```yaml
+    apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    metadata:
+      name: hana-provider
+    spec:
+      package: deploy-releases-hyperspace-docker.common.repositories.cloud.sap/crossplane/provider-hana::mcp_cv_provider-hana:
+      packagePullSecrets:
+        - name: artifactory-readonly-docker
+    ```
+
+    > **_NOTE:_** Not using Managed Control Plane?
+    > Make sure you have the **`docker-registry secret`** configured as described [here](/docs/use-cases/advanced/jfrog_access)
+
+  </TabItem>
+</Tabs>
+
+## Configure ProviderConfig
+
+In the next step, we authenticate our control plane to orchestrate our HANA Cloud service instance.
+
+```yaml title="examples/provider/config.yaml"
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: default
+  name: hana-provider-secret
+type: Opaque
+data:
+  endpoint: abcdefgh-base64-encoded-xyz== # E.g. Base64-encode: my-hana-domain.prod-eu10.hanacloud.ondemand.com
+  port: NDQz # E.g. Base64-encode: 443
+  username: REJBRE1JTg== # E.g. Base64-encode: DBADMIN 
+  password: Q2xvdWQtMTIzNDUh # Same password as set during service instance creation E.g. Base64-encode: Cloud-12345!
+---
+apiVersion: objects.hana.orchestrate.cloud.sap/v1alpha1
+kind: ProviderConfig
+metadata:
+    name: hana-providerconfig
+spec:
+  credentials:
+    source: Secret
+    connectionSecretRef:
+      namespace: default
+      name: hana-provider-secret
+```
+<details>
+<summary>Can't find the endpoint?</summary>
+
+To locate your HANA Cloud endpoint, check the `ServiceBinding` you created earlier. The `url` field contains the endpoint you need (remove the `jdbc:sap://` prefix, port, and any parameters).
+
+For example, the relevant fields (Base64-encoded) are:
+- **endpoint**:  
+  `M2QyZThlOTEtLi4uOTRhMC5oYW5hLnByb2QtZXUxMi5oYW5hY2xvdWQub25kZW1hbmQuY29t`  
+  (`3d2e8e91-...94a0.hana.prod-eu12.hanacloud.ondemand.com`)
+- **port**:  
+  `NDQz` (`443`)
+- **username**:  
+  `REJBRE1JTg==` (`DBADMIN`)
+- **password**:  
+  `Q2xvdWQtMTIzNDUh` (`Cloud-12345!`)
+
+![Gardener setup](/docs/crossplane-provider-hana/docs/img/hana_cloud_endpoint_service_binding.png)
+</details>
+
+
+
+Apply the provider configuration by running
+
+```sh
+kubectl apply -f examples/provider/config.yaml
+```
+
+:::danger Give control plane smart access rights only
+
+In this initial setup, you are providing your control plane ultimate Admin access to your database instance.
+This is not ideal, as there is **no need for your control plane to have system admin access**.
+
+**Instead, you want to create a new `User` that only inherits rights it needs - nothing more!**
+
+:::

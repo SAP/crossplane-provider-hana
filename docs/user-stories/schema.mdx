@@ -1,0 +1,44 @@
+---
+sidebar_position: 3
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Prepare Schema
+
+In this chapter you will learn how to use **Crossplane** to manage your instances of [HANA Cloud](https://www.sap.com/products/technology-platform/hana.html). 
+We are using the provider to provision `DbSchema`s in an existing service instance using the IaD approach. 
+
+See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/main/apis)
+
+## 🚧 Prerequisites 
+- You've created a [managed control plane](/docs/managed-control-planes/get-started/onboard/get-started-mcp) 
+- You've created a [HANA Cloud instance](/docs/user-stories/setup)
+- You've setup the [HANA Provider](/docs/user-stories/setup#install-provider) 
+
+##  Create DB Schema
+We begin by provisioning a `DbSchema` resource.
+
+```yaml title="schema.yaml"
+apiVersion: objects.hana.orchestrate.cloud.sap/v1alpha1
+kind: DbSchema
+metadata:
+  name: my-orchestrated-schema
+spec:
+  forProvider:
+    schemaName: MYSCHEMA
+    owner: DBADMIN
+  providerConfigRef:
+    name: hana-providerconfig
+```
+
+We now apply the desired resource to our control plane so that the provider provisions it accordingly.
+
+```sh
+kubectl create -f schema.yaml
+```
+
+After a few moments the changes are reflected in our HANA Cloud instance.
+
+![img](/docs/crossplane-provider-hana/docs/img/hana_schema.png)
