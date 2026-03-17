@@ -48,7 +48,7 @@ When ordering a service instance, consider its target runtime that will eventual
   <Tabs>
    <TabItem value="any" label="Any">
 
-    Check out our guide [how to order service instances on BTP](/docs/use-cases/cloudfoundry/deploy-cf#managing-services--) and follow the same steps, ABC
+    Check out our guide [how to order service instances on BTP](/docs/crossplane-provider-btp/docs/user-stories/services/create-services#create-a-serviceinstance) and follow the same steps,
 
    ```yaml {18,20,25,42} TODO
   apiVersion: account.btp.sap.crossplane.io/v1alpha1
@@ -169,10 +169,10 @@ Check out our Data Pipelining guide on how to transform it.
 :::
 ## Install Provider
 
-In this chapter we manage our HANA Cloud service using the [Crossplane HANA provider](https://github.tools.sap/cloud-orchestration/crossplane-provider-hana) - a fork of the [Crossplane SQL provider](https://github.com/crossplane-contrib/provider-sql) .
+In this chapter we manage our HANA Cloud service using the [Crossplane HANA provider](https://github.com/SAP/crossplane-provider-hana) - a fork of the [Crossplane SQL provider](https://github.com/crossplane-contrib/provider-sql) .
 
 <Tabs>
-  <TabItem value="managed" label="managed" default>
+  <TabItem value="managed" label="managed">
       ```yaml
       apiVersion: core.openmcp.cloud/v1alpha1
       kind: ManagedControlPlane
@@ -189,7 +189,7 @@ In this chapter we manage our HANA Cloud service using the [Crossplane HANA prov
       ...
       ```
   </TabItem>
-  <TabItem value="unmanaged" label="manually">
+  <TabItem value="unmanaged" label="manually" default>
     To use the provider in any control plane **apply the following provider resource**.
     ```yaml
     apiVersion: pkg.crossplane.io/v1
@@ -197,13 +197,13 @@ In this chapter we manage our HANA Cloud service using the [Crossplane HANA prov
     metadata:
       name: hana-provider
     spec:
-      package: deploy-releases-hyperspace-docker.common.repositories.cloud.sap/crossplane/provider-hana::mcp_cv_provider-hana:
+      package: ghcr.io/sap/crossplane/provider-hana:<VERSION> # Please use the latest version from the releases page
       packagePullSecrets:
         - name: artifactory-readonly-docker
     ```
 
     > **_NOTE:_** Not using Managed Control Plane?
-    > Make sure you have the **`docker-registry secret`** configured as described [here](/docs/use-cases/advanced/jfrog_access)
+    > Make sure you have the **`docker-registry secret`** configured.
 
   </TabItem>
 </Tabs>
