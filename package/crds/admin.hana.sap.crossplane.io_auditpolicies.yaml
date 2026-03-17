@@ -76,13 +76,25 @@ spec:
                 properties:
                   auditActions:
                     items:
+                      pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
                       type: string
                     type: array
+                    x-kubernetes-list-type: set
                   auditLevel:
                     default: CRITICAL
+                    enum:
+                    - EMERGENCY
+                    - ALERT
+                    - CRITICAL
+                    - WARNING
+                    - INFO
                     type: string
                   auditStatus:
                     default: ALL
+                    enum:
+                    - SUCCESSFUL
+                    - UNSUCCESSFUL
+                    - ALL
                     type: string
                   auditTrailRetention:
                     default: 7

@@ -16,7 +16,6 @@ import (
 type UsergroupParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
 	UsergroupName string `json:"usergroupName"`
 
 	DisableUserAdmin bool `json:"disableUserAdmin,omitempty"`
@@ -29,6 +28,7 @@ type UsergroupParameters struct {
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// +kubebuilder:validation:Enum:="";password policy
 	EnableParameterSet string `json:"enableParameterSet,omitempty"`
 }
 
