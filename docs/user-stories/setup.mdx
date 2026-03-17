@@ -191,13 +191,14 @@ In this chapter we manage our HANA Cloud service using the [Crossplane HANA prov
   </TabItem>
   <TabItem value="unmanaged" label="manually" default>
     To use the provider in any control plane **apply the following provider resource**.
+  
     ```yaml
     apiVersion: pkg.crossplane.io/v1
     kind: Provider
     metadata:
       name: hana-provider
     spec:
-      package: ghcr.io/sap/crossplane/provider-hana:<VERSION> # Please use the latest version from the releases page
+      package: ghcr.io/sap/crossplane-provider-hana/crossplane/provider-hana:<VERSION> # Please use the latest version from the releases page
       packagePullSecrets:
         - name: artifactory-readonly-docker
     ```
