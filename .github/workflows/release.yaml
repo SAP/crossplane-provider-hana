@@ -61,7 +61,7 @@ jobs:
 
         # sets the github.event.inputs.nextVersion input as version tag
       - name: Tag head with version
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             github.rest.git.createRef({
@@ -72,13 +72,13 @@ jobs:
             })
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349 # v3.4.0
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         with:
           version: v0.15.1
           install: true
 
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: true
 
@@ -86,9 +86,9 @@ jobs:
         run: git fetch --prune --unshallow
 
       - name: Set up Go
-        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version: '1.23'
+          go-version: '1.26'
 
       - name: Vendor Dependencies
         run: make vendor vendor.check
@@ -103,7 +103,7 @@ jobs:
           BUILD_REGISTRY: ${{ vars.REGISTRY_URL }}
 
       - name: Login to Container Registry
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ vars.REGISTRY_URL }}
           username: ${{ github.actor }}
@@ -116,7 +116,7 @@ jobs:
           BUILD_REGISTRY: ${{ vars.REGISTRY_URL }}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@9ed2f89a662bf1735a48bc8557fd212fa902bebf # v6.1.0
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           distribution: goreleaser
           version: "~> v2"

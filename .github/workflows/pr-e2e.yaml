@@ -15,12 +15,19 @@ on:
     paths-ignore:
     - '*.md'
 
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+
 # on pull_request_target, the GITHUB_TOKEN has read/write access to the repository content by default, so restrict it to read only
 permissions:
   contents: read
+  actions: read  # Required by the reusable workflow for Turnstyle
 
 jobs:
   run-e2e-test:
     uses: ./.github/workflows/e2e_test.yaml
     with:
       checkout-ref: ${{ github.event.pull_request.head.sha }}
+      environment: ${{ github.event_name == 'pull_request_target' && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) && 'pr-e2e-no-approval' || 'pr-e2e-approval' }}
+    secrets:
+      HANA_BINDINGS: ${{ secrets.HANA_BINDINGS }}

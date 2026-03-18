@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
@@ -17,16 +17,16 @@ import (
 type RoleParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
 	RoleName string `json:"roleName"`
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
 	Schema string `json:"schema,omitempty"`
 
+	// +listType=set
 	LdapGroups []string `json:"ldapGroups,omitempty"`
 
+	// +listType=set
 	Privileges []string `json:"privileges,omitempty"`
 
 	// +kubebuilder:validation:Optional
@@ -87,7 +87,7 @@ type RoleList struct {
 
 // Role type metadata.
 var (
-	RoleKind             = reflect.TypeOf(Role{}).Name()
+	RoleKind             = reflect.TypeFor[Role]().Name()
 	RoleGroupKind        = schema.GroupKind{Group: Group, Kind: RoleKind}.String()
 	RoleKindAPIVersion   = RoleKind + "." + SchemeGroupVersion.String()
 	RoleGroupVersionKind = SchemeGroupVersion.WithKind(RoleKind)

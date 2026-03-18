@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
@@ -39,12 +39,12 @@ type ProviderConfigUsageList struct {
 
 // ProviderConfigUsage type metadata.
 var (
-	ProviderConfigUsageKind             = reflect.TypeOf(ProviderConfigUsage{}).Name()
+	ProviderConfigUsageKind             = reflect.TypeFor[ProviderConfigUsage]().Name()
 	ProviderConfigUsageGroupKind        = schema.GroupKind{Group: Group, Kind: ProviderConfigUsageKind}.String()
 	ProviderConfigUsageKindAPIVersion   = ProviderConfigUsageKind + "." + SchemeGroupVersion.String()
 	ProviderConfigUsageGroupVersionKind = SchemeGroupVersion.WithKind(ProviderConfigUsageKind)
 
-	ProviderConfigUsageListKind             = reflect.TypeOf(ProviderConfigUsageList{}).Name()
+	ProviderConfigUsageListKind             = reflect.TypeFor[ProviderConfigUsageList]().Name()
 	ProviderConfigUsageListGroupKind        = schema.GroupKind{Group: Group, Kind: ProviderConfigUsageListKind}.String()
 	ProviderConfigUsageListKindAPIVersion   = ProviderConfigUsageListKind + "." + SchemeGroupVersion.String()
 	ProviderConfigUsageListGroupVersionKind = SchemeGroupVersion.WithKind(ProviderConfigUsageListKind)

@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: dbschemas.schema.hana.sap.crossplane.io
 spec:
   group: schema.hana.sap.crossplane.io
@@ -74,10 +74,9 @@ spec:
                 description: DbSchemaParameters are the configurable fields of a Dbschema.
                 properties:
                   owner:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
+                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
                     type: string
                   schemaName:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable

@@ -15,6 +15,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 // Error types for user authentication issues
@@ -161,7 +162,6 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 }
 
 func (c Client) queryPasswordAuthentication(ctx context.Context, parameters *v1alpha1.UserParameters, isPasswordEnabled bool, password string) (*bool, error) {
-	falseVal := false
 	switch {
 	case parameters.Authentication.Password != nil && parameters.Authentication.Password.PasswordSecretRef != nil:
 		if isPasswordEnabled {
@@ -171,10 +171,10 @@ func (c Client) queryPasswordAuthentication(ctx context.Context, parameters *v1a
 			}
 			return &passwordUpToDate, nil
 		} else {
-			return &falseVal, nil
+			return new(false), nil
 		}
 	case isPasswordEnabled:
-		return &falseVal, nil
+		return new(false), nil
 	default:
 		return nil, nil
 	}
@@ -297,9 +297,9 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.UserParameters,
 func setParameters(query string, parameters map[string]string) string {
 	newParams := make([]string, 0, len(parameters))
 	for key, value := range parameters {
-		key = strings.ToUpper(key)
-		if slices.Contains(validParams, key) {
-			newParams = append(newParams, fmt.Sprintf("%s = '%s'", key, value))
+		upperKey := strings.ToUpper(key)
+		if slices.Contains(validParams, upperKey) {
+			newParams = append(newParams, fmt.Sprintf("%s = '%s'", upperKey, utils.EscapeSingleQuotes(value)))
 		}
 	}
 	if len(newParams) == 0 {

@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
@@ -29,7 +29,7 @@ type Password struct {
 type UserParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
+	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
 	Username string `json:"username"`
 
 	// +kubebuilder:validation:Optional
@@ -49,7 +49,7 @@ type UserParameters struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Parameters map[string]string `json:"parameters,omitempty"`
 
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
+	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
 	// +kubebuilder:default:=DEFAULT
 	Usergroup string `json:"usergroup,omitempty" default:"DEFAULT"`
 
@@ -145,7 +145,7 @@ type UserList struct {
 
 // User type metadata.
 var (
-	UserKind             = reflect.TypeOf(User{}).Name()
+	UserKind             = reflect.TypeFor[User]().Name()
 	UserGroupKind        = schema.GroupKind{Group: Group, Kind: UserKind}.String()
 	UserKindAPIVersion   = UserKind + "." + SchemeGroupVersion.String()
 	UserGroupVersionKind = SchemeGroupVersion.WithKind(UserKind)

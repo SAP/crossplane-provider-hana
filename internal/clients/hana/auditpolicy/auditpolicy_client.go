@@ -9,6 +9,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 type AuditPolicyClient interface {
@@ -64,11 +65,9 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.AuditPolicyParame
 			observed.AuditTrailRetention = &rp
 		}
 		if isActive == "TRUE" {
-			active := true
-			observed.Enabled = &active
+			observed.Enabled = new(true)
 		} else {
-			active := false
-			observed.Enabled = &active
+			observed.Enabled = new(false)
 		}
 	}
 
@@ -170,13 +169,13 @@ func getSelectSql() string {
 }
 
 func prepareEnableDisablePolicySql(parameters *v1alpha1.AuditPolicyParameters) string {
-	return fmt.Sprintf("ALTER AUDIT POLICY %s %s", parameters.PolicyName, map[bool]string{true: "ENABLE", false: "DISABLE"}[*parameters.Enabled])
+	return fmt.Sprintf(`ALTER AUDIT POLICY "%s" %s`, utils.EscapeDoubleQuotes(parameters.PolicyName), map[bool]string{true: "ENABLE", false: "DISABLE"}[*parameters.Enabled])
 }
 
 func prepareUpdateRetentionDaysSql(parameters *v1alpha1.AuditPolicyParameters) string {
-	return fmt.Sprintf("ALTER AUDIT POLICY %s SET RETENTION %d", parameters.PolicyName, *parameters.AuditTrailRetention)
+	return fmt.Sprintf(`ALTER AUDIT POLICY "%s" SET RETENTION %d`, utils.EscapeDoubleQuotes(parameters.PolicyName), *parameters.AuditTrailRetention)
 }
 
 func prepareDeleteSql(parameters *v1alpha1.AuditPolicyParameters) string {
-	return fmt.Sprintf("DROP AUDIT POLICY %s", parameters.PolicyName)
+	return fmt.Sprintf(`DROP AUDIT POLICY "%s"`, utils.EscapeDoubleQuotes(parameters.PolicyName))
 }

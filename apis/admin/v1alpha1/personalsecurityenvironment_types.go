@@ -1,5 +1,5 @@
 /*
-Copyright 2026 SAP SE.
+Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
@@ -117,7 +117,7 @@ type PersonalSecurityEnvironmentList struct {
 
 // PersonalSecurityEnvironment type metadata.
 var (
-	PersonalSecurityEnvironmentKind             = reflect.TypeOf(PersonalSecurityEnvironment{}).Name()
+	PersonalSecurityEnvironmentKind             = reflect.TypeFor[PersonalSecurityEnvironment]().Name()
 	PersonalSecurityEnvironmentGroupKind        = schema.GroupKind{Group: Group, Kind: PersonalSecurityEnvironmentKind}.String()
 	PersonalSecurityEnvironmentKindAPIVersion   = PersonalSecurityEnvironmentKind + "." + SchemeGroupVersion.String()
 	PersonalSecurityEnvironmentGroupVersionKind = SchemeGroupVersion.WithKind(PersonalSecurityEnvironmentKind)
