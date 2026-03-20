@@ -323,7 +323,9 @@ func groupActions(actions []parsedAction) []parsedAction {
 	noUserMap, forPrincipalsMap, forPrincipalsSelfMap, exceptForPrincipalsMap, exceptForPrincipalsSelfMap := splitActions(actions)
 
 	groupedActions := make([]parsedAction, 0, 1+len(forPrincipalsMap)+len(exceptForPrincipalsMap))
-	groupedActions = append(groupedActions, parsedAction{actionNames: noUserMap})
+	if len(noUserMap) > 0 {
+		groupedActions = append(groupedActions, parsedAction{actionNames: noUserMap})
+	}
 
 	for principalsString, actionNames := range forPrincipalsMap {
 		principals := forPrincipalsSelfMap[principalsString]
