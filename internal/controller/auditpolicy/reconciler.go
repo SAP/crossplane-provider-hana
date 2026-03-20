@@ -166,21 +166,15 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	if err != nil {
 		c.log.Info("Error observing auditpolicy", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, errors.Wrap(err, errSelectPolicy)
+	} else if observed == nil || observed.PolicyName == "" || observed.PolicyName != parameters.PolicyName {
+		c.log.Info("AuditPolicy does not exist", "name", cr.Name, "policyName", parameters.PolicyName)
+		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
+
 	observed.AuditActions, err = auditpolicy.OptimizeAuditActions(observed.AuditActions)
 	if err != nil {
 		c.log.Info("Error optimizing audit actions", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, err
-	}
-
-	if err != nil {
-		c.log.Info("Error observing auditpolicy", "name", cr.Name, "error", err)
-		return managed.ExternalObservation{}, errors.Wrap(err, errSelectPolicy)
-	}
-
-	if observed == nil || observed.PolicyName == "" || observed.PolicyName != parameters.PolicyName {
-		c.log.Info("AuditPolicy does not exist", "name", cr.Name, "policyName", parameters.PolicyName)
-		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
 	cr.Status.AtProvider.PolicyName = observed.PolicyName
@@ -245,7 +239,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 	c.log.Info("Updating audit policy resource", "name", cr.Name, "policyName", cr.Spec.ForProvider.PolicyName)
 
-	observed, _ := buildObservedParameters(cr)
+	observed, err := buildObservedParameters(cr)
+	if err != nil {
+		return managed.ExternalUpdate{}, errors.Wrap(err, "error building observed parameters")
+	}
 	desired, err := buildDesiredParameters(cr)
 	if err != nil {
 		return managed.ExternalUpdate{}, errors.Wrap(err, "error building desired parameters")
