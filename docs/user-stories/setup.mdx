@@ -98,8 +98,10 @@ When ordering a service instance, consider its target runtime that will eventual
    </TabItem>
    <TabItem value="cf" label="CloudFoundry">
 
-   Check out our guide how to deploy workload to Cloud Foundry
-   ```yaml {15}TODO
+Check out our guide on how to create [a service instance](/docs/use-cases/cloudfoundry/deploy-cf#managing-services--) and a [service key](/docs/use-cases/cloudfoundry/deploy-cf#bind-app-to-serviceinstance) in Cloud Foundry (replace `type: app` with `type: key` in the `ServiceCredentialBinding`).
+The guides for Cloud Foundry are coming soon...
+
+   ```yaml {18,20}
   apiVersion: cloudfoundry.crossplane.io/v1alpha1
   kind: ServiceInstance
   metadata:
@@ -111,48 +113,41 @@ When ordering a service instance, consider its target runtime that will eventual
       spaceRef: 
         name: my-space
       servicePlan:
-        offering: destination
-        plan: lite
+        offering: hana-cloud
+        plan: hana
+      parameters:
+        data:
+          memory: 48
+          vcpu: 12
+          systempassword: Cloud-12345! # TODO: change
+          whitelistIPs:
+            - 127.0.0.1/0 # TODO: Adjust accordingly
+          enabledservices:
+            scriptserver: true
+          edition: cloud
     providerConfigRef:
-      name: account-provider-config # Please reference your account providerConfig here!
+      name: default
+  ---
+  apiVersion: cloudfoundry.crossplane.io/v1alpha1
+  kind: ServiceCredentialBinding
+  metadata:
+    name: my-cf-hana-binding
+  spec:
+    forProvider:
+      type: key
+      name: my-cf-hana-binding
+      serviceInstanceRef:
+        name: my-cf-hana
+    writeConnectionSecretToRef:
+      name: hana-binding-secret
+      namespace: default
+    providerConfigRef:
+      name: default
    ```
 
    </TabItem>
    <TabItem value="kyma" label="Kyma">
-
-   Check out our guide how to deploy workload to Kyma and follow the same steps, but instead of workload, we push our `ServiceInstance` and `ServiceBinding` resources of the BTP Service Operator to the Kyma cluster.
-
-   ```yaml title="hana.yaml" {12,14,19}
-  apiVersion: services.cloud.sap.com/v1
-  kind: ServiceInstance
-  metadata:
-    name: my-hana
-  spec:
-    serviceOfferingName: hana-cloud
-    servicePlanName: hana
-    parameters:
-      data:
-        memory: 48
-        vcpu: 12
-        systempassword: Cloud-12345! ## TODO: change
-        whitelistIPs:
-            - 127.0.0.1/0 ## TODO: Adjust accordingly
-        enabledservices:
-            scriptserver: true
-        edition: cloud
-    providerConfigRef:
-      name: account-provider-config # Please reference your account providerConfig here!
-  ---
-  apiVersion: services.cloud.sap.com/v1
-  kind: ServiceBinding
-  metadata:
-      name: hana-binding
-  spec:
-      serviceInstanceName: my-hana
-      externalName: hana-auto-created
-      secretName: hana-binding-secret
-      ```
-
+      coming soon...
    </TabItem>
   </Tabs>
 
@@ -182,22 +177,23 @@ In this chapter we manage our HANA Cloud service using the [Crossplane HANA prov
       spec:
         components:
           crossplane:
-            version: :mcp_cv_crossplane:
+            version: <version>
             providers:
-              - name: hana
-                version: :mcp_cv_provider-hana:
+              - name: hana-opensource # Or different name depending on platform setup
+                version: <version>
       ...
       ```
   </TabItem>
   <TabItem value="unmanaged" label="manually" default>
     To use the provider in any control plane **apply the following provider resource**.
+
     ```yaml
     apiVersion: pkg.crossplane.io/v1
     kind: Provider
     metadata:
       name: hana-provider
     spec:
-      package: ghcr.io/sap/crossplane/provider-hana:<VERSION> # Please use the latest version from the releases page
+      package: ghcr.io/sap/crossplane-provider-hana/crossplane/provider-hana:<VERSION> # Please use the latest version from the releases page
       packagePullSecrets:
         - name: artifactory-readonly-docker
     ```

@@ -51,7 +51,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
     ```
     
     ```yaml title="user.yaml"
-    apiVersion: objects.hana.orchestrate.cloud.sap/v1alpha1
+    apiVersion: admin.hana.orchestrate.cloud.sap/v1alpha1
     kind: User
     metadata:
       name: liquibase-user
@@ -91,13 +91,13 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
     ```
 
     ```yaml title="managed-schema.yaml"
-    apiVersion: objects.hana.orchestrate.cloud.sap/v1alpha1
+    apiVersion: schema.hana.orchestrate.cloud.sap/v1alpha1
     kind: DbSchema
     metadata:
-      name: liquibase-managed-schema
+      name: liquibase-changelog-schema
     spec:
       forProvider:
-        schemaName: LIQUIBASE_MANAGED
+        schemaName: LIQUIBASE_METADATA
         owner: LIQUIBASE_USER
       providerConfigRef:
         name: hana-providerconfig
