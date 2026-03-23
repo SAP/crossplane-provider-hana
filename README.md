@@ -33,7 +33,7 @@ kind: Provider
 metadata:
   name: crossplane-provider-hana
 spec:
-  package: ghcr.io/sap/crossplane/provider-hana:latest
+  package: ghcr.io/sap/crossplane-provider-hana/crossplane/provider-hana:latest
 EOF
 ```
 
