@@ -48,7 +48,7 @@ When ordering a service instance, consider its target runtime that will eventual
   <Tabs>
    <TabItem value="any" label="Any">
 
-    Check out our guide [how to order service instances on BTP](/docs/crossplane-provider-btp/docs/user-stories/services/create-services#create-a-serviceinstance) and follow the same steps,
+    Check out our guides on how to create [a service instance](/docs/crossplane-provider-btp/docs/user-stories/services/create-services#create-a-serviceinstance) and a service binding (_coming soon..._) on BTP.
 
    ```yaml {18,20,25,42} TODO
   apiVersion: account.btp.sap.crossplane.io/v1alpha1
@@ -98,8 +98,8 @@ When ordering a service instance, consider its target runtime that will eventual
    </TabItem>
    <TabItem value="cf" label="CloudFoundry">
 
-Check out our guide on how to create [a service instance](/docs/use-cases/cloudfoundry/deploy-cf#managing-services--) and a [service key](/docs/use-cases/cloudfoundry/deploy-cf#bind-app-to-serviceinstance) in Cloud Foundry (replace `type: app` with `type: key` in the `ServiceCredentialBinding`).
-The guides for Cloud Foundry are coming soon...
+Check out our guide on how to create a service instance and a service key in Cloud Foundry (replace `type: app` with `type: key` in the `ServiceCredentialBinding`).
+_The guides for Cloud Foundry guides are coming soon..._
 
    ```yaml {18,20}
   apiVersion: cloudfoundry.crossplane.io/v1alpha1
@@ -235,7 +235,7 @@ spec:
 <details>
 <summary>Can't find the endpoint?</summary>
 
-To locate your HANA Cloud endpoint, check the `ServiceBinding` you created earlier. The `url` field contains the endpoint you need (remove the `jdbc:sap://` prefix, port, and any parameters).
+To locate your HANA Cloud endpoint, check the secret your `ServiceBinding` or `ServiceCredentialBinding` created. The `host` field contains the endpoint you need.
 
 For example, the relevant fields (Base64-encoded) are:
 - **endpoint**:  

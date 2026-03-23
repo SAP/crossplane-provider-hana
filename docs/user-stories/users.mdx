@@ -72,33 +72,31 @@ Initially, the list of privileges has nothing except some default privileges whi
 :::danger Privilege Management Policy
 
 Some exceptional privileges (e.g., `CREATE ANY ON SCHEMA ${USERNAME}`) or roles (e.g., `PUBLIC`) have to remain unchanged. 
-Currently, there are two ways to handle these default privileges or roles. The default settings are given by the following YAML snippet:
+Currently, there are two ways to handle these default privileges or roles.
+We recommend the re`lax`ed policy which stands for provider-side handling of the default roles and privileges.
 
 ```yaml title="user.yaml"
 spec:
+  privilegeManagementPolicy: lax
   forProvider:
-    privilegeManagementPolicy: strict
+    privileges:
+      - PRIVILEGE1
+      - PRIVILEGE2
+    roles:
+      - ROLE1
+```
+As an alternative, you can use the `strict` policy. In this case, the default privileges and roles have to be specified in the custom resource.
+
+```yaml title="user.yaml"
+spec:
+  privilegeManagementPolicy: strict
+  forProvider:
     privileges:
       - DEFAULTPRIVILEGE
       - PRIVILEGE1
       - PRIVILEGE2
     roles:
       - DEFAULTROLE
-      - ROLE1
-```
-
-Per default, the default privileges and roles have to be specified in the custom resource. 
-
-As an alternative, we suggested a new re`lax`ed policy which stands for provider-side handling of the default roles and privileges.
-
-```yaml title="user.yaml"
-spec:
-  forProvider:
-    privilegeManagementPolicy: lax
-    privileges:
-      - PRIVILEGE1
-      - PRIVILEGE2
-    roles:
       - ROLE1
 ```
 
@@ -123,7 +121,3 @@ As a result, the privileges on the HANA Cloud will be updated accordingly.
 
 Adding an item to the list of privileges has an effect of granting a privilege.
 Likewise, removing one from the list has an effect of revoking it.
-
-```yaml
-
-```
