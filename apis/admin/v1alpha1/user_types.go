@@ -109,6 +109,15 @@ type UserSpec struct {
 	// 'strict' means that all privileges are managed by crossplane, and other privileges not defined in the spec will be removed.
 	// 'lax' means that crossplane will only manage the privileges defined in the spec, and other privileges will not be removed.
 	PrivilegeManagementPolicy string `json:"privilegeManagementPolicy,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Enum=strict;lax
+	// +kubebuilder:default:=strict
+	// PrivilegeGrantablePolicy defines how admin/grant options are handled during privilege comparison.
+	// 'strict' means the presence or absence of WITH ADMIN/GRANT OPTION must match exactly.
+	// 'lax' means the WITH ADMIN/GRANT OPTION suffix is ignored when comparing desired vs observed privileges.
+	// Use 'lax' when the DB instance automatically sets IS_GRANTABLE=true.
+	PrivilegeGrantablePolicy string `json:"privilegeGrantablePolicy,omitempty"`
 }
 
 // A UserStatus represents the observed state of a User.

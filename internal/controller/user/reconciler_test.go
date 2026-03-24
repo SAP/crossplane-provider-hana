@@ -31,6 +31,7 @@ import (
 )
 
 const demoUser = "DEMO_USER"
+const defaultConstant = "DEFAULT"
 
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct {
@@ -305,7 +306,7 @@ func TestObserve(t *testing.T) {
 							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      new("DEFAULT"),
+							Usergroup:                      new(defaultConstant),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 							Parameters:                     make(map[string]string),
@@ -320,7 +321,7 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultConstant,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
 						PrivilegeManagementPolicy: "strict",
@@ -344,7 +345,7 @@ func TestObserve(t *testing.T) {
 							Username:                       new(demoUser),
 							Privileges:                     []string{"SELECT", "INSERT", privilege.GetDefaultPrivilege("DEMO_USER")},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      new("DEFAULT"),
+							Usergroup:                      new(defaultConstant),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 							Parameters:                     make(map[string]string),
@@ -360,7 +361,7 @@ func TestObserve(t *testing.T) {
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
 							Privileges:                     []string{"SELECT", "INSERT"},
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultConstant,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
 						PrivilegeManagementPolicy: "strict",
@@ -384,7 +385,7 @@ func TestObserve(t *testing.T) {
 							Username:                       new(demoUser),
 							Privileges:                     []string{"SELECT", "INSERT", "DELETE", "UPDATE"},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      new("DEFAULT"),
+							Usergroup:                      new(defaultConstant),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
@@ -399,7 +400,7 @@ func TestObserve(t *testing.T) {
 							Username:   demoUser,
 							Privileges: []string{"SELECT", "INSERT"},
 
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultConstant,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
 						PrivilegeManagementPolicy: "lax",
@@ -485,7 +486,7 @@ func TestObserve(t *testing.T) {
 							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEFAULT_SCHEMA"), "SELECT", "INSERT", "UPDATE"},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      new("DEFAULT"),
+							Usergroup:                      new(defaultConstant),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
@@ -499,7 +500,7 @@ func TestObserve(t *testing.T) {
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
 							Privileges:                     []string{"SELECT", "INSERT", "UPDATE"},
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultConstant,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
 						PrivilegeManagementPolicy: "lax",
@@ -529,7 +530,7 @@ func TestObserve(t *testing.T) {
 							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER"), "SELECT", "INSERT", "UPDATE"},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      new("DEFAULT"),
+							Usergroup:                      new(defaultConstant),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
@@ -543,7 +544,7 @@ func TestObserve(t *testing.T) {
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
 							Privileges:                     []string{"SELECT", "INSERT", "SELECT", "UPDATE"},
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultConstant,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
 						PrivilegeManagementPolicy: "strict",
@@ -567,7 +568,7 @@ func TestObserve(t *testing.T) {
 							Username:                       new(demoUser),
 							Privileges:                     []string{"CREATE ANY"},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      new("DEFAULT"),
+							Usergroup:                      new(defaultConstant),
 							PasswordUpToDate:               new(true),
 							IsPasswordLifetimeCheckEnabled: new(false), // Different from desired
 						}, nil
@@ -580,7 +581,7 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultConstant,
 							IsPasswordLifetimeCheckEnabled: true, // Desired state
 						},
 						PrivilegeManagementPolicy: "strict",
@@ -969,3 +970,90 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 		})
 	}
 }
+
+func TestUpToDate_PrivilegeGrantablePolicy(t *testing.T) {
+	trueVal := true
+	var defaultGroup = defaultConstant
+
+	baseObserved := func(privs []string) *v1alpha1.UserObservation {
+		return &v1alpha1.UserObservation{
+			Username:                       strPtr(demoUser),
+			Usergroup:                      &defaultGroup,
+			IsPasswordLifetimeCheckEnabled: &trueVal,
+			Privileges:                     privs,
+		}
+	}
+	baseDesired := func(privs []string) *v1alpha1.UserParameters {
+		return &v1alpha1.UserParameters{
+			Username:                       demoUser,
+			Usergroup:                      defaultGroup,
+			IsPasswordLifetimeCheckEnabled: true,
+			Privileges:                     privs,
+		}
+	}
+
+	cases := []struct {
+		name          string
+		policy        string
+		desiredPrivs  []string
+		observedPrivs []string
+		wantUpToDate  bool
+	}{
+		{
+			name:          "Strict_ExactMatch",
+			policy:        "strict",
+			desiredPrivs:  []string{"CREATE SCHEMA"},
+			observedPrivs: []string{"CREATE SCHEMA"},
+			wantUpToDate:  true,
+		},
+		{
+			name:          "Strict_GrantableMismatch_NotUpToDate",
+			policy:        "strict",
+			desiredPrivs:  []string{"CREATE SCHEMA"},
+			observedPrivs: []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			wantUpToDate:  false,
+		},
+		{
+			name:          "Strict_ExplicitWithAdmin_ExactMatch",
+			policy:        "strict",
+			desiredPrivs:  []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			observedPrivs: []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			wantUpToDate:  true,
+		},
+		{
+			name:          "Lax_DesiredWithoutObservedWith_UpToDate",
+			policy:        "lax",
+			desiredPrivs:  []string{"CREATE SCHEMA"},
+			observedPrivs: []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			wantUpToDate:  true,
+		},
+		{
+			name:          "Lax_DesiredWithObservedWithout_UpToDate",
+			policy:        "lax",
+			desiredPrivs:  []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			observedPrivs: []string{"CREATE SCHEMA"},
+			wantUpToDate:  true,
+		},
+		{
+			name:          "Lax_MissingPrivilege_NotUpToDate",
+			policy:        "lax",
+			desiredPrivs:  []string{"CREATE SCHEMA", "SELECT ON SCHEMA myschema"},
+			observedPrivs: []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			wantUpToDate:  false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := upToDate(baseObserved(tc.observedPrivs), baseDesired(tc.desiredPrivs), "defaultschema", tc.policy)
+			if err != nil {
+				t.Fatalf("upToDate() unexpected error: %v", err)
+			}
+			if got != tc.wantUpToDate {
+				t.Errorf("upToDate() = %v, want %v", got, tc.wantUpToDate)
+			}
+		})
+	}
+}
+
+func strPtr(s string) *string { return &s }

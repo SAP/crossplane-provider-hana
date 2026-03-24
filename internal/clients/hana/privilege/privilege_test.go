@@ -1429,3 +1429,66 @@ func TestFormatSpecialObjectPrivilege(t *testing.T) {
 		})
 	}
 }
+
+func TestPrivilegesEqualIgnoringGrantable(t *testing.T) {
+	cases := []struct {
+		name     string
+		desired  []string
+		observed []string
+		want     bool
+	}{
+		{
+			name:     "ExactMatch",
+			desired:  []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			observed: []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			want:     true,
+		},
+		{
+			name:     "BothWithout",
+			desired:  []string{"CREATE SCHEMA"},
+			observed: []string{"CREATE SCHEMA"},
+			want:     true,
+		},
+		{
+			name:     "DesiredWithoutObservedWith",
+			desired:  []string{"CREATE SCHEMA"},
+			observed: []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			want:     true,
+		},
+		{
+			name:     "DesiredWithObservedWithout",
+			desired:  []string{"CREATE SCHEMA WITH ADMIN OPTION"},
+			observed: []string{"CREATE SCHEMA"},
+			want:     true,
+		},
+		{
+			name:     "MissingObserved",
+			desired:  []string{"CREATE SCHEMA"},
+			observed: []string{},
+			want:     false,
+		},
+		{
+			name:     "ExtraObserved",
+			desired:  []string{},
+			observed: []string{"CREATE SCHEMA"},
+			want:     false,
+		},
+		{
+			name:     "MultipleIgnoresGrantable",
+			desired:  []string{"CREATE SCHEMA", "SELECT ON SCHEMA myschema"},
+			observed: []string{"CREATE SCHEMA WITH ADMIN OPTION", "SELECT ON SCHEMA myschema WITH GRANT OPTION"},
+			want:     true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := PrivilegesEqualIgnoringGrantable(tc.desired, tc.observed, "defaultschema")
+			if err != nil {
+				t.Fatalf("PrivilegesEqualIgnoringGrantable() unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("PrivilegesEqualIgnoringGrantable(%v, %v) = %v, want %v", tc.desired, tc.observed, got, tc.want)
+			}
+		})
+	}
+}
