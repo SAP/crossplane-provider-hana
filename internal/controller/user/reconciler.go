@@ -237,7 +237,12 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		cr.SetConditions(xpv1.Available())
 	}
 
-	isUpToDate := upToDate(observed, parameters)
+	isUpToDate, err := upToDate(observed, parameters, c.client.GetDefaultSchema(), cr.Spec.PrivilegeGrantablePolicy)
+
+	if err != nil {
+		c.log.Info("Error comparing privileges", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, fmt.Errorf("cannot compare privileges: %w", err)
+	}
 
 	c.log.Info("Observed user resource",
 		"name", cr.Name,
@@ -250,16 +255,31 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}, nil
 }
 
-func upToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
-	return isPasswordUpToDate(observed, desired) &&
+func privilegesUpToDate(desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation, grantablePolicy string, defaultSchema string) (bool, error) {
+	var privilegesEqual bool
+	var err error
+	if grantablePolicy == "lax" {
+		privilegesEqual, err = privilege.PrivilegesEqualIgnoringGrantable(desired.Privileges, observed.Privileges, defaultSchema)
+	} else {
+		privilegesEqual = utils.ArraysEqual(desired.Privileges, observed.Privileges)
+	}
+	return privilegesEqual, err
+}
+
+func upToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters, defaultSchema, grantablePolicy string) (bool, error) {
+	privilegesEqual, err := privilegesUpToDate(desired, observed, grantablePolicy, defaultSchema)
+	if err != nil {
+		return false, err
+	}
+	return privilegesEqual &&
+		isPasswordUpToDate(observed, desired) &&
 		isX509MappingsUpToDate(observed, desired) &&
 		observed.Usergroup != nil &&
 		*observed.Usergroup == desired.Usergroup &&
 		observed.IsPasswordLifetimeCheckEnabled != nil &&
 		*observed.IsPasswordLifetimeCheckEnabled == desired.IsPasswordLifetimeCheckEnabled &&
 		maps.Equal(observed.Parameters, desired.Parameters) &&
-		utils.ArraysEqual(observed.Privileges, desired.Privileges) &&
-		utils.ArraysEqual(observed.Roles, desired.Roles)
+		utils.ArraysEqual(observed.Roles, desired.Roles), nil
 }
 
 func isPasswordUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
@@ -373,8 +393,18 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) updatePrivileges(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
-	// Update privileges if needed
-	if isEqual, toGrant, toRevoke := utils.ArraysBothDiff(desired.Privileges, observed.Privileges); !isEqual {
+	var toGrant, toRevoke []string
+	if cr.Spec.PrivilegeGrantablePolicy == "lax" {
+		var err error
+		toGrant, toRevoke, err = privilege.PrivilegesDiffIgnoringGrantable(desired.Privileges, observed.Privileges, c.client.GetDefaultSchema())
+		if err != nil {
+			c.log.Info("Error computing privilege diff", "name", cr.Name, "error", err)
+			return fmt.Errorf(errUpdateUser, err)
+		}
+	} else {
+		_, toGrant, toRevoke = utils.ArraysBothDiff(desired.Privileges, observed.Privileges)
+	}
+	if len(toGrant) > 0 || len(toRevoke) > 0 {
 		c.log.Info("Updating user privileges",
 			"name", cr.Name,
 			"username", desired.Username,

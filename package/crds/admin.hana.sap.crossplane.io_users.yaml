@@ -214,6 +214,17 @@ spec:
                   - '*'
                   type: string
                 type: array
+              privilegeGrantablePolicy:
+                default: strict
+                description: |-
+                  PrivilegeGrantablePolicy defines how admin/grant options are handled during privilege comparison.
+                  'strict' means the presence or absence of WITH ADMIN/GRANT OPTION must match exactly.
+                  'lax' means the WITH ADMIN/GRANT OPTION suffix is ignored when comparing desired vs observed privileges.
+                  Use 'lax' when the DB instance automatically sets IS_GRANTABLE=true.
+                enum:
+                - strict
+                - lax
+                type: string
               privilegeManagementPolicy:
                 default: strict
                 description: |-

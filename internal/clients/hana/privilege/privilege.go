@@ -712,3 +712,61 @@ func handlePrivilegeRows(privRows *sql.Rows) (Privilege, error) {
 		return createRegularObjectPrivilege(privilege, schemaName, objectName, isGrantable), nil
 	}
 }
+
+// privilegeBaseKey uniquely identifies a privilege ignoring its grantable state.
+type privilegeBaseKey struct {
+	pType         PrivilegeType
+	name          string
+	identifier    string
+	subIdentifier string
+}
+
+func privilegeToBaseKey(p Privilege) privilegeBaseKey {
+	return privilegeBaseKey{p.Type, p.Name, p.Identifier, p.SubIdentifier}
+}
+
+// PrivilegesEqualIgnoringGrantable returns true when desired and observed privilege
+// string slices refer to the same privileges, ignoring admin/grant option entirely.
+// Used when privilegeGrantablePolicy is "lax".
+func PrivilegesEqualIgnoringGrantable(desired, observed []string, defaultSchema DefaultSchema) (bool, error) {
+	toGrant, toRevoke, err := PrivilegesDiffIgnoringGrantable(desired, observed, defaultSchema)
+	if err != nil {
+		return false, err
+	}
+	return len(toGrant) == 0 && len(toRevoke) == 0, nil
+}
+
+// PrivilegesDiffIgnoringGrantable returns toGrant and toRevoke slices, ignoring
+// admin/grant option when comparing desired vs observed. Used when
+// privilegeGrantablePolicy is "lax".
+func PrivilegesDiffIgnoringGrantable(desired, observed []string, defaultSchema DefaultSchema) (toGrant, toRevoke []string, err error) {
+	desiredPrivs, err := parsePrivilegeStrings(desired, defaultSchema)
+	if err != nil {
+		return nil, nil, err
+	}
+	observedPrivs, err := parsePrivilegeStrings(observed, defaultSchema)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	observedKeys := make(map[privilegeBaseKey]bool, len(observedPrivs))
+	for _, p := range observedPrivs {
+		observedKeys[privilegeToBaseKey(p)] = true
+	}
+
+	desiredKeys := make(map[privilegeBaseKey]bool, len(desiredPrivs))
+	for _, d := range desiredPrivs {
+		desiredKeys[privilegeToBaseKey(d)] = true
+		if !observedKeys[privilegeToBaseKey(d)] {
+			toGrant = append(toGrant, d.String())
+		}
+	}
+
+	for _, o := range observedPrivs {
+		if !desiredKeys[privilegeToBaseKey(o)] {
+			toRevoke = append(toRevoke, o.String())
+		}
+	}
+
+	return toGrant, toRevoke, nil
+}
