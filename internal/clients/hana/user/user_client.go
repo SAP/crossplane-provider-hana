@@ -72,6 +72,7 @@ type UserClient interface {
 	UpdateX509Providers(ctx context.Context, username string, toAdd, toRemove []ResolvedUserMapping) error
 	TogglePasswordAuthentication(ctx context.Context, username string, isPasswordEnabled bool) error
 	GetDefaultSchema() string
+	privilege.DeltaObserver
 }
 
 // Client struct holds the connection to the db
