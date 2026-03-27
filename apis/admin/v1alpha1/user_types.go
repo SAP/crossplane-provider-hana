@@ -95,6 +95,9 @@ type UserObservation struct {
 
 	// +kubebuilder:validation:Optional
 	IsPasswordEnabled *bool `json:"isPasswordEnabled,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	LastAuditTimestamp *metav1.Time `json:"lastAuditTimestamp,omitempty"`
 }
 
 // A UserSpec defines the desired state of a User.
@@ -109,6 +112,12 @@ type UserSpec struct {
 	// 'strict' means that all privileges are managed by crossplane, and other privileges not defined in the spec will be removed.
 	// 'lax' means that crossplane will only manage the privileges defined in the spec, and other privileges will not be removed.
 	PrivilegeManagementPolicy string `json:"privilegeManagementPolicy,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=false
+	// UsePrivilegeDelta enables delta-based privilege observation via AUDIT_LOG instead of querying GRANTED_PRIVILEGES directly.
+	// Requires an active HANA audit policy covering GRANT and REVOKE events with TRAIL TYPE TABLE.
+	UsePrivilegeDelta bool `json:"usePrivilegeDelta,omitempty"`
 }
 
 // A UserStatus represents the observed state of a User.

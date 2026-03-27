@@ -340,6 +340,12 @@ spec:
                 required:
                 - name
                 type: object
+              usePrivilegeDelta:
+                default: false
+                description: |-
+                  UsePrivilegeDelta enables delta-based privilege observation via AUDIT_LOG instead of querying GRANTED_PRIVILEGES directly.
+                  Requires an active HANA audit policy covering GRANT and REVOKE events with TRAIL TYPE TABLE.
+                type: boolean
               writeConnectionSecretToRef:
                 description: |-
                   WriteConnectionSecretToReference specifies the namespace and name of a
@@ -377,6 +383,9 @@ spec:
                     type: boolean
                   isPasswordLifetimeCheckEnabled:
                     type: boolean
+                  lastAuditTimestamp:
+                    format: date-time
+                    type: string
                   lastPasswordChangeTime:
                     format: date-time
                     type: string
