@@ -342,6 +342,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, err
 	}
 
+	if err := c.updateRoles(ctx, cr, desired, observed); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
 	if err := c.updateParameters(ctx, cr, desired, observed); err != nil {
 		return managed.ExternalUpdate{}, err
 	}

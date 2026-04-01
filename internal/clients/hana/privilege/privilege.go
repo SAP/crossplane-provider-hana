@@ -604,10 +604,10 @@ func groupPrivilegesByTypeAndIdentifier(privileges []Privilege) []PrivilegeGroup
 type AuditLogAction string
 
 const (
-	AuditLogActionGrantPrivilege AuditLogAction = "GRANT PRIVILEGE"
-	AuditLogActionGrantRole      AuditLogAction = "GRANT ROLE"
+	AuditLogActionGrantPrivilege  AuditLogAction = "GRANT PRIVILEGE"
+	AuditLogActionGrantRole       AuditLogAction = "GRANT ROLE"
 	AuditLogActionRevokePrivilege AuditLogAction = "REVOKE PRIVILEGE"
-	AuditLogActionRevokeRole     AuditLogAction = "REVOKE ROLE"
+	AuditLogActionRevokeRole      AuditLogAction = "REVOKE ROLE"
 )
 
 type AuditLogEntry struct {
@@ -651,9 +651,31 @@ func (c *PrivilegeClient) QueryAuditLogDelta(ctx context.Context, grantee Grante
 	return entries, latest, rows.Err()
 }
 
+func applyAuditLogDeltaForPrivilege(e AuditLogEntry) string {
+	privStr := e.PrivilegeName.String
+	switch {
+	case e.SchemaName.Valid && e.ObjectName.Valid:
+		privStr = fmt.Sprintf(`%s ON "%s"."%s"`, privStr, utils.EscapeDoubleQuotes(e.SchemaName.String), utils.EscapeDoubleQuotes(e.ObjectName.String))
+	case e.SchemaName.Valid:
+		privStr = fmt.Sprintf(`%s ON SCHEMA "%s"`, privStr, utils.EscapeDoubleQuotes(e.SchemaName.String))
+	}
+	if e.Grantable.Valid && strings.EqualFold(e.Grantable.String, "TRUE") {
+		privStr += " WITH GRANT OPTION"
+	}
+	return privStr
+}
+
+func applyAuditLogDeltaForRole(e AuditLogEntry) string {
+	privStr := e.RoleName.String
+	if e.Grantable.Valid && strings.EqualFold(e.Grantable.String, "TRUE") {
+		privStr += " WITH ADMIN OPTION"
+	}
+	return privStr
+}
+
 func applyAuditLogDelta(current []string, entries []AuditLogEntry, defaultSchema DefaultSchema) []string {
-	result := make([]string, len(current))
-	copy(result, current)
+	var result []string
+	result = append(result, current...)
 
 	for _, e := range entries {
 		var privStr string
@@ -662,25 +684,12 @@ func applyAuditLogDelta(current []string, entries []AuditLogEntry, defaultSchema
 			if !e.PrivilegeName.Valid {
 				continue
 			}
-			switch {
-			case e.SchemaName.Valid && e.ObjectName.Valid:
-				privStr = fmt.Sprintf(`%s ON "%s"."%s"`, e.PrivilegeName.String, utils.EscapeDoubleQuotes(e.SchemaName.String), utils.EscapeDoubleQuotes(e.ObjectName.String))
-			case e.SchemaName.Valid:
-				privStr = fmt.Sprintf(`%s ON SCHEMA "%s"`, e.PrivilegeName.String, utils.EscapeDoubleQuotes(e.SchemaName.String))
-			default:
-				privStr = e.PrivilegeName.String
-			}
-			if e.Grantable.Valid && strings.EqualFold(e.Grantable.String, "TRUE") {
-				privStr += " WITH GRANT OPTION"
-			}
+			privStr = applyAuditLogDeltaForPrivilege(e)
 		case AuditLogActionGrantRole, AuditLogActionRevokeRole:
 			if !e.RoleName.Valid {
 				continue
 			}
-			privStr = e.RoleName.String
-			if e.Grantable.Valid && strings.EqualFold(e.Grantable.String, "TRUE") {
-				privStr += " WITH ADMIN OPTION"
-			}
+			privStr = applyAuditLogDeltaForRole(e)
 		default:
 			continue
 		}
