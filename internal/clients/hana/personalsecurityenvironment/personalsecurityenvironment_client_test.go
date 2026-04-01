@@ -129,8 +129,8 @@ func TestRead(t *testing.T) {
 					Name:             "test-pse",
 					X509ProviderName: "test-provider",
 					CertificateRefs: []v1alpha1.CertificateRef{
-						{ID: intPtr(1), Name: stringPtr("cert1")},
-						{ID: intPtr(2), Name: stringPtr("cert2")},
+						{ID: new(1), Name: new("cert1")},
+						{ID: new(2), Name: new("cert2")},
 					},
 				},
 				err: nil,
@@ -204,7 +204,7 @@ func TestRead(t *testing.T) {
 					Name:             "no-provider-pse",
 					X509ProviderName: "",
 					CertificateRefs: []v1alpha1.CertificateRef{
-						{ID: intPtr(3), Name: stringPtr("cert3")},
+						{ID: new(3), Name: new("cert3")},
 					},
 				},
 				err: nil,
@@ -356,8 +356,8 @@ func TestCreate(t *testing.T) {
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
 					Name: "cert-pse",
 					CertificateRefs: []v1alpha1.CertificateRef{
-						{ID: intPtr(1), Name: stringPtr("cert1")},
-						{ID: intPtr(2), Name: stringPtr("cert2")},
+						{ID: new(1), Name: new("cert1")},
+						{ID: new(2), Name: new("cert2")},
 					},
 				},
 				provider: "",
@@ -384,7 +384,7 @@ func TestCreate(t *testing.T) {
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
 					Name: "complex-pse",
 					CertificateRefs: []v1alpha1.CertificateRef{
-						{ID: intPtr(1), Name: stringPtr("cert1")},
+						{ID: new(1), Name: new("cert1")},
 					},
 				},
 				provider: "complex-provider",
@@ -466,7 +466,7 @@ func TestUpdate(t *testing.T) {
 			args: args{
 				pseName: "test-pse",
 				toAdd: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
+					{ID: new(1), Name: new("cert1")},
 				},
 			},
 			want: want{
@@ -489,8 +489,8 @@ func TestUpdate(t *testing.T) {
 			args: args{
 				pseName: "test-pse",
 				toAdd: []v1alpha1.CertificateRef{
-					{ID: intPtr(1)},
-					{ID: intPtr(2)},
+					{ID: new(1)},
+					{ID: new(2)},
 				},
 			},
 			want: want{
@@ -513,8 +513,8 @@ func TestUpdate(t *testing.T) {
 			args: args{
 				pseName: "test-pse",
 				toRemove: []v1alpha1.CertificateRef{
-					{Name: stringPtr("cert1")},
-					{Name: stringPtr("cert2")},
+					{Name: new("cert1")},
+					{Name: new("cert2")},
 				},
 			},
 			want: want{
@@ -557,10 +557,10 @@ func TestUpdate(t *testing.T) {
 			args: args{
 				pseName: "complex-pse",
 				toAdd: []v1alpha1.CertificateRef{
-					{ID: intPtr(1), Name: stringPtr("cert1")},
+					{ID: new(1), Name: new("cert1")},
 				},
 				toRemove: []v1alpha1.CertificateRef{
-					{ID: intPtr(2), Name: stringPtr("cert2")},
+					{ID: new(2), Name: new("cert2")},
 				},
 				providerName: "updated-provider",
 			},
@@ -695,13 +695,4 @@ func TestDelete(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Helper functions for testing
-func stringPtr(s string) *string {
-	return &s
-}
-
-func intPtr(i int) *int {
-	return &i
 }

@@ -17,12 +17,16 @@ import (
 type AuditPolicyParameters struct {
 	PolicyName string `json:"policyName"`
 
+	// +kubebuilder:validation:items:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
+	// +listType=set
 	AuditActions []string `json:"auditActions"`
 
 	// +kubebuilder:default:=ALL
+	// +kubebuilder:validation:Enum:=SUCCESSFUL;UNSUCCESSFUL;ALL
 	AuditStatus string `json:"auditStatus,omitempty"`
 
 	// +kubebuilder:default:=CRITICAL
+	// +kubebuilder:validation:Enum:=EMERGENCY;ALERT;CRITICAL;WARNING;INFO
 	AuditLevel string `json:"auditLevel,omitempty"`
 
 	// +kubebuilder:default:=7
@@ -94,7 +98,7 @@ type AuditPolicyList struct {
 
 // AuditPolicy type metadata.
 var (
-	AuditPolicyKind             = reflect.TypeOf(AuditPolicy{}).Name()
+	AuditPolicyKind             = reflect.TypeFor[AuditPolicy]().Name()
 	AuditPolicyGroupKind        = schema.GroupKind{Group: Group, Kind: AuditPolicyKind}.String()
 	AuditPolicyKindAPIVersion   = AuditPolicyKind + "." + SchemeGroupVersion.String()
 	AuditPolicyGroupVersionKind = SchemeGroupVersion.WithKind(AuditPolicyKind)

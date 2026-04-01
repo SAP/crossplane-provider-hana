@@ -31,13 +31,13 @@ import (
 type MockLogger struct{}
 
 // Debug logs debug messages.
-func (l *MockLogger) Debug(_ string, _ ...interface{}) {}
+func (l *MockLogger) Debug(_ string, _ ...any) {}
 
 // Info logs info messages.
-func (l *MockLogger) Info(_ string, _ ...interface{}) {}
+func (l *MockLogger) Info(_ string, _ ...any) {}
 
 // WithValues returns a logger with the specified key-value pairs.
-func (l *MockLogger) WithValues(_ ...interface{}) logging.Logger { return l }
+func (l *MockLogger) WithValues(_ ...any) logging.Logger { return l }
 
 type mockClient struct {
 	MockRead             func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error)

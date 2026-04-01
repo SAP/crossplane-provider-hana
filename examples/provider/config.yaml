@@ -5,8 +5,11 @@ metadata:
   name: example-provider-secret
 type: Opaque
 data:
-  # Dummy credentials. Replace with real credentials when testing.
-  credentials: ZHVtbXktY3JlZGVudGlhbHM=
+  # Dummy credentials. Replace with real credentials.
+  endpoint: aHR0cDovL2hhbmEtZXhhbXBsZS1lbmRwb2ludC5jb20=
+  password: cGFzc3dvcmQ=
+  port: NDMyMQ==
+  username: dXNlcg==
 ---
 apiVersion: hana.sap.crossplane.io/v1alpha1
 kind: ProviderConfig

@@ -32,15 +32,6 @@ import (
 
 const demoUser = "DEMO_USER"
 
-// Helper functions for creating pointers
-func stringPtr(s string) *string {
-	return &s
-}
-
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct {
 	msgs          []string
@@ -60,7 +51,7 @@ func (l *MockLogger) Info(msg string, keysAndValues ...any) {
 }
 
 // WithValues returns a logger with the specified key-value pairs.
-func (l *MockLogger) WithValues(_ ...interface{}) logging.Logger { return l }
+func (l *MockLogger) WithValues(_ ...any) logging.Logger { return l }
 
 // mockUserClient implements the user.Client struct methods for testing
 type mockUserClient struct {
@@ -311,12 +302,12 @@ func TestObserve(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
-							Username:                       stringPtr(demoUser),
+							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      stringPtr("DEFAULT"),
+							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
-							IsPasswordLifetimeCheckEnabled: boolPtr(true),
+							IsPasswordLifetimeCheckEnabled: new(true),
 							Parameters:                     make(map[string]string),
 							X509Providers:                  []v1alpha1.X509UserMapping{},
 						}, nil
@@ -350,12 +341,12 @@ func TestObserve(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
-							Username:                       stringPtr(demoUser),
+							Username:                       new(demoUser),
 							Privileges:                     []string{"SELECT", "INSERT", privilege.GetDefaultPrivilege("DEMO_USER")},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      stringPtr("DEFAULT"),
+							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
-							IsPasswordLifetimeCheckEnabled: boolPtr(true),
+							IsPasswordLifetimeCheckEnabled: new(true),
 							Parameters:                     make(map[string]string),
 							X509Providers:                  []v1alpha1.X509UserMapping{},
 						}, nil
@@ -390,12 +381,12 @@ func TestObserve(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
-							Username:                       stringPtr(demoUser),
+							Username:                       new(demoUser),
 							Privileges:                     []string{"SELECT", "INSERT", "DELETE", "UPDATE"},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      stringPtr("DEFAULT"),
+							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
-							IsPasswordLifetimeCheckEnabled: boolPtr(true),
+							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
 					},
 				},
@@ -434,7 +425,7 @@ func TestObserve(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
-							Username:   stringPtr(demoUser),
+							Username:   new(demoUser),
 							Privileges: []string{"SELECT", "INSERT"},
 						}, nil
 					},
@@ -462,7 +453,7 @@ func TestObserve(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
-							Username: stringPtr("DIFFERENT_USER"),
+							Username: new("DIFFERENT_USER"),
 						}, nil
 					},
 				},
@@ -491,12 +482,12 @@ func TestObserve(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
-							Username:                       stringPtr(demoUser),
+							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEFAULT_SCHEMA"), "SELECT", "INSERT", "UPDATE"},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      stringPtr("DEFAULT"),
+							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
-							IsPasswordLifetimeCheckEnabled: boolPtr(true),
+							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
 					},
 				},
@@ -535,12 +526,12 @@ func TestObserve(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
-							Username:                       stringPtr(demoUser),
+							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER"), "SELECT", "INSERT", "UPDATE"},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      stringPtr("DEFAULT"),
+							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
-							IsPasswordLifetimeCheckEnabled: boolPtr(true),
+							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
 					},
 				},
@@ -573,12 +564,12 @@ func TestObserve(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
-							Username:                       stringPtr(demoUser),
+							Username:                       new(demoUser),
 							Privileges:                     []string{"CREATE ANY"},
 							Roles:                          []string{"PUBLIC"},
-							Usergroup:                      stringPtr("DEFAULT"),
-							PasswordUpToDate:               boolPtr(true),
-							IsPasswordLifetimeCheckEnabled: boolPtr(false), // Different from desired
+							Usergroup:                      new("DEFAULT"),
+							PasswordUpToDate:               new(true),
+							IsPasswordLifetimeCheckEnabled: new(false), // Different from desired
 						}, nil
 					},
 				},

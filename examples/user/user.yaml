@@ -23,5 +23,11 @@ spec:
     # Role with admin option
     - MONITORING WITH ADMIN OPTION
     isPasswordLifetimeCheckEnabled: false
+    authentication:
+      password:
+        passwordSecretRef:
+          key: password
+          name: user-secret
+          namespace: default
   providerConfigRef:
     name: example

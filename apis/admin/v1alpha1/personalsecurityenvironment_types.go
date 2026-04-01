@@ -117,7 +117,7 @@ type PersonalSecurityEnvironmentList struct {
 
 // PersonalSecurityEnvironment type metadata.
 var (
-	PersonalSecurityEnvironmentKind             = reflect.TypeOf(PersonalSecurityEnvironment{}).Name()
+	PersonalSecurityEnvironmentKind             = reflect.TypeFor[PersonalSecurityEnvironment]().Name()
 	PersonalSecurityEnvironmentGroupKind        = schema.GroupKind{Group: Group, Kind: PersonalSecurityEnvironmentKind}.String()
 	PersonalSecurityEnvironmentKindAPIVersion   = PersonalSecurityEnvironmentKind + "." + SchemeGroupVersion.String()
 	PersonalSecurityEnvironmentGroupVersionKind = SchemeGroupVersion.WithKind(PersonalSecurityEnvironmentKind)

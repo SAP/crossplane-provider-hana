@@ -1,0 +1,705 @@
+---
+sidebar_position: 3
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Managing Tables
+Managing tables in a busy restaurant is hard. Doing it across multiple restaurants is even harder. Your database shouldn’t feel like that. With a clear, declarative workflow, managing schemas and tables in HANA Cloud can be straightforward. You can spend your time on what matters instead of manual work.
+
+In this chapter, you’ll learn how to manage schemas and tables in SAP HANA Cloud in a simple, declarative way. Although the HANA Cloud Crossplane provider doesn’t yet support table management, there are practical alternatives you can use today to keep your database changes predictable and repeatable.
+
+:::note This is a preview
+We're currently working on reviewing different ways to manage tables in HANA Cloud using a declarative workflow.
+You have some ideas? Let's chat! Message us directly we are looking forward to your feedback!
+:::
+
+
+What you’ll get from this chapter:
+- How to manage tables in HANA Cloud using a declarative workflow
+- Ways to keep your database changes predictable and versioned
+- How to save time with automation and CI/CD-friendly tools
+
+See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/main/apis)
+
+## 🚧 Prerequisites 
+- You’ve created a control plane
+- You’ve created a [HANA Cloud instance](/docs/crossplane-provider-hana/docs/user-stories/setup)
+- You’ve set up the [HANA Cloud Crossplane provider](/docs/crossplane-provider-hana/docs/user-stories/setup#install-provider)
+
+<Tabs>
+  <TabItem value="liquibase" label="Liquibase">
+    Liquibase is an open-source tool for database schema change management. You define changes in XML, YAML, JSON, or SQL, and Liquibase applies them safely and consistently. It supports many databases including SAP HANA Cloud. It works locally and in CI/CD pipelines, so your changes are repeatable and traceable from dev to production.
+
+    ### Prerequisites
+    For this approach, we’ll create one user and two schemas. One schema is managed with Liquibase and one schema stores Liquibase’s metadata (the changelog).
+
+    You can create the schemas and user using the HANA Cloud Crossplane provider as shown in our [Schema guide](/docs/crossplane-provider-hana/docs/user-stories/schema) and [User management guide](/docs/crossplane-provider-hana/docs/user-stories/users).
+
+    First, let’s create the user. We start with the user secret and then the user itself.
+
+    ```yaml title="user-secret.yaml"
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      namespace: default
+      name: liquibase-user-secret
+    type: Opaque
+    data:
+      password: dmVyeVNlY3JldFBhc3N3b3Jk # e.g., Base64-encode: verySecretPassword
+    ```
+    
+    ```yaml title="user.yaml"
+    apiVersion: admin.hana.orchestrate.cloud.sap/v1alpha1
+    kind: User
+    metadata:
+      name: liquibase-user
+    spec:
+      forProvider:
+        authentication:
+          password:
+            passwordSecretRef:
+              key: password
+              name: liquibase-user-secret
+              namespace: default
+        username: LIQUIBASE_USER
+      providerConfigRef:
+        name: hana-providerconfig
+    ```
+
+    Apply the resources to your control plane:
+
+    ```sh
+    kubectl create -f user-secret.yaml
+    kubectl create -f user.yaml
+    ```
+
+    Next, create the changelog schema and the managed schema:
+
+    ```yaml title="changelog-schema.yaml"
+    apiVersion: objects.hana.orchestrate.cloud.sap/v1alpha1
+    kind: DbSchema
+    metadata:
+      name: liquibase-changelog-schema
+    spec:
+      forProvider:
+        schemaName: LIQUIBASE_METADATA
+        owner: LIQUIBASE_USER
+      providerConfigRef:
+        name: hana-providerconfig
+    ```
+
+    ```yaml title="managed-schema.yaml"
+    apiVersion: schema.hana.orchestrate.cloud.sap/v1alpha1
+    kind: DbSchema
+    metadata:
+      name: liquibase-changelog-schema
+    spec:
+      forProvider:
+        schemaName: LIQUIBASE_METADATA
+        owner: LIQUIBASE_USER
+      providerConfigRef:
+        name: hana-providerconfig
+    ```
+
+    :::danger Grant least-privilege permissions 
+    We strongly recommend granting your Liquibase user only the permissions required to manage the target schemas and tables.
+    See the [User management guide](/docs/crossplane-provider-hana/docs/user-stories/users) for more details on how to manage user privileges in HANA Cloud using the managed control plane.
+    :::
+
+    Apply the schemas:
+
+    ```sh
+    kubectl create -f changelog-schema.yaml
+    kubectl create -f managed-schema.yaml
+    ```
+
+    ### Set up Liquibase
+    Install the Liquibase CLI by following the instructions here: https://docs.liquibase.com/pro/get-started
+    Then install:
+    - The HANA Cloud JDBC driver
+    - The SAP HANA Liquibase extension
+
+    Follow the instructions [here](https://contribute.liquibase.com/extensions-integrations/directory/database-tutorials/sap-hana/).
+
+    Now initialize a project:
+
+    ```sh
+    liquibase init project
+    ```
+
+    <details>
+      <summary>Just trying it out? No need to set up a whole project</summary>
+
+      If you just want to try it out, there’s no need to set up a whole project. I highly recommend it for production use.
+      You need to install the Liquibase CLI from here: https://docs.liquibase.com/pro/get-started
+
+      :::note Using Homebrew?
+      You can install Liquibase using Homebrew:
+      ```sh
+      brew install liquibase
+      ```
+      :::
+
+    Now get the JDBC driver, for example from the Maven repositories [here](https://mvnrepository.com/artifact/com.sap.cloud.db.jdbc/ngdbc) or check out the [SAP tutorial](https://developers.sap.com/tutorials/hana-clients-jdbc..html).
+    Move it in the `lib` folder of your Liquibase installation.
+
+      Then get the SAP HANA Liquibase extension (just the `liquibase-hanadb-5.0.1.jar` file) from the releases [here](https://github.com/liquibase/liquibase-hanadb).  
+      Move it into the `/internal/extensions/` folder of your Liquibase installation.
+    </details>
+
+    In your project directory, create a file named `liquibase.properties`:
+
+    ```properties title="liquibase.properties"
+    # Driver class for HANA Cloud
+    driver: com.sap.db.jdbc.Driver
+
+    # SQL endpoint of your HANA Cloud instance in the following format: jdbc:sap://<your-endpoint>:<port>/?autocommit=false&currentschema=<your-managed-schema>
+    url: jdbc:sap://my-hana-domain.prod-eu10.hanacloud.ondemand.com:443/?autocommit=false&currentschema=LIQUIBASE_MANAGED
+
+    # Credentials for your user
+    username: LIQUIBASE_USER
+    password: verySecretPassword
+
+    # The changelog file is where you define your database changes
+    changeLogFile: changelog-master.yaml
+
+    # Ignore system tables
+    database.liquibase-ignore.pattern: 'SYS_.*|SAP_.*'
+
+    # Optional but recommended: define the default schema and the changelog schema for better separation
+    defaultSchemaName: LIQUIBASE_MANAGED
+    liquibaseSchemaName: LIQUIBASE_METADATA
+    ```
+
+    ### Create tables
+    Now we can start describing our database changes in the `changelog-master.yaml` file. Liquibase is version based. For every change you want to make, create a new changeset. A changeset is a collection of changes that are applied to the database as a single unit. Every changeset needs a unique ID and an author. For example, use versioning like `1.0.0`, `1.0.1`, `1.0.2`, and so on.
+
+    ```yaml title="changelog-master.yaml"
+    databaseChangeLog:
+      - changeSet:
+          id: 1.0.0
+          author: user@example.com
+          changes:
+            - createTable:
+                tableName: PERSONS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: FIRST_NAME
+                      type: VARCHAR(50)
+                  - column:
+                      name: LAST_NAME
+                      type: VARCHAR(50)
+            - createTable:
+                tableName: PRODUCTS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: NAME
+                      type: VARCHAR(100)
+                  - column:
+                      name: PRICE
+                      type: DECIMAL(10,2)
+            - createTable:
+                tableName: ORDERS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: PERSON_ID
+                      type: INT
+                  - column:
+                      name: PRODUCT_ID
+                      type: INT
+                  - column:
+                      name: ORDER_DATE
+                      type: TIMESTAMP
+            - addForeignKeyConstraint:
+                baseTableName: ORDERS
+                baseColumnNames: PERSON_ID
+                referencedTableName: PERSONS
+                referencedColumnNames: ID
+                constraintName: FK_ORDERS_PERSONS
+    ```
+
+    Now run Liquibase to apply the changes to your database.
+    ```sh
+    liquibase update
+    ```
+    Simply run these SQL commands to verify that the tables have been created.
+
+    ```sql
+    SELECT * FROM LIQUIBASE_MANAGED.PERSONS;
+    SELECT * FROM LIQUIBASE_MANAGED.PRODUCTS;
+    SELECT * FROM LIQUIBASE_MANAGED.ORDERS;
+    ```
+
+    ### Updating the schema
+    Now let’s say we want to add a new column named `EMAIL` to the `PERSONS` table. We can do this by creating a new changeset in the `changelog-master.yaml` file.
+
+    ```yaml title="changelog-master.yaml"
+    databaseChangeLog:
+      - changeSet:
+          id: 1.0.0
+          author: user@example.com
+          changes:
+            - createTable:
+                tableName: PERSONS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: FIRST_NAME
+                      type: VARCHAR(50)
+                  - column:
+                      name: LAST_NAME
+                      type: VARCHAR(50)
+            - createTable:
+                tableName: PRODUCTS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: NAME
+                      type: VARCHAR(100)
+                  - column:
+                      name: PRICE
+                      type: DECIMAL(10,2)
+            - createTable:
+                tableName: ORDERS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: PERSON_ID
+                      type: INT
+                  - column:
+                      name: PRODUCT_ID
+                      type: INT
+                  - column:
+                      name: ORDER_DATE
+                      type: TIMESTAMP
+            - addForeignKeyConstraint:
+                baseTableName: ORDERS
+                baseColumnNames: PERSON_ID
+                referencedTableName: PERSONS
+                referencedColumnNames: ID
+                constraintName: FK_ORDERS_PERSONS
+      - changeSet:
+          id: 1.0.1
+          author: user@example.com
+          changes:
+            - addColumn:
+                tableName: PERSONS
+                columns:
+                  - column:
+                      name: EMAIL
+                      type: VARCHAR(100)
+    ```
+
+    Apply the changes again using the `liquibase update` command.
+
+    ```sh
+    liquibase update
+    ```
+
+    Run this SQL command to verify that the column has been added.
+
+    ```sql
+    SELECT * FROM LIQUIBASE_MANAGED.PERSONS;
+    ```
+
+    :::note Want to check out the change history?
+    You can check out the change history using the following command:
+
+    ```sh
+    liquibase history
+    ```
+
+    Or directly query the changelog table:
+
+    ```sql 
+    SELECT ID, AUTHOR, FILENAME FROM LIQUIBASE_METADATA.DATABASECHANGELOG ORDER BY DATEEXECUTED DESC;
+    ```
+    :::
+
+    ### Create an n:m relationship
+    ```yaml title="changelog-master.yaml"
+    databaseChangeLog:
+      - changeSet:
+          id: 1.0.0
+          author: user@example.com
+          changes:
+            - createTable:
+                tableName: PERSONS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: FIRST_NAME
+                      type: VARCHAR(50)
+                  - column:
+                      name: LAST_NAME
+                      type: VARCHAR(50)
+            - createTable:
+                tableName: PRODUCTS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: NAME
+                      type: VARCHAR(100)
+                  - column:
+                      name: PRICE
+                      type: DECIMAL(10,2)
+            - createTable:
+                tableName: ORDERS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: PERSON_ID
+                      type: INT
+                  - column:
+                      name: PRODUCT_ID
+                      type: INT
+                  - column:
+                      name: ORDER_DATE
+                      type: TIMESTAMP
+            - addForeignKeyConstraint:
+                baseTableName: ORDERS
+                baseColumnNames: PERSON_ID
+                referencedTableName: PERSONS
+                referencedColumnNames: ID
+                constraintName: FK_ORDERS_PERSONS
+
+      - changeSet:
+          id: 1.0.1
+          author: user@example.com
+          changes:
+            - addColumn:
+                tableName: PERSONS
+                columns:
+                  - column:
+                      name: EMAIL
+                      type: VARCHAR(100)
+
+      - changeSet:
+          id: 1.0.2
+          author: user@example.com
+          changes:
+            - addColumn:
+                tableName: ORDERS
+                columns:
+                  - column:
+                      name: TOTAL_PRICE
+                      type: DECIMAL(10,2)
+            - createTable:
+                tableName: ORDER_ITEMS
+                columns:
+                  - column:
+                      name: ORDER_ID
+                      type: INT
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: PRODUCT_ID
+                      type: INT
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: QUANTITY
+                      type: INT
+                      defaultValueNumeric: 1
+            - addForeignKeyConstraint:
+                baseTableName: ORDER_ITEMS
+                baseColumnNames: ORDER_ID
+                referencedTableName: ORDERS
+                referencedColumnNames: ID
+                constraintName: FK_ORDER_ITEMS_ORDERS
+            - addForeignKeyConstraint:
+                baseTableName: ORDER_ITEMS
+                baseColumnNames: PRODUCT_ID
+                referencedTableName: PRODUCTS
+                referencedColumnNames: ID
+                constraintName: FK_ORDER_ITEMS_PRODUCTS
+            - dropColumn:
+                tableName: ORDERS
+                columnName: PRODUCT_ID
+    ```
+
+    Apply the changes again using the `liquibase update` command.
+
+    ```sh
+    liquibase update
+    ```
+
+    Check out the updated table structure using:
+
+    ```sql
+    SELECT * FROM LIQUIBASE_MANAGED.ORDERS;
+    SELECT * FROM LIQUIBASE_MANAGED.ORDER_ITEMS;
+    ```
+
+    :::note Got stuck? Try it in your CI/CD pipeline
+    Check out the GitHub Action for integrating Liquibase in your CI/CD pipelines [here](https://github.com/marketplace/actions/setup-liquibase).
+    Want to be independent of a CI/CD tool? Check out the documentation for flow files [here](https://docs.liquibase.com/pro/user-guide/what-is-a-flow-file).
+    :::
+
+    ### Deleting tables
+    To delete tables using Liquibase, create a new changeset in the `changelog-master.yaml` file that includes `dropTable` changes.
+
+    ```yaml title="changelog-master.yaml"
+    databaseChangeLog:
+      - changeSet:
+          id: 1.0.0
+          author: user@example.com
+          changes:
+            - createTable:
+                tableName: PERSONS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: FIRST_NAME
+                      type: VARCHAR(50)
+                  - column:
+                      name: LAST_NAME
+                      type: VARCHAR(50)
+            - createTable:
+                tableName: PRODUCTS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: NAME
+                      type: VARCHAR(100)
+                  - column:
+                      name: PRICE
+                      type: DECIMAL(10,2)
+            - createTable:
+                tableName: ORDERS
+                columns:
+                  - column:
+                      name: ID
+                      type: INT
+                      constraints:
+                        primaryKey: true
+                        nullable: false
+                  - column:
+                      name: PERSON_ID
+                      type: INT
+                  - column:
+                      name: PRODUCT_ID
+                      type: INT
+                  - column:
+                      name: ORDER_DATE
+                      type: TIMESTAMP
+            - addForeignKeyConstraint:
+                baseTableName: ORDERS
+                baseColumnNames: PERSON_ID
+                referencedTableName: PERSONS
+                referencedColumnNames: ID
+                constraintName: FK_ORDERS_PERSONS
+
+      - changeSet:
+          id: 1.0.1
+          author: user@example.com
+          changes:
+            - addColumn:
+                tableName: PERSONS
+                columns:
+                  - column:
+                      name: EMAIL
+                      type: VARCHAR(100)
+
+      - changeSet:
+          id: 1.0.2
+          author: user@example.com
+          changes:
+            - addColumn:
+                tableName: ORDERS
+                columns:
+                  - column:
+                      name: TOTAL_PRICE
+                      type: DECIMAL(10,2)
+            - createTable:
+                tableName: ORDER_ITEMS
+                columns:
+                  - column:
+                      name: ORDER_ID
+                      type: INT
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: PRODUCT_ID
+                      type: INT
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: QUANTITY
+                      type: INT
+                      defaultValueNumeric: 1
+            - addForeignKeyConstraint:
+                baseTableName: ORDER_ITEMS
+                baseColumnNames: ORDER_ID
+                referencedTableName: ORDERS
+                referencedColumnNames: ID
+                constraintName: FK_ORDER_ITEMS_ORDERS
+            - addForeignKeyConstraint:
+                baseTableName: ORDER_ITEMS
+                baseColumnNames: PRODUCT_ID
+                referencedTableName: PRODUCTS
+                referencedColumnNames: ID
+                constraintName: FK_ORDER_ITEMS_PRODUCTS
+            - dropColumn:
+                tableName: ORDERS
+                columnName: PRODUCT_ID
+      - changeSet:
+          id: 1.0.3
+          author: user@example.com
+          changes:
+            - dropTable:
+                tableName: ORDER_ITEMS
+                cascadeConstraints: true
+            - dropTable:
+                tableName: ORDERS
+                cascadeConstraints: true
+            - dropTable:
+                tableName: PRODUCTS
+                cascadeConstraints: true
+            - dropTable:
+                tableName: PERSONS
+                cascadeConstraints: true
+    ```
+    Apply the changes again using the `liquibase update` command.
+
+    ```sh
+    liquibase update
+    ```
+    <details>
+      <summary>Can't to correct a drift?</summary>
+
+      Liquibase also supports detecting and correcting drifts between your changelog and the actual database state.
+
+      First let us create a drift that we want to correct.
+
+      ```sql
+      CREATE TABLE LIQUIBASE_MANAGED.DRIFT_TABLE (
+        ID INT PRIMARY KEY,
+        NAME VARCHAR(100)
+      );
+      ```
+
+      First let us create a local snapshot of the current database state:
+
+      ```sh
+      liquibase snapshot --snapshotFormat=json --outputFile=db_snapshot.json
+      ```
+
+      :::note Is their a drift?
+      Run the following command to check if there is a drift between your changelog and the actual database state:
+
+      ```bash
+      liquibase \
+        --url="offline:hana?snapshot=db_snapshot.json" \
+        --referenceUrl="offline:hana?changeLogFile=db/changelog-master.yaml" \
+        diff
+      ```
+      :::
+
+      With the following command, you can generate a changelog that corrects the drift:
+
+      ```bash
+      liquibase \
+        --url="offline:hana?snapshot=db_snapshot.json" \
+        --referenceUrl="offline:hana?changeLogFile=db/changelog-master.yaml" \
+        diffChangeLog \
+        --changeLogFile=db/drift_result.yaml
+      ```
+
+      Checkout the generated yaml at `db/drift_result.yaml`. 
+
+      ```yaml title="drift_result.yaml"
+      databaseChangeLog:
+        - changeSet:
+            id: 1760959115844-1
+            author: I569816 (generated)
+            changes:
+            - dropTable:
+                tableName: DRIFT_TABLE
+      ```
+      You can now apply the generated changelog to your database to correct the drift.
+
+      ```sh
+      liquibase \
+        --changeLogFile=db/drift_result.yaml \
+        update
+      ```
+      :::danger Be cautious when applying generated changelogs
+      Always review the generated changelog before applying it to your database. Automated changes may have unintended consequences.
+      :::
+
+      If you now run the following SQL command, you’ll see that the drift table has been removed.
+
+      ```sql
+      SELECT * FROM LIQUIBASE_MANAGED.DRIFT_TABLE;
+      ```
+
+    </details>
+
+    And that's it! You’ve successfully managed your HANA Cloud tables using a declarative way with Liquibase.
+  </TabItem>
+
+  <TabItem value="cap_hdi" label="CAP HDI container">
+    Using the [Cloud Application Programming Model (CAP)](https://cap.cloud.sap/docs/), you can also manage your SAP HANA Cloud tables using HDI containers. It is a great fit when you want application-driven, versioned database artifacts with strong isolation.
+  </TabItem>
+</Tabs>

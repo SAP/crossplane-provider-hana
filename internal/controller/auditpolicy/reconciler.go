@@ -6,7 +6,6 @@ package auditpolicy
 
 import (
 	"context"
-	"reflect"
 	"strings"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
@@ -27,6 +26,7 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/auditpolicy"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
@@ -159,14 +159,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	c.log.Info("Observing auditpolicy resource", "name", cr.Name)
 
-	parameters := &v1alpha1.AuditPolicyParameters{
-		PolicyName:          strings.ToUpper(cr.Spec.ForProvider.PolicyName),
-		AuditActions:        arrayToUpper(cr.Spec.ForProvider.AuditActions),
-		AuditStatus:         strings.ToUpper(cr.Spec.ForProvider.AuditStatus),
-		AuditLevel:          strings.ToUpper(cr.Spec.ForProvider.AuditLevel),
-		AuditTrailRetention: cr.Spec.ForProvider.AuditTrailRetention,
-		Enabled:             cr.Spec.ForProvider.Enabled,
-	}
+	parameters := buildDesiredParameters(cr)
 
 	observed, err := c.client.Read(ctx, parameters)
 
@@ -201,14 +194,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}, nil
 }
 
-func arrayToUpper(arr []string) []string {
-	upperArr := make([]string, len(arr))
-	for i, item := range arr {
-		upperArr[i] = strings.ToUpper(item)
-	}
-	return upperArr
-}
-
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
 	cr, ok := mg.(*v1alpha1.AuditPolicy)
 	if !ok {
@@ -217,14 +202,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Creating auditPolicy resource", "name", cr.Name, "policyName", cr.Spec.ForProvider.PolicyName)
 
-	parameters := &v1alpha1.AuditPolicyParameters{
-		PolicyName:          cr.Spec.ForProvider.PolicyName,
-		AuditActions:        cr.Spec.ForProvider.AuditActions,
-		AuditStatus:         cr.Spec.ForProvider.AuditStatus,
-		AuditLevel:          cr.Spec.ForProvider.AuditLevel,
-		AuditTrailRetention: cr.Spec.ForProvider.AuditTrailRetention,
-		Enabled:             cr.Spec.ForProvider.Enabled,
-	}
+	parameters := buildDesiredParameters(cr)
 
 	c.log.Info("Creating auditPolicy with parameters",
 		"policyName", parameters.PolicyName,
@@ -254,20 +232,12 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 	c.log.Info("Updating audit policy resource", "name", cr.Name, "policyName", cr.Spec.ForProvider.PolicyName)
 
-	desired := &v1alpha1.AuditPolicyParameters{
-		PolicyName:          strings.ToUpper(cr.Spec.ForProvider.PolicyName),
-		AuditStatus:         strings.ToUpper(cr.Spec.ForProvider.AuditStatus),
-		AuditActions:        arrayToUpper(cr.Spec.ForProvider.AuditActions),
-		AuditLevel:          strings.ToUpper(cr.Spec.ForProvider.AuditLevel),
-		AuditTrailRetention: cr.Spec.ForProvider.AuditTrailRetention,
-		Enabled:             cr.Spec.ForProvider.Enabled,
-	}
-
 	observed := buildObservedParameters(cr)
+	desired := buildDesiredParameters(cr)
 
 	// if audit actions, status or level differ, we need to drop and recreate the policy
-	if (!equalArrays(observed.AuditActions, desired.AuditActions)) || (observed.AuditStatus != desired.AuditStatus) || (observed.AuditLevel != desired.AuditLevel) {
-		c.log.Info("Audit policy differ and will be recreated",
+	if needsRecreation(observed, desired) {
+		c.log.Debug("Audit policy differ and will be recreated",
 			"name", cr.Name,
 			"policyName", desired.PolicyName,
 			"observedActions", observed.AuditActions,
@@ -333,9 +303,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Deleting auditpolicy resource", "name", cr.Name, "schemaName", cr.Spec.ForProvider.PolicyName)
 
-	parameters := &v1alpha1.AuditPolicyParameters{
-		PolicyName: strings.ToUpper(cr.Spec.ForProvider.PolicyName),
-	}
+	parameters := buildDesiredParameters(cr)
 
 	cr.SetConditions(xpv1.Deleting())
 
@@ -351,7 +319,23 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func buildObservedParameters(cr *v1alpha1.AuditPolicy) *v1alpha1.AuditPolicyObservation {
-	return cr.Status.AtProvider.DeepCopy()
+	observed := cr.Status.AtProvider.DeepCopy()
+	return observed
+}
+
+func buildDesiredParameters(cr *v1alpha1.AuditPolicy) *v1alpha1.AuditPolicyParameters {
+	return &v1alpha1.AuditPolicyParameters{
+		PolicyName:          strings.ToUpper(cr.Spec.ForProvider.PolicyName),
+		AuditStatus:         strings.ToUpper(cr.Spec.ForProvider.AuditStatus),
+		AuditActions:        utils.ArrayToUpper(cr.Spec.ForProvider.AuditActions),
+		AuditLevel:          strings.ToUpper(cr.Spec.ForProvider.AuditLevel),
+		AuditTrailRetention: cr.Spec.ForProvider.AuditTrailRetention,
+		Enabled:             cr.Spec.ForProvider.Enabled,
+	}
+}
+
+func needsRecreation(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {
+	return !utils.ArraysEqual(desired.AuditActions, observed.AuditActions) || (observed.AuditStatus != desired.AuditStatus) || (observed.AuditLevel != desired.AuditLevel)
 }
 
 func upToDate(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {
@@ -364,27 +348,8 @@ func upToDate(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.Audit
 	if *observed.Enabled != *desired.Enabled {
 		return false
 	}
-	if !equalArrays(observed.AuditActions, desired.AuditActions) {
+	if !utils.ArraysEqual(observed.AuditActions, desired.AuditActions) {
 		return false
 	}
 	return true
-}
-
-func equalArrays(arr1, arr2 []string) bool {
-	if len(arr1) != len(arr2) {
-		return false
-	}
-
-	set1 := arrayToSet(arr1)
-	set2 := arrayToSet(arr2)
-
-	return reflect.DeepEqual(set1, set2)
-}
-
-func arrayToSet(arr []string) map[string]bool {
-	set := make(map[string]bool)
-	for _, item := range arr {
-		set[item] = true
-	}
-	return set
 }
