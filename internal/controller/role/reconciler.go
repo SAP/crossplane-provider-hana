@@ -6,7 +6,6 @@ package role
 
 import (
 	"context"
-	"strings"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -303,12 +302,17 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 	return managed.ExternalDelete{}, err
 }
 
+// buildDesiredParameters constructs the desired role parameters from the CR spec.
+// Note: We preserve the original case for all fields because:
+// - RoleName/Schema: HANA uses double-quoted identifiers which preserve case
+// - Privileges: May contain schema/object names that are case-sensitive
+// - LdapGroups: LDAP Distinguished Names are case-sensitive
 func buildDesiredParameters(cr *v1alpha1.Role) *v1alpha1.RoleParameters {
 	return &v1alpha1.RoleParameters{
-		RoleName:         strings.ToUpper(cr.Spec.ForProvider.RoleName),
-		Schema:           strings.ToUpper(cr.Spec.ForProvider.Schema),
-		Privileges:       utils.ArrayToUpper(cr.Spec.ForProvider.Privileges),
-		LdapGroups:       utils.ArrayToUpper(cr.Spec.ForProvider.LdapGroups),
+		RoleName:         cr.Spec.ForProvider.RoleName,
+		Schema:           cr.Spec.ForProvider.Schema,
+		Privileges:       cr.Spec.ForProvider.Privileges,
+		LdapGroups:       cr.Spec.ForProvider.LdapGroups,
 		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
 	}
 }
