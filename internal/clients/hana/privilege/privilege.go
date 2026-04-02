@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
@@ -41,6 +44,7 @@ type Client interface {
 	RevokeRoles(context.Context, DefaultSchema, Grantee, []string) error
 	QueryPrivileges(context.Context, Grantee, GranteeType) ([]string, error)
 	QueryRoles(context.Context, Grantee, GranteeType) ([]string, error)
+	QueryAuditLogDelta(context.Context, Grantee, time.Time) ([]AuditLogEntry, time.Time, error)
 }
 
 type PrivilegeClient struct {
@@ -597,11 +601,117 @@ func groupPrivilegesByTypeAndIdentifier(privileges []Privilege) []PrivilegeGroup
 	return res
 }
 
+type AuditLogAction string
+
+const (
+	AuditLogActionGrantPrivilege  AuditLogAction = "GRANT PRIVILEGE"
+	AuditLogActionGrantRole       AuditLogAction = "GRANT ROLE"
+	AuditLogActionRevokePrivilege AuditLogAction = "REVOKE PRIVILEGE"
+	AuditLogActionRevokeRole      AuditLogAction = "REVOKE ROLE"
+)
+
+type AuditLogEntry struct {
+	Timestamp     time.Time
+	Action        AuditLogAction
+	PrivilegeName sql.NullString
+	RoleName      sql.NullString
+	SchemaName    sql.NullString
+	ObjectName    sql.NullString
+	Grantable     sql.NullString
+}
+
+func (c *PrivilegeClient) QueryAuditLogDelta(ctx context.Context, grantee Grantee, since time.Time) ([]AuditLogEntry, time.Time, error) {
+	query := `SELECT TIMESTAMP, EVENT_ACTION, PRIVILEGE_NAME, ROLE_NAME, SCHEMA_NAME, OBJECT_NAME, GRANTABLE
+		FROM AUDIT_LOG
+		WHERE GRANTEE = ?
+		AND EVENT_ACTION IN ('GRANT PRIVILEGE', 'GRANT ROLE', 'REVOKE PRIVILEGE', 'REVOKE ROLE')
+		AND TIMESTAMP > ?
+		ORDER BY TIMESTAMP ASC`
+
+	rows, err := c.QueryContext(ctx, query, grantee, since)
+	if err != nil {
+		return nil, since, err
+	}
+	defer rows.Close() //nolint:errcheck
+
+	var entries []AuditLogEntry
+	latest := since
+	for rows.Next() {
+		var e AuditLogEntry
+		var action string
+		if err := rows.Scan(&e.Timestamp, &action, &e.PrivilegeName, &e.RoleName, &e.SchemaName, &e.ObjectName, &e.Grantable); err != nil {
+			return nil, since, err
+		}
+		e.Action = AuditLogAction(action)
+		entries = append(entries, e)
+		if e.Timestamp.After(latest) {
+			latest = e.Timestamp
+		}
+	}
+	return entries, latest, rows.Err()
+}
+
+func applyAuditLogDeltaForPrivilege(e AuditLogEntry) string {
+	privStr := e.PrivilegeName.String
+	switch {
+	case e.SchemaName.Valid && e.ObjectName.Valid:
+		privStr = fmt.Sprintf(`%s ON "%s"."%s"`, privStr, utils.EscapeDoubleQuotes(e.SchemaName.String), utils.EscapeDoubleQuotes(e.ObjectName.String))
+	case e.SchemaName.Valid:
+		privStr = fmt.Sprintf(`%s ON SCHEMA "%s"`, privStr, utils.EscapeDoubleQuotes(e.SchemaName.String))
+	}
+	if e.Grantable.Valid && strings.EqualFold(e.Grantable.String, "TRUE") {
+		privStr += " WITH GRANT OPTION"
+	}
+	return privStr
+}
+
+func applyAuditLogDeltaForRole(e AuditLogEntry) string {
+	privStr := e.RoleName.String
+	if e.Grantable.Valid && strings.EqualFold(e.Grantable.String, "TRUE") {
+		privStr += " WITH ADMIN OPTION"
+	}
+	return privStr
+}
+
+func applyAuditLogDelta(current []string, entries []AuditLogEntry, defaultSchema DefaultSchema) []string {
+	var result []string
+	result = append(result, current...)
+
+	for _, e := range entries {
+		var privStr string
+		switch e.Action {
+		case AuditLogActionGrantPrivilege, AuditLogActionRevokePrivilege:
+			if !e.PrivilegeName.Valid {
+				continue
+			}
+			privStr = applyAuditLogDeltaForPrivilege(e)
+		case AuditLogActionGrantRole, AuditLogActionRevokeRole:
+			if !e.RoleName.Valid {
+				continue
+			}
+			privStr = applyAuditLogDeltaForRole(e)
+		default:
+			continue
+		}
+
+		switch e.Action {
+		case AuditLogActionGrantPrivilege, AuditLogActionGrantRole:
+			if !slices.Contains(result, privStr) {
+				result = append(result, privStr)
+			}
+		case AuditLogActionRevokePrivilege, AuditLogActionRevokeRole:
+			result = slices.DeleteFunc(result, func(s string) bool { return s == privStr })
+		}
+	}
+
+	_ = defaultSchema
+	return result
+}
+
 func GetDefaultPrivilege(defaultSchema string) string {
 	return fmt.Sprintf(`CREATE ANY ON SCHEMA "%s" WITH GRANT OPTION`, defaultSchema)
 }
 
-// FilterManagedPrivileges filters the observed privileges based on the management policy
 func FilterManagedPrivileges(observed *v1alpha1.UserObservation, specPrivileges []string, prevPrivileges []string, policy, defaultSchema string) (*v1alpha1.UserObservation, error) {
 	if observed == nil {
 		return nil, errors.New(ErrObservationNil)
@@ -623,6 +733,65 @@ func FilterManagedPrivileges(observed *v1alpha1.UserObservation, specPrivileges 
 	default:
 		return observed, fmt.Errorf(ErrUnknownPrivilegeManagementPolicy, policy)
 	}
+}
+
+type DeltaObserver interface {
+	QueryPrivileges(context.Context, Grantee, GranteeType) ([]string, error)
+	QueryRoles(context.Context, Grantee, GranteeType) ([]string, error)
+	QueryAuditLogDelta(context.Context, Grantee, time.Time) ([]AuditLogEntry, time.Time, error)
+}
+
+func FilterManagedPrivilegesAuditLog(ctx context.Context, client DeltaObserver, observed *v1alpha1.UserObservation, grantee Grantee, defaultSchema string) (*v1alpha1.UserObservation, error) {
+	if observed == nil {
+		return nil, errors.New(ErrObservationNil)
+	}
+
+	var since time.Time
+	if observed.LastAuditTimestamp != nil {
+		since = observed.LastAuditTimestamp.Time
+	}
+
+	if since.IsZero() {
+		privs, err := client.QueryPrivileges(ctx, grantee, GranteeTypeUser)
+		if err != nil {
+			return nil, err
+		}
+		roles, err := client.QueryRoles(ctx, grantee, GranteeTypeUser)
+		if err != nil {
+			return nil, err
+		}
+		observed.Privileges = privs
+		observed.Roles = roles
+		now := time.Now()
+		t := metav1.NewTime(now)
+		observed.LastAuditTimestamp = &t
+		return observed, nil
+	}
+
+	entries, latest, err := client.QueryAuditLogDelta(ctx, grantee, since)
+	if err != nil {
+		return nil, err
+	}
+
+	observed.Privileges = applyAuditLogDelta(observed.Privileges, filterByAction(entries, AuditLogActionGrantPrivilege, AuditLogActionRevokePrivilege), defaultSchema)
+	observed.Roles = applyAuditLogDelta(observed.Roles, filterByAction(entries, AuditLogActionGrantRole, AuditLogActionRevokeRole), defaultSchema)
+
+	t := metav1.NewTime(latest)
+	observed.LastAuditTimestamp = &t
+	return observed, nil
+}
+
+func filterByAction(entries []AuditLogEntry, actions ...AuditLogAction) []AuditLogEntry {
+	result := make([]AuditLogEntry, 0, len(entries))
+	for _, e := range entries {
+		for _, a := range actions {
+			if e.Action == a {
+				result = append(result, e)
+				break
+			}
+		}
+	}
+	return result
 }
 
 // createSystemPrivilege creates a system privilege

@@ -221,8 +221,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
-	observed, err = privilege.FilterManagedPrivileges(observed, parameters.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
-
+	observed, err = filterPrivileges(ctx, c.client, observed, parameters, cr)
 	if err != nil {
 		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, fmt.Errorf(errFilterPrivileges, err)
@@ -333,8 +332,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	desired := c.buildDesiredParameters(cr)
 	observed := c.buildObservedParameters(cr)
 
-	observed, err := privilege.FilterManagedPrivileges(observed, cr.Spec.ForProvider.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
-
+	observed, err := filterPrivileges(ctx, c.client, observed, cr.Spec.ForProvider.DeepCopy(), cr)
 	if err != nil {
 		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
 		return managed.ExternalUpdate{}, fmt.Errorf(errFilterPrivileges, err)
@@ -671,6 +669,13 @@ func handleDefaults(cr *v1alpha1.User) *v1alpha1.UserParameters {
 	}
 
 	return parameters
+}
+
+func filterPrivileges(ctx context.Context, client user.UserClient, observed *v1alpha1.UserObservation, parameters *v1alpha1.UserParameters, cr *v1alpha1.User) (*v1alpha1.UserObservation, error) {
+	if cr.Spec.UsePrivilegeDelta {
+		return privilege.FilterManagedPrivilegesAuditLog(ctx, client, observed, parameters.Username, client.GetDefaultSchema())
+	}
+	return privilege.FilterManagedPrivileges(observed, parameters.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, client.GetDefaultSchema())
 }
 
 func (c *external) ResolveUserMappings(ctx context.Context, mappings []v1alpha1.X509UserMapping, namespace string) ([]user.ResolvedUserMapping, error) {

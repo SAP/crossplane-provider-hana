@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
@@ -117,6 +118,18 @@ func (m mockUserClient) TogglePasswordAuthentication(ctx context.Context, userna
 
 func (m mockUserClient) GetDefaultSchema() string {
 	return "DEFAULT_SCHEMA" // Default schema for testing
+}
+
+func (m mockUserClient) QueryPrivileges(_ context.Context, _ privilege.Grantee, _ privilege.GranteeType) ([]string, error) {
+	return nil, nil
+}
+
+func (m mockUserClient) QueryRoles(_ context.Context, _ privilege.Grantee, _ privilege.GranteeType) ([]string, error) {
+	return nil, nil
+}
+
+func (m mockUserClient) QueryAuditLogDelta(_ context.Context, _ privilege.Grantee, _ time.Time) ([]privilege.AuditLogEntry, time.Time, error) {
+	return nil, time.Time{}, nil
 }
 
 func TestConnect(t *testing.T) {
