@@ -157,18 +157,24 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	c.log.Info("Observing auditpolicy resource", "name", cr.Name)
 
-	parameters := buildDesiredParameters(cr)
+	parameters, err := buildDesiredParameters(cr)
+	if err != nil {
+		return managed.ExternalObservation{}, errors.Wrap(err, "error building desired parameters for observation")
+	}
 
 	observed, err := c.client.Read(ctx, parameters)
-
 	if err != nil {
 		c.log.Info("Error observing auditpolicy", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, errors.Wrap(err, errSelectPolicy)
-	}
-
-	if observed == nil || observed.PolicyName == "" || observed.PolicyName != parameters.PolicyName {
+	} else if observed == nil || observed.PolicyName == "" || observed.PolicyName != parameters.PolicyName {
 		c.log.Info("AuditPolicy does not exist", "name", cr.Name, "policyName", parameters.PolicyName)
 		return managed.ExternalObservation{ResourceExists: false}, nil
+	}
+
+	observed.AuditActions, err = auditpolicy.OptimizeAuditActions(observed.AuditActions)
+	if err != nil {
+		c.log.Info("Error optimizing audit actions", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, err
 	}
 
 	cr.Status.AtProvider.PolicyName = observed.PolicyName
@@ -200,7 +206,10 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Creating auditPolicy resource", "name", cr.Name, "policyName", cr.Spec.ForProvider.PolicyName)
 
-	parameters := buildDesiredParameters(cr)
+	parameters, err := buildDesiredParameters(cr)
+	if err != nil {
+		return managed.ExternalCreation{}, errors.Wrap(err, "error building desired parameters for creation")
+	}
 
 	c.log.Info("Creating auditPolicy with parameters",
 		"policyName", parameters.PolicyName,
@@ -212,7 +221,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	cr.SetConditions(xpv1.Creating())
 
-	err := c.client.Create(ctx, parameters)
+	err = c.client.Create(ctx, parameters)
 
 	if err != nil {
 		c.log.Info("Error creating auditpolicy", "name", cr.Name, "error", err)
@@ -230,8 +239,14 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 	c.log.Info("Updating audit policy resource", "name", cr.Name, "policyName", cr.Spec.ForProvider.PolicyName)
 
-	observed := buildObservedParameters(cr)
-	desired := buildDesiredParameters(cr)
+	observed, err := buildObservedParameters(cr)
+	if err != nil {
+		return managed.ExternalUpdate{}, errors.Wrap(err, "error building observed parameters")
+	}
+	desired, err := buildDesiredParameters(cr)
+	if err != nil {
+		return managed.ExternalUpdate{}, errors.Wrap(err, "error building desired parameters")
+	}
 
 	// if audit actions, status or level differ, we need to drop and recreate the policy
 	if needsRecreation(observed, desired) {
@@ -301,11 +316,14 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Deleting auditpolicy resource", "name", cr.Name, "schemaName", cr.Spec.ForProvider.PolicyName)
 
-	parameters := buildDesiredParameters(cr)
+	parameters, err := buildDesiredParameters(cr)
+	if err != nil {
+		return managed.ExternalDelete{}, errors.Wrap(err, "error building desired parameters for deletion")
+	}
 
 	cr.SetConditions(xpv1.Deleting())
 
-	err := c.client.Delete(ctx, parameters)
+	err = c.client.Delete(ctx, parameters)
 
 	if err != nil {
 		c.log.Info("Error deleting auditpolicy", "name", cr.Name, "error", err)
@@ -316,20 +334,29 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 	return managed.ExternalDelete{}, err
 }
 
-func buildObservedParameters(cr *v1alpha1.AuditPolicy) *v1alpha1.AuditPolicyObservation {
+func buildObservedParameters(cr *v1alpha1.AuditPolicy) (*v1alpha1.AuditPolicyObservation, error) {
 	observed := cr.Status.AtProvider.DeepCopy()
-	return observed
+	auditActions, err := auditpolicy.OptimizeAuditActions(observed.AuditActions)
+	if err != nil {
+		return nil, err
+	}
+	observed.AuditActions = auditActions
+	return observed, nil
 }
 
-func buildDesiredParameters(cr *v1alpha1.AuditPolicy) *v1alpha1.AuditPolicyParameters {
+func buildDesiredParameters(cr *v1alpha1.AuditPolicy) (*v1alpha1.AuditPolicyParameters, error) {
+	auditActions, err := auditpolicy.OptimizeAuditActions(cr.Spec.ForProvider.AuditActions)
+	if err != nil {
+		return nil, err
+	}
 	return &v1alpha1.AuditPolicyParameters{
 		PolicyName:          strings.ToUpper(cr.Spec.ForProvider.PolicyName),
 		AuditStatus:         strings.ToUpper(cr.Spec.ForProvider.AuditStatus),
-		AuditActions:        utils.ArrayToUpper(cr.Spec.ForProvider.AuditActions),
+		AuditActions:        auditActions,
 		AuditLevel:          strings.ToUpper(cr.Spec.ForProvider.AuditLevel),
 		AuditTrailRetention: cr.Spec.ForProvider.AuditTrailRetention,
 		Enabled:             cr.Spec.ForProvider.Enabled,
-	}
+	}, nil
 }
 
 func needsRecreation(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {
