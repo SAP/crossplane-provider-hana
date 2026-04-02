@@ -456,3 +456,168 @@ func TestDelete(t *testing.T) {
 		})
 	}
 }
+
+func TestObserve_CaseSensitivity(t *testing.T) {
+	type fields struct {
+		client dbschema.DbSchemaClient
+		log    logging.Logger
+	}
+
+	type args struct {
+		ctx context.Context
+		mg  resource.Managed
+	}
+
+	type want struct {
+		c   managed.ExternalObservation
+		err error
+	}
+
+	cases := map[string]struct {
+		reason string
+		fields fields
+		args   args
+		want   want
+	}{
+		"LowercaseSchemaName_ShouldBeFound": {
+			reason: "A lowercase schema name should be found when the database returns the same lowercase name",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) (observed *v1alpha1.DbSchemaObservation, err error) {
+						// Simulate HANA returning the schema with lowercase name (as stored with double quotes)
+						return &v1alpha1.DbSchemaObservation{
+							SchemaName: "my_lowercase_schema",
+							Owner:      "SYSTEM",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.DbSchema{
+					Spec: v1alpha1.DbSchemaSpec{
+						ForProvider: v1alpha1.DbSchemaParameters{
+							SchemaName: "my_lowercase_schema",
+						},
+					},
+				},
+			},
+			want: want{
+				// Currently this will FAIL because Observe converts to uppercase
+				// and compares "MY_LOWERCASE_SCHEMA" != "my_lowercase_schema"
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+				err: nil,
+			},
+		},
+		"MixedCaseSchemaName_ShouldBeFound": {
+			reason: "A mixed-case schema name should be found when the database returns the same mixed-case name",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) (observed *v1alpha1.DbSchemaObservation, err error) {
+						return &v1alpha1.DbSchemaObservation{
+							SchemaName: "MyMixedCaseSchema",
+							Owner:      "SYSTEM",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.DbSchema{
+					Spec: v1alpha1.DbSchemaSpec{
+						ForProvider: v1alpha1.DbSchemaParameters{
+							SchemaName: "MyMixedCaseSchema",
+						},
+					},
+				},
+			},
+			want: want{
+				// Currently this will FAIL because Observe converts to uppercase
+				// and compares "MYMIXEDCASESCHEMA" != "MyMixedCaseSchema"
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+				err: nil,
+			},
+		},
+		"UppercaseSchemaName_ShouldBeFound": {
+			reason: "An uppercase schema name should still work correctly",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) (observed *v1alpha1.DbSchemaObservation, err error) {
+						return &v1alpha1.DbSchemaObservation{
+							SchemaName: "UPPERCASE_SCHEMA",
+							Owner:      "SYSTEM",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.DbSchema{
+					Spec: v1alpha1.DbSchemaSpec{
+						ForProvider: v1alpha1.DbSchemaParameters{
+							SchemaName: "UPPERCASE_SCHEMA",
+						},
+					},
+				},
+			},
+			want: want{
+				// This should pass because uppercase stays uppercase
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+				err: nil,
+			},
+		},
+		"SchemaNameWithSpecialChars_ShouldBeFound": {
+			reason: "A schema name with special characters (like colons) should be found",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) (observed *v1alpha1.DbSchemaObservation, err error) {
+						return &v1alpha1.DbSchemaObservation{
+							SchemaName: "sap.hana::my_schema",
+							Owner:      "SYSTEM",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.DbSchema{
+					Spec: v1alpha1.DbSchemaSpec{
+						ForProvider: v1alpha1.DbSchemaParameters{
+							SchemaName: "sap.hana::my_schema",
+						},
+					},
+				},
+			},
+			want: want{
+				// Currently this will FAIL because Observe converts to uppercase
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+				err: nil,
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := external{client: tc.fields.client, log: tc.fields.log}
+			got, err := e.Observe(tc.args.ctx, tc.args.mg)
+			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+				t.Errorf("\n%s\ne.Observe(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+			if diff := cmp.Diff(tc.want.c, got); diff != "" {
+				t.Errorf("\n%s\ne.Observe(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
