@@ -25,8 +25,8 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
 
 ## 🚧 Prerequisites 
 - You’ve created a control plane
-- You’ve created a [HANA Cloud instance](/docs/crossplane-provider-hana/docs/user-stories/setup)
-- You’ve set up the [HANA Cloud Crossplane provider](/docs/crossplane-provider-hana/docs/user-stories/setup#install-provider)
+- You’ve created a [HANA Cloud instance](/docs/crossplane-provider-hana/docs/end-user-guides/setup)
+- You’ve set up the [HANA Cloud Crossplane provider](/docs/crossplane-provider-hana/docs/end-user-guides/setup#install-provider)
 
 <Tabs>
   <TabItem value="liquibase" label="Liquibase">
@@ -35,7 +35,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
     ### Prerequisites
     For this approach, we’ll create one user and two schemas. One schema is managed with Liquibase and one schema stores Liquibase’s metadata (the changelog).
 
-    You can create the schemas and user using the HANA Cloud Crossplane provider as shown in our [Schema guide](/docs/crossplane-provider-hana/docs/user-stories/schema) and [User management guide](/docs/crossplane-provider-hana/docs/user-stories/users).
+    You can create the schemas and user using the HANA Cloud Crossplane provider as shown in our [Schema guide](/docs/crossplane-provider-hana/docs/end-user-guides/schema) and [User management guide](/docs/crossplane-provider-hana/docs/end-user-guides/users).
 
     First, let’s create the user. We start with the user secret and then the user itself.
 
@@ -105,7 +105,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
 
     :::danger Grant least-privilege permissions 
     We strongly recommend granting your Liquibase user only the permissions required to manage the target schemas and tables.
-    See the [User management guide](/docs/crossplane-provider-hana/docs/user-stories/users) for more details on how to manage user privileges in HANA Cloud using the managed control plane.
+    See the [User management guide](/docs/crossplane-provider-hana/docs/end-user-guides/users) for more details on how to manage user privileges in HANA Cloud using the managed control plane.
     :::
 
     Apply the schemas:
