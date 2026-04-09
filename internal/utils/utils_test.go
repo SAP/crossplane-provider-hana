@@ -235,3 +235,123 @@ func TestPreprocessPrivilegeStrings(t *testing.T) {
 		})
 	}
 }
+
+func TestMapDiffOnlyDesired(t *testing.T) {
+	tests := []struct {
+		name     string
+		observed map[string]string
+		desired  map[string]string
+		expected map[string]string
+	}{
+		{
+			name: "no differences - all desired keys match",
+			observed: map[string]string{
+				"param1": "value1",
+				"param2": "value2",
+				"param3": "default3", // extra observed parameter (HANA default)
+			},
+			desired: map[string]string{
+				"param1": "value1",
+				"param2": "value2",
+			},
+			expected: map[string]string{},
+		},
+		{
+			name: "desired parameter differs from observed",
+			observed: map[string]string{
+				"param1": "value1",
+				"param2": "oldValue",
+				"param3": "default3",
+			},
+			desired: map[string]string{
+				"param1": "value1",
+				"param2": "newValue",
+			},
+			expected: map[string]string{
+				"param2": "newValue",
+			},
+		},
+		{
+			name: "desired parameter missing in observed",
+			observed: map[string]string{
+				"param1": "value1",
+			},
+			desired: map[string]string{
+				"param1": "value1",
+				"param2": "value2",
+			},
+			expected: map[string]string{
+				"param2": "value2",
+			},
+		},
+		{
+			name: "empty observed map",
+			observed: map[string]string{},
+			desired: map[string]string{
+				"param1": "value1",
+				"param2": "value2",
+			},
+			expected: map[string]string{
+				"param1": "value1",
+				"param2": "value2",
+			},
+		},
+		{
+			name:     "empty desired map",
+			observed: map[string]string{
+				"param1": "value1",
+				"param2": "value2",
+			},
+			desired:  map[string]string{},
+			expected: map[string]string{},
+		},
+		{
+			name: "observed has many defaults, desired has few",
+			observed: map[string]string{
+				"max_connections":      "100",
+				"timeout":              "30",
+				"buffer_size":          "1024",
+				"enable_logging":       "true",
+				"default_schema":       "SYS",
+				"user_defined_param1":  "custom1",
+			},
+			desired: map[string]string{
+				"user_defined_param1": "custom1",
+			},
+			expected: map[string]string{},
+		},
+		{
+			name: "multiple differences",
+			observed: map[string]string{
+				"param1": "value1",
+				"param2": "value2",
+				"param3": "value3",
+			},
+			desired: map[string]string{
+				"param1": "newValue1",
+				"param2": "value2",
+				"param4": "newValue4",
+			},
+			expected: map[string]string{
+				"param1": "newValue1",
+				"param4": "newValue4",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := MapDiffOnlyDesired(tt.observed, tt.desired)
+			if len(result) != len(tt.expected) {
+				t.Errorf("MapDiffOnlyDesired() returned %d items, want %d", len(result), len(tt.expected))
+			}
+			for key, expectedVal := range tt.expected {
+				if resultVal, ok := result[key]; !ok {
+					t.Errorf("MapDiffOnlyDesired() missing key %q", key)
+				} else if resultVal != expectedVal {
+					t.Errorf("MapDiffOnlyDesired()[%q] = %q, want %q", key, resultVal, expectedVal)
+				}
+			}
+		})
+	}
+}
