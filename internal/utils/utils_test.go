@@ -285,7 +285,7 @@ func TestMapDiffOnlyDesired(t *testing.T) {
 			},
 		},
 		{
-			name: "empty observed map",
+			name:     "empty observed map",
 			observed: map[string]string{},
 			desired: map[string]string{
 				"param1": "value1",
@@ -297,7 +297,7 @@ func TestMapDiffOnlyDesired(t *testing.T) {
 			},
 		},
 		{
-			name:     "empty desired map",
+			name: "empty desired map",
 			observed: map[string]string{
 				"param1": "value1",
 				"param2": "value2",
@@ -308,12 +308,12 @@ func TestMapDiffOnlyDesired(t *testing.T) {
 		{
 			name: "observed has many defaults, desired has few",
 			observed: map[string]string{
-				"max_connections":      "100",
-				"timeout":              "30",
-				"buffer_size":          "1024",
-				"enable_logging":       "true",
-				"default_schema":       "SYS",
-				"user_defined_param1":  "custom1",
+				"max_connections":     "100",
+				"timeout":             "30",
+				"buffer_size":         "1024",
+				"enable_logging":      "true",
+				"default_schema":      "SYS",
+				"user_defined_param1": "custom1",
 			},
 			desired: map[string]string{
 				"user_defined_param1": "custom1",
