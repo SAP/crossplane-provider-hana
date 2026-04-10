@@ -350,7 +350,7 @@ func buildDesiredParameters(cr *v1alpha1.AuditPolicy) (*v1alpha1.AuditPolicyPara
 		return nil, err
 	}
 	return &v1alpha1.AuditPolicyParameters{
-		PolicyName:          strings.ToUpper(cr.Spec.ForProvider.PolicyName),
+		PolicyName:          cr.Spec.ForProvider.PolicyName,
 		AuditStatus:         strings.ToUpper(cr.Spec.ForProvider.AuditStatus),
 		AuditActions:        auditActions,
 		AuditLevel:          strings.ToUpper(cr.Spec.ForProvider.AuditLevel),

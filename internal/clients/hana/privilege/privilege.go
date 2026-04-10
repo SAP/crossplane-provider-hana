@@ -402,7 +402,7 @@ func parseRoleString(roleStr string) (Role, error) {
 		}, nil
 	}
 	// Check for invalid grant option usage
-	upperStr := strings.ToUpper(strings.TrimSpace(roleStr))
+	upperStr := strings.TrimSpace(roleStr)
 	if strings.HasSuffix(upperStr, "WITH GRANT OPTION") {
 		return Role{}, fmt.Errorf(errRoleInvalidGrantOption, roleStr)
 	}
