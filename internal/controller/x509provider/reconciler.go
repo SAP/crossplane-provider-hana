@@ -63,8 +63,10 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 			db:        db,
 		}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
+		managed.WithPollInterval(o.PollInterval),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
-		managed.WithConnectionPublishers(cps...))
+		managed.WithConnectionPublishers(cps...)),
+		features.ConfigureBetaManagementPolicies(o))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
