@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -149,8 +148,10 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	c.log.Info("Observing dbschema resource", "name", cr.Name)
 
+	// Preserve the original case for schema name because HANA uses double-quoted
+	// identifiers which are case-sensitive
 	parameters := &v1alpha1.DbSchemaParameters{
-		SchemaName: strings.ToUpper(cr.Spec.ForProvider.SchemaName),
+		SchemaName: cr.Spec.ForProvider.SchemaName,
 	}
 
 	observed, err := c.client.Read(ctx, parameters)
