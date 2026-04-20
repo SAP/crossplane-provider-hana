@@ -179,7 +179,9 @@ func upToDate(observed *v1alpha1.UsergroupObservation, desired *v1alpha1.Usergro
 	if observed.DisableUserAdmin != desired.DisableUserAdmin {
 		return false
 	}
-	if parametersToUpdate := utils.MapDiff(observed.Parameters, desired.Parameters); len(parametersToUpdate) > 0 {
+	// Only check parameters that are specified in desired state (user-specified)
+	// to avoid triggering updates due to HANA default values
+	if parametersToUpdate := utils.MapDiffOnlyDesired(observed.Parameters, desired.Parameters); len(parametersToUpdate) > 0 {
 		return false
 	}
 	return true
@@ -251,7 +253,9 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	observedParameters := cr.Status.AtProvider.Parameters
 	desiredParameters := parameters.Parameters
 
-	if parametersToUpdate := utils.MapDiff(observedParameters, desiredParameters); len(parametersToUpdate) > 0 {
+	// Only update parameters that are specified in desired state (user-specified)
+	// to avoid updating HANA default values that weren't set by the user
+	if parametersToUpdate := utils.MapDiffOnlyDesired(observedParameters, desiredParameters); len(parametersToUpdate) > 0 {
 		c.log.Debug("Updating usergroup parameters",
 			"name", cr.Name,
 			"usergroupName", parameters.UsergroupName,
