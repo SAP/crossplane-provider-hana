@@ -46,7 +46,7 @@ const (
 )
 
 // Setup adds a controller that reconciles Role managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.RoleGroupKind)
 
 	log := o.Logger.WithValues("controller", name)
@@ -77,7 +77,7 @@ type connector struct {
 	usage     resource.Tracker
 	newClient func(db xsql.DB, username string) role.Client
 	log       logging.Logger
-	db        xsql.DB
+	db        xsql.Connector
 }
 
 // Connect typically produces an ExternalClient by:
@@ -114,12 +114,13 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	username := string(s.Data[xpv1.ResourceCredentialsSecretUserKey])
 
-	if err := c.db.Connect(ctx, s.Data); err != nil {
+	conn, err := c.db.Connect(ctx, s.Data)
+	if err != nil {
 		return nil, fmt.Errorf("cannot connect to HANA DB: %w", err)
 	}
 
 	return &external{
-		client: c.newClient(c.db, username),
+		client: c.newClient(conn, username),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil
