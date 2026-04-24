@@ -1,11 +1,11 @@
 module github.com/SAP/crossplane-provider-hana
 
-go 1.26
+go 1.26.2
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/SAP/go-hdb v1.15.1
-	github.com/SAP/sap-btp-service-operator v0.9.0
+	github.com/SAP/sap-btp-service-operator v0.10.5
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/crossplane-contrib/xp-testing v1.9.1
 	github.com/crossplane/crossplane-runtime v1.20.0
@@ -14,12 +14,12 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.48.0
-	golang.org/x/oauth2 v0.35.0
-	k8s.io/api v0.35.1
-	k8s.io/apimachinery v0.35.1
-	k8s.io/client-go v0.35.1
+	golang.org/x/oauth2 v0.36.0
+	k8s.io/api v0.35.3
+	k8s.io/apimachinery v0.35.3
+	k8s.io/client-go v0.35.3
 	k8s.io/utils v0.0.0-20251222233032-718f0e51e6d2
-	sigs.k8s.io/controller-runtime v0.21.0
+	sigs.k8s.io/controller-runtime v0.22.4
 	sigs.k8s.io/controller-tools v0.20.1
 	sigs.k8s.io/e2e-framework v0.6.0
 )
