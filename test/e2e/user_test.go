@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
@@ -15,6 +16,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/utils"
 	"github.com/crossplane-contrib/xp-testing/pkg/resources"
 	"github.com/crossplane-contrib/xp-testing/pkg/xpenvfuncs"
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -121,6 +123,64 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 				t.Logf("kubectl describe user output:\n%s", string(out))
 			}
 		}
+
+		// Test ManagementPolicies: Switch to ObserveOnly
+		t.Logf("Testing ManagementPolicies - setting to ObserveOnly")
+		if err := c.Resource.Get(ctx, user.GetName(), user.GetNamespace(), user); err != nil {
+			t.Errorf("failed to get user: %v", err)
+			return ctx
+		}
+
+		user.Spec.ManagementPolicies = []xpv1.ManagementAction{xpv1.ManagementActionObserve}
+		if err := res.Update(ctx, user); err != nil {
+			t.Errorf("failed to update user managementPolicies: %v", err)
+			return ctx
+		}
+		t.Logf("Changed user %s to ObserveOnly management policy", user.Spec.ForProvider.Username)
+
+		// Try to add a new privilege - this should NOT be applied due to ObserveOnly policy
+		if err := c.Resource.Get(ctx, user.GetName(), user.GetNamespace(), user); err != nil {
+			t.Errorf("failed to get user: %v", err)
+			return ctx
+		}
+
+		username := user.Spec.ForProvider.Username
+		newPrivilege := "BACKUP ADMIN"
+		user.Spec.ForProvider.Privileges = append(user.Spec.ForProvider.Privileges, newPrivilege)
+
+		if err := res.Update(ctx, user); err != nil {
+			t.Errorf("failed to update user spec: %v", err)
+			return ctx
+		}
+
+		// Wait a bit for reconciliation attempt
+		time.Sleep(30 * time.Second)
+
+		// Verify that the new privilege was NOT applied in the database
+		var privilegeCount int
+		row := c.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM GRANTED_PRIVILEGES WHERE GRANTEE = ? AND PRIVILEGE = ?", username, newPrivilege)
+		if err := row.Scan(&privilegeCount); err != nil {
+			t.Errorf("failed to query privileges: %v", err)
+			return ctx
+		}
+
+		if privilegeCount != 0 {
+			t.Errorf("ObserveOnly policy should prevent updates: found %d %s privileges, expected 0", privilegeCount, newPrivilege)
+		} else {
+			t.Logf("Verified: ObserveOnly policy prevented privilege update for user %s", username)
+		}
+
+		// Restore managementPolicies to full control for cleanup
+		if err := c.Resource.Get(ctx, user.GetName(), user.GetNamespace(), user); err != nil {
+			t.Errorf("failed to get user: %v", err)
+			return ctx
+		}
+		user.Spec.ManagementPolicies = []xpv1.ManagementAction{xpv1.ManagementActionAll}
+		if err := res.Update(ctx, user); err != nil {
+			t.Errorf("failed to restore managementPolicies: %v", err)
+			return ctx
+		}
+		t.Logf("Restored managementPolicies to All for cleanup")
 	}
 
 	return ctx
