@@ -5,10 +5,9 @@ Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 package features
 
 import (
+	"github.com/crossplane/crossplane-runtime/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/pkg/feature"
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-
-	"github.com/SAP/crossplane-provider-hana/internal/controller"
 )
 
 // Feature flags.

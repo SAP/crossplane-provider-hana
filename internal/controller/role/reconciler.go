@@ -30,6 +30,7 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
 
 const (
