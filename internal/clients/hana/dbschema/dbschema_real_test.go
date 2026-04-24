@@ -22,13 +22,13 @@ func TestReadSchema_RealConnection(t *testing.T) {
 	// Create HANA DB connection
 	db := hana.New(logging.NewNopLogger())
 	ctx := context.Background()
-	err := db.Connect(ctx, creds)
+	conn, err := db.Connect(ctx, creds)
 	if err != nil {
 		t.Fatalf("failed to connect to HANA DB: %v", err)
 	}
 
 	// Create dbschema client with the DB connection
-	client := New(db)
+	client := New(conn)
 
 	params := &v1alpha1.DbSchemaParameters{
 		SchemaName: "MYUSER", // needs to be an existing schema

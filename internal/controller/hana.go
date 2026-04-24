@@ -22,9 +22,9 @@ import (
 
 // Setup creates all HANA controllers with the supplied logger and adds
 // them to the supplied manager.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	// SQL-based controllers
-	for _, setup := range []func(ctrl.Manager, controller.Options, xsql.DB) error{
+	for _, setup := range []func(ctrl.Manager, controller.Options, xsql.Connector) error{
 		role.Setup,
 		usergroup.Setup,
 		dbschema.Setup,

@@ -52,7 +52,7 @@ const (
 type NoOpService struct{}
 
 // Setup adds a controller that reconciles AuditPolicy managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.AuditPolicyGroupKind)
 
 	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
@@ -90,7 +90,7 @@ type connector struct {
 	usage     resource.Tracker
 	newClient func(db xsql.DB) auditpolicy.Client
 	log       logging.Logger
-	db        xsql.DB
+	db        xsql.Connector
 }
 
 // Connect typically produces an ExternalClient by:
@@ -125,13 +125,14 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	c.log.Info("Connecting to auditpolicy resource", "name", cr.Name)
 
-	if err := c.db.Connect(ctx, s.Data); err != nil {
+	conn, err := c.db.Connect(ctx, s.Data)
+	if err != nil {
 		c.log.Info("Error connecting to hana in auditpolicy", "name", cr.Name, "error", err)
 		return nil, errors.Wrap(err, errDbFail)
 	}
 
 	return &external{
-		client: c.newClient(c.db),
+		client: c.newClient(conn),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil

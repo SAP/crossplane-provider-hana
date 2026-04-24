@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -49,7 +48,7 @@ const (
 type NoOpService struct{}
 
 // Setup adds a controller that reconciles Dbschema managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.DbSchemaGroupKind)
 
 	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
@@ -85,7 +84,7 @@ type connector struct {
 	usage     resource.Tracker
 	newClient func(db xsql.DB) dbschema.Client
 	log       logging.Logger
-	db        xsql.DB
+	db        xsql.Connector
 }
 
 // Connect typically produces an ExternalClient by:
@@ -120,12 +119,13 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	c.log.Info("Connecting to dbschema resource", "name", cr.Name)
 
-	if err := c.db.Connect(ctx, s.Data); err != nil {
+	conn, err := c.db.Connect(ctx, s.Data)
+	if err != nil {
 		return nil, fmt.Errorf("cannot connect to HANA DB: %w", err)
 	}
 
 	return &external{
-		client: c.newClient(c.db),
+		client: c.newClient(conn),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil
@@ -151,8 +151,10 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	c.log.Info("Observing dbschema resource", "name", cr.Name)
 
+	// Preserve the original case for schema name because HANA uses double-quoted
+	// identifiers which are case-sensitive
 	parameters := &v1alpha1.DbSchemaParameters{
-		SchemaName: strings.ToUpper(cr.Spec.ForProvider.SchemaName),
+		SchemaName: cr.Spec.ForProvider.SchemaName,
 	}
 
 	observed, err := c.client.Read(ctx, parameters)

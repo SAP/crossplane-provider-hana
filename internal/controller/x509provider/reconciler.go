@@ -44,7 +44,7 @@ const (
 )
 
 // Setup adds a controller that reconciles X509Provider managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(adminv1alpha1.X509ProviderGroupKind)
 
 	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
@@ -82,7 +82,7 @@ type connector struct {
 	usage     resource.Tracker
 	newClient func(db xsql.DB) x509provider.Client
 	log       logging.Logger
-	db        xsql.DB
+	db        xsql.Connector
 }
 
 // Connect typically produces an ExternalClient by:
@@ -117,12 +117,13 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	c.log.Info("Connecting to X509 provider resource", "name", cr.Name)
 
-	if err := c.db.Connect(ctx, s.Data); err != nil {
+	conn, err := c.db.Connect(ctx, s.Data)
+	if err != nil {
 		return nil, errors.Wrap(err, errDbFail)
 	}
 
 	return &external{
-		client: c.newClient(c.db),
+		client: c.newClient(conn),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil

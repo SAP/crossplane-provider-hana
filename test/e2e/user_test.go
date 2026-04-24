@@ -38,7 +38,8 @@ type UserTestConfig struct {
 
 	DBSchemas []string // Track schema names
 	DBObjects []string // Track object names
-	db        xsql.DB
+	db        xsql.Connector
+	conn      xsql.DB
 }
 
 func TestUser(t *testing.T) {
@@ -136,15 +137,17 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 		secretDataBytes[k] = []byte(v)
 	}
 
-	if err := c.db.Connect(ctx, secretDataBytes); err != nil {
+	conn, err := c.db.Connect(ctx, secretDataBytes)
+	if err != nil {
 		t.Errorf("failed to connect to database: %v", err)
 		return ctx
 	}
+	c.conn = conn
 
 	resources.ImportResources(ctx, t, cfg, c.TestConfig.ResourceDirectory)
 
 	objects := make([]k8s.Object, 0)
-	err := decoder.DecodeEachFile(
+	err = decoder.DecodeEachFile(
 		ctx, os.DirFS(c.TestConfig.ResourceDirectory), "*",
 		func(ctx context.Context, obj k8s.Object) error {
 			objects = append(objects, obj)
@@ -164,9 +167,9 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 
 	schemaName := "E2ENEWSCHEMA"
 	var schemaNamePlaceholder string
-	row := c.db.QueryRowContext(ctx, "SELECT SCHEMA_NAME FROM SCHEMAS WHERE SCHEMA_NAME = ?", schemaName)
+	row := c.conn.QueryRowContext(ctx, "SELECT SCHEMA_NAME FROM SCHEMAS WHERE SCHEMA_NAME = ?", schemaName)
 	if err := row.Scan(&schemaNamePlaceholder); xsql.IsNoRows(err) {
-		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA %s", schemaName)); err != nil {
+		if _, err := c.conn.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA %s", schemaName)); err != nil {
 			t.Errorf("failed to create schema: %v", err)
 			return ctx
 		} else {
@@ -180,9 +183,9 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 
 	objectName := "E2ENEWTABLE"
 	var objectNamePlaceholder string
-	row = c.db.QueryRowContext(ctx, "SELECT SCHEMA_NAME, TABLE_NAME FROM TABLES WHERE SCHEMA_NAME = ? AND TABLE_NAME = ?", schemaName, objectName)
+	row = c.conn.QueryRowContext(ctx, "SELECT SCHEMA_NAME, TABLE_NAME FROM TABLES WHERE SCHEMA_NAME = ? AND TABLE_NAME = ?", schemaName, objectName)
 	if err := row.Scan(&schemaNamePlaceholder, &objectNamePlaceholder); xsql.IsNoRows(err) {
-		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("CREATE TABLE %s.%s (ID INT PRIMARY KEY, NAME NVARCHAR(100))", schemaName, objectName)); err != nil {
+		if _, err := c.conn.ExecContext(ctx, fmt.Sprintf("CREATE TABLE %s.%s (ID INT PRIMARY KEY, NAME NVARCHAR(100))", schemaName, objectName)); err != nil {
 			t.Errorf("failed to create table: %v", err)
 			return ctx
 		} else {
@@ -246,11 +249,11 @@ func (c *UserTestConfig) TeardownUser(ctx context.Context, t *testing.T, cfg *en
 		schemaName := c.DBSchemas[0]
 		objectName := c.DBObjects[0]
 
-		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("DROP TABLE %s.%s", schemaName, objectName)); err != nil {
+		if _, err := c.conn.ExecContext(ctx, fmt.Sprintf("DROP TABLE %s.%s", schemaName, objectName)); err != nil {
 			t.Errorf("failed to drop table %s: %v", objectName, err)
 		}
 
-		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA %s CASCADE", schemaName)); err != nil {
+		if _, err := c.conn.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA %s CASCADE", schemaName)); err != nil {
 			t.Errorf("failed to drop schema %s: %v", schemaName, err)
 		}
 	}

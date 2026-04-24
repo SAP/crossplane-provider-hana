@@ -53,7 +53,7 @@ const (
 )
 
 // Setup adds a controller that reconciles User managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.UserGroupKind)
 
 	log := o.Logger.WithValues("controller", name)
@@ -121,7 +121,7 @@ func generateReconcileRequestsFromSecret(ctx context.Context, obj client.Object,
 // A connector is expected to produce an ExternalClient when its Connect method
 // is called.
 type connector struct {
-	db        xsql.DB
+	db        xsql.Connector
 	kube      client.Client
 	usage     resource.Tracker
 	newClient func(xsql.DB, string) user.Client
@@ -162,12 +162,13 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	username := string(secret.Data[xpv1.ResourceCredentialsSecretUserKey])
 
-	if err := c.db.Connect(ctx, secret.Data); err != nil {
+	conn, err := c.db.Connect(ctx, secret.Data)
+	if err != nil {
 		return nil, fmt.Errorf("cannot connect to HANA DB: %w", err)
 	}
 
 	return &external{
-		client: c.newClient(c.db, username),
+		client: c.newClient(conn, username),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil

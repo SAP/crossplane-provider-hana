@@ -1082,6 +1082,52 @@ func TestParseRoleString_WithOptions(t *testing.T) {
 			in:   "MYSCHEMA.ROLE1 WITH ADMIN OPTION",
 			want: Role{Name: "MYSCHEMA.ROLE1", IsGrantable: true},
 		},
+		// Special character role name tests (e.g., HANA namespace-style roles)
+		{
+			name: "RoleWithDoubleColons",
+			in:   "data::access_g",
+			want: Role{Name: "data::access_g", IsGrantable: false},
+		},
+		{
+			name: "RoleWithDoubleColonsAndAdminOption",
+			in:   "data::access_g WITH ADMIN OPTION",
+			want: Role{Name: "data::access_g", IsGrantable: true},
+		},
+		{
+			name: "RoleWithDotsAndDoubleColons",
+			in:   "sap.hana::data_reader",
+			want: Role{Name: "sap.hana::data_reader", IsGrantable: false},
+		},
+		{
+			name: "RoleWithDotsAndDoubleColonsAndAdminOption",
+			in:   "sap.hana::data_reader WITH ADMIN OPTION",
+			want: Role{Name: "sap.hana::data_reader", IsGrantable: true},
+		},
+		{
+			name: "QuotedRoleWithSpecialChars",
+			in:   `"data::access_g"`,
+			want: Role{Name: `"data::access_g"`, IsGrantable: false},
+		},
+		{
+			name: "QuotedRoleWithSpecialCharsAndAdminOption",
+			in:   `"data::access_g" WITH ADMIN OPTION`,
+			want: Role{Name: `"data::access_g"`, IsGrantable: true},
+		},
+		{
+			name: "LowercaseRoleName",
+			in:   "my_lowercase_role",
+			want: Role{Name: "my_lowercase_role", IsGrantable: false},
+		},
+		{
+			name: "MixedCaseRoleName",
+			in:   "MyMixedCaseRole",
+			want: Role{Name: "MyMixedCaseRole", IsGrantable: false},
+		},
+		{
+			name: "RoleWithUnderscoresAndNumbers",
+			in:   "role_123_test",
+			want: Role{Name: "role_123_test", IsGrantable: false},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

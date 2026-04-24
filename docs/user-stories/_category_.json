@@ -1,8 +1,0 @@
-{
-  "label": "HANA cloud",
-  "position": 9,
-  "link": {
-    "type": "generated-index",
-    "description": "To eliminate manual clicking in HANA we strongly recommend using this Provider to manage all your content in HANA Cloud service instances."
-  }
-}
