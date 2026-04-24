@@ -85,10 +85,11 @@ func main() {
 		Features:                &feature.Flags{},
 	}
 
-	if *enableExternalSecretStores {
-		o.Features.Enable(features.EnableAlphaExternalSecretStores)
 	o.Features.Enable(features.EnableAlphaManagementPolicies)
 	log.Info("Beta feature enabled by default", "flag", features.EnableAlphaManagementPolicies)
+
+	if *enableExternalSecretStores {
+		o.Features.Enable(features.EnableAlphaExternalSecretStores)
 		log.Info("Alpha feature enabled", "flag", features.EnableAlphaExternalSecretStores)
 
 		// Ensure default store config exists.
