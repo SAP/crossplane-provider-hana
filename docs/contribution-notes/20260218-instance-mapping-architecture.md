@@ -256,28 +256,40 @@ spec:
     kind: CfHanaInstanceMapping
     spec:
       # User-friendly inputs
-      serviceInstanceRef: string # name of BTP Provider ServiceInstance CR
-      orgRef: string # name of CF Provider Organization CR
-      spaceRef: string # name of CF Provider Space CR
+      serviceInstanceRef:
+        name: string    # name of BTP Provider ServiceInstance CR
+        namespace: string | default=default
+      orgRef:
+        name: string    # name of CF Provider Organization CR
+        namespace: string | default=default
+      spaceRef:
+        name: string    # name of CF Provider Space CR
+        namespace: string | default=default
+      adminCredentialsSecretRef:
+        name: string    # name of the admin credentials Secret
+        namespace: string | default=default
   resources:
     - id: serviceInstance
       externalRef:
         apiVersion: account.btp.sap.crossplane.io/v1alpha1
         kind: ServiceInstance
         metadata:
-          name: ${schema.spec.serviceInstanceRef}
+          name: ${schema.spec.serviceInstanceRef.name}
+          namespace: ${schema.spec.serviceInstanceRef.namespace}
     - id: org
       externalRef:
         apiVersion: cloudfoundry.crossplane.io/v1alpha1
         kind: Organization
         metadata:
-          name: ${schema.spec.orgRef}
+          name: ${schema.spec.orgRef.name}
+          namespace: ${schema.spec.orgRef.namespace}
     - id: space
       externalRef:
         apiVersion: cloudfoundry.crossplane.io/v1alpha1
         kind: Space
         metadata:
-          name: ${schema.spec.spaceRef}
+          name: ${schema.spec.spaceRef.name}
+          namespace: ${schema.spec.spaceRef.namespace}
     - id: instanceMapping
       template:
         apiVersion: inventory.hana.orchestrate.cloud.sap/v1alpha1
@@ -291,8 +303,8 @@ spec:
             primaryID: ${org.status.atProvider.id}
             secondaryID: ${space.status.atProvider.id}
             adminCredentialsSecretRef:
-              name: hana-api-binding-credentials
-              namespace: default
+              name: ${schema.spec.adminCredentialsSecretRef.name}
+              namespace: ${schema.spec.adminCredentialsSecretRef.namespace}
               key: credentials
 ```
 
@@ -304,9 +316,16 @@ kind: CfHanaInstanceMapping
 metadata:
   name: cf-hana-instance-mapping
 spec:
-  serviceInstanceRef: hana # existing BTP Provider ServiceInstance CR
-  orgRef: org-1 # existing CF Provider Organization CR
-  spaceRef: space-1 # existing CF Provider Space CR
+  serviceInstanceRef:
+    name: hana          # existing BTP Provider ServiceInstance CR
+    namespace: other-namespace
+  orgRef:
+    name: org-1         # existing CF Provider Organization CR
+  spaceRef:
+    name: space-1       # existing CF Provider Space CR
+  adminCredentialsSecretRef:
+    name: hana-api-binding-credentials
+    namespace: crossplane-system
 ```
 
 > **Note**: The `ServiceInstance`, `Organization`, and `Space` CRs must be created independently using the BTP and CF Provider before creating the `CfHanaInstanceMapping`.
