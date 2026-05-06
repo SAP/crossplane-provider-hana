@@ -251,7 +251,7 @@ func (r Role) quotedName() string {
 // or special characters (like "::") must be quoted to be interpreted literally.
 func needsQuoting(identifier string) bool {
 	for _, c := range identifier {
-		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.') {
+		if (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '.' {
 			return true
 		}
 	}
