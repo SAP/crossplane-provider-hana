@@ -203,6 +203,12 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, fmt.Errorf("cannot convert privileges: %w", err)
 	}
 
+	parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles)
+	if err != nil {
+		c.log.Info("Error converting roles", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, fmt.Errorf("cannot convert roles: %w", err)
+	}
+
 	password, err := c.getPassword(ctx, cr)
 	if err != nil {
 		c.log.Info("Error getting password for user", "name", cr.Name, "error", err)
