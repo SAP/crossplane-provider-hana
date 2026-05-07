@@ -230,7 +230,7 @@ func TestPrivilegeClient_QueryRoles(t *testing.T) {
 			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "IS_GRANTABLE"}).
 				AddRow(sql.NullString{String: "SCHEMA1", Valid: true}, "ROLE1", true).
 				AddRow(sql.NullString{String: "SCHEMA2", Valid: true}, "ROLE2", false),
-			want:    []string{"SCHEMA1.ROLE1 WITH ADMIN OPTION", "SCHEMA2.ROLE2"},
+			want:    []string{`"SCHEMA1.ROLE1" WITH ADMIN OPTION`, `"SCHEMA2.ROLE2"`},
 			wantErr: false,
 		},
 		"UnqualifiedRoles": {
@@ -238,7 +238,7 @@ func TestPrivilegeClient_QueryRoles(t *testing.T) {
 			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "IS_GRANTABLE"}).
 				AddRow(sql.NullString{Valid: false}, "ROLE1", true).
 				AddRow(sql.NullString{Valid: false}, "ROLE2", false),
-			want:    []string{"ROLE1 WITH ADMIN OPTION", "ROLE2"},
+			want:    []string{`"ROLE1" WITH ADMIN OPTION`, `"ROLE2"`},
 			wantErr: false,
 		},
 		"QueryError": {
@@ -1528,7 +1528,7 @@ func TestGrantRevokeRoles_SpecialCharRoleName(t *testing.T) {
 			name:      "GrantSimpleRoleNoUnnecessaryQuoting",
 			roleNames: []string{"PUBLIC"},
 			grantee:   "TESTUSER",
-			wantSQL:   `GRANT PUBLIC TO TESTUSER`,
+			wantSQL:   `GRANT "PUBLIC" TO TESTUSER`,
 		},
 		{
 			name:      "GrantQuotedSpecialCharRole",
@@ -1589,9 +1589,9 @@ func TestRoleNormalizationMatchesObserved(t *testing.T) {
 		`"data::external_access" WITH ADMIN OPTION`,
 	}
 	// QueryRoles constructs Role{Name: rawDBName} and calls .String(),
-	// which now auto-quotes names containing special characters.
+	// which now unconditionally quotes all role names.
 	observedRoles := []string{
-		"PUBLIC",
+		`"PUBLIC"`,
 		`"data::external_access_g" WITH ADMIN OPTION`,
 		`"data::external_access" WITH ADMIN OPTION`,
 	}
@@ -1616,7 +1616,7 @@ func TestFormatRoleStrings(t *testing.T) {
 		{
 			name:  "PlainRoles",
 			input: []string{"PUBLIC", "ROLE1"},
-			want:  []string{"PUBLIC", "ROLE1"},
+			want:  []string{`"PUBLIC"`, `"ROLE1"`},
 		},
 		{
 			name:  "QuotedSpecialCharRoleNormalized",
@@ -1636,7 +1636,7 @@ func TestFormatRoleStrings(t *testing.T) {
 				`"data::external_access" WITH ADMIN OPTION`,
 			},
 			want: []string{
-				"PUBLIC",
+				`"PUBLIC"`,
 				`"data::external_access_g" WITH ADMIN OPTION`,
 				`"data::external_access" WITH ADMIN OPTION`,
 			},
@@ -1644,7 +1644,7 @@ func TestFormatRoleStrings(t *testing.T) {
 		{
 			name:  "SchemaQualifiedRole",
 			input: []string{"MYSCHEMA.ROLE1 WITH ADMIN OPTION"},
-			want:  []string{"MYSCHEMA.ROLE1 WITH ADMIN OPTION"},
+			want:  []string{`"MYSCHEMA.ROLE1" WITH ADMIN OPTION`},
 		},
 		{
 			name:    "InvalidRoleString",

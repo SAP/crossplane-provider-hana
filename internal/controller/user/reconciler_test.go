@@ -304,7 +304,7 @@ func TestObserve(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
@@ -343,7 +343,7 @@ func TestObserve(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
 							Privileges:                     []string{"SELECT", "INSERT", privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
@@ -383,7 +383,7 @@ func TestObserve(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
 							Privileges:                     []string{"SELECT", "INSERT", "DELETE", "UPDATE"},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
@@ -484,7 +484,7 @@ func TestObserve(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEFAULT_SCHEMA"), "SELECT", "INSERT", "UPDATE"},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
@@ -528,7 +528,7 @@ func TestObserve(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER"), "SELECT", "INSERT", "UPDATE"},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
@@ -566,7 +566,7 @@ func TestObserve(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
 							Privileges:                     []string{"CREATE ANY"},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      new("DEFAULT"),
 							PasswordUpToDate:               new(true),
 							IsPasswordLifetimeCheckEnabled: new(false), // Different from desired

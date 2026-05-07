@@ -233,29 +233,12 @@ func (r Role) String() string {
 	return name
 }
 
-// quotedName wraps the role name in double quotes when it contains characters
-// that require quoting in HANA SQL (e.g. lowercase letters, colons, hyphens).
-// This mirrors how Privilege.baseString() always quotes schema/object identifiers.
-// The result is used both in Role.String() for canonical comparison and in
-// GrantRoles/RevokeRoles for SQL generation.
+// quotedName wraps the role name in double quotes unconditionally.
+// In HANA SQL, quoting is always safe for identifiers and ensures correct handling
+// of special characters. The result is used both in Role.String() for canonical
+// comparison and in GrantRoles/RevokeRoles for SQL generation.
 func (r Role) quotedName() string {
-	if needsQuoting(r.Name) {
-		return fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(r.Name))
-	}
-	return r.Name
-}
-
-// needsQuoting returns true if a SQL identifier contains characters outside the
-// safe set (uppercase letters, digits, underscores, dots). HANA treats unquoted
-// identifiers as case-insensitive uppercase, so any name with lowercase letters
-// or special characters (like "::") must be quoted to be interpreted literally.
-func needsQuoting(identifier string) bool {
-	for _, c := range identifier {
-		if (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '.' {
-			return true
-		}
-	}
-	return false
+	return fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(r.Name))
 }
 
 // PrivilegeGroup holds aggregated names to build optimized SQL: GRANT Name1, Name2 ON ...
