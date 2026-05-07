@@ -51,7 +51,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
     ```
     
     ```yaml title="user.yaml"
-    apiVersion: admin.hana.orchestrate.cloud.sap/v1alpha1
+    apiVersion: admin.hana.sap.crossplane.io/v1alpha1
     kind: User
     metadata:
       name: liquibase-user
@@ -78,7 +78,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
     Next, create the changelog schema and the managed schema:
 
     ```yaml title="changelog-schema.yaml"
-    apiVersion: objects.hana.orchestrate.cloud.sap/v1alpha1
+    apiVersion: schema.hana.sap.crossplane.io/v1alpha1
     kind: DbSchema
     metadata:
       name: liquibase-changelog-schema
@@ -91,7 +91,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
     ```
 
     ```yaml title="managed-schema.yaml"
-    apiVersion: schema.hana.orchestrate.cloud.sap/v1alpha1
+    apiVersion: schema.hana.sap.crossplane.io/v1alpha1
     kind: DbSchema
     metadata:
       name: liquibase-changelog-schema
