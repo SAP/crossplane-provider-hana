@@ -11,7 +11,7 @@
 
 ---
 # Step 1: ProviderConfig (placeholder - admin API credentials come from ServiceBinding)
-apiVersion: hana.orchestrate.cloud.sap/v1alpha1
+apiVersion: hana.sap.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
   name: default
