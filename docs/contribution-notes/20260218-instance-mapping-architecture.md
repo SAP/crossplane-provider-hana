@@ -1,7 +1,7 @@
 # Instance Mapping Architecture
 
 - Status: implemented
-- Date: 2026-02-18 (updated 2026-03-02)
+- Date: 2026-02-18 (updated 2026-04-28)
 - Tags: InstanceMapping, KymaInstanceMapping, HANA Cloud, CloudFoundry, Kubernetes
 
 ## Context
@@ -25,25 +25,25 @@ The architecture uses a two-layer design:
                                     │
                     ┌───────────────┴───────────────┐
                     │                               │
-         ┌──────────┴──────────┐       ┌───────────┴───────────┐
-         │  InstanceMapping    │       │   InstanceMapping     │
-         │  platform: k8s      │       │   platform: cf        │
-         └──────────┬──────────┘       └───────────┬───────────┘
-                    │                              │
-                    │ creates                      │ creates (optional)
-         ┌──────────┴──────────┐       ┌───────────┴───────────┐
-         │ KymaInstanceMapping │       │ KRO + CF Provider     │
-         │ (built-in)          │       │ (external composition)│
-         └─────────────────────┘       └───────────────────────┘
+         ┌──────────┴──────────┐        ┌───────────┴───────────┐
+         │  InstanceMapping    │        │   InstanceMapping     │
+         │  platform: k8s      │        │   platform: cf        │
+         └──────────┬──────────┘        └───────────┬───────────┘
+                    │                               │
+                    │ creates                       │ creates (optional)
+         ┌──────────┴──────────┐        ┌───────────┴──────────────────────┐
+         │ KymaInstanceMapping │        │ KRO + BTP Provider + CF Provider │
+         │ (built-in)          │        │      (external composition)      │
+         └─────────────────────┘        └──────────────────────────────────┘
 ```
 
 | Layer | CR | Purpose |
 |-------|----|---------|
 | Low-level | `InstanceMapping` | Direct HANA Cloud Admin API calls. Platform-agnostic. |
 | High-level (Kyma) | `KymaInstanceMapping` | Built-in. Extracts data from Kyma cluster, creates InstanceMapping. |
-| High-level (CF) | KRO + CF Provider | Optional. Users can compose using external tools (see below). |
+| High-level (CF) | KRO + BTP Provider + CF Provider | Optional. Users can compose using external tools (see below). |
 
-> **Why no built-in CfInstanceMapping?** Users of the [CloudFoundry Crossplane Provider](https://github.com/SAP/crossplane-provider-cloudfoundry/) can compose resources using [KRO](https://kro.run) to achieve the same result. Building a dedicated CR would duplicate functionality already available through existing tools.
+> **Why no built-in CfInstanceMapping?** Users of the [BTP Crossplane Provider](https://github.com/SAP/crossplane-provider-btp/) and [CloudFoundry Crossplane Provider](https://github.com/SAP/crossplane-provider-cloudfoundry/) can compose resources using [KRO](https://kro.run) to achieve the same result. Building a dedicated CR would duplicate functionality already available through existing tools.
 
 ---
 
@@ -213,19 +213,20 @@ spec:
 ## CloudFoundry Usage
 
 CloudFoundry users have two options:
-1. **Direct**: Create `InstanceMapping` manually with org/space GUIDs
-2. **Composed**: Use KRO + CloudFoundry Crossplane Provider for automatic GUID extraction
+1. **Direct**: Create `InstanceMapping` manually with org, space and service instance GUIDs
+2. **Composed**: Use KRO + BTP Crossplane Provider + CloudFoundry Crossplane Provider for automatic GUID extraction
 
 ### Why No Built-in CfInstanceMapping CR?
 
 | Aspect | Kyma | CloudFoundry |
 |--------|------|--------------|
-| K8s-native resources | Yes (ServiceInstance CR, ConfigMap) | Only with CF Crossplane Provider |
+| K8s-native resources | Yes (ServiceInstance CR, ConfigMap) | Only with BTP Crossplane Provider + CF Crossplane Provider |
 | Built-in high-level CR | `KymaInstanceMapping` | Not needed |
-| Composition option | N/A | KRO + CF Provider |
+| Composition option | N/A | KRO + BTP Provider + CF Provider |
 
 A dedicated `CfInstanceMapping` CR would duplicate functionality already available through the combination of:
 - [CloudFoundry Crossplane Provider](https://github.com/SAP/crossplane-provider-cloudfoundry/) - provides `Organization` and `Space` CRs with GUIDs in status
+- [BTP Crossplane Provider](https://github.com/SAP/crossplane-provider-btp/) - provides `ServiceInstance` CR with GUID in status
 - [KRO](https://kro.run) - composes resources and passes values between them
 
 ### Option 1: Direct InstanceMapping (Manual GUIDs)
@@ -234,13 +235,13 @@ For users who don't use the CF Crossplane Provider:
 
 1. **Get organization GUID**: `cf org my-org --guid`
 2. **Get space GUID**: `cf space my-space --guid`
-3. **Get HANA Cloud instance ID**: From service key or BTP cockpit
+3. **Get HANA Cloud instance ID**: From BTP cockpit
 4. **Get admin credentials**: Create service key with `admin-api-access` plan, copy to K8s Secret
 5. **Create InstanceMapping**: With `platform: "cloudfoundry"`
 
-### Option 2: KRO + CloudFoundry Provider (Automatic GUIDs)
+### Option 2: KRO + BTP Provider + CloudFoundry Provider (Automatic GUIDs)
 
-For users of the CloudFoundry Crossplane Provider, KRO can compose resources and extract GUIDs automatically.
+For users of the BTP Crossplane Provider and CloudFoundry Crossplane Provider, KRO can compose resources and extract GUIDs automatically.
 
 **ResourceGraphDefinition Example:**
 
@@ -251,39 +252,33 @@ metadata:
   name: cf-hana-instance-mapping
 spec:
   schema:
-    apiVersion: hana.example.com/v1alpha1
-    kind: CfHanaMapping
+    apiVersion: v1alpha1
+    kind: CfHanaInstanceMapping
     spec:
       # User-friendly inputs
-      organizationRef: string      # Name of CF Provider Organization CR
-      spaceRef: string             # Name of CF Provider Space CR
-      serviceInstanceID: string
-      adminCredentialsSecretRef:
-        name: string
-        namespace: string
-        key: string
-      isDefault: boolean | default=false
-
-  # Reference existing CF Provider resources (created independently)
-  references:
+      serviceInstanceRef: string # name of BTP Provider ServiceInstance CR
+      orgRef: string # name of CF Provider Organization CR
+      spaceRef: string # name of CF Provider Space CR
+  resources:
+    - id: serviceInstance
+      externalRef:
+        apiVersion: account.btp.sap.crossplane.io/v1alpha1
+        kind: ServiceInstance
+        metadata:
+          name: ${schema.spec.serviceInstanceRef}
     - id: org
-      resource:
+      externalRef:
         apiVersion: cloudfoundry.crossplane.io/v1alpha1
         kind: Organization
-        name: ${schema.spec.organizationRef}
-
+        metadata:
+          name: ${schema.spec.orgRef}
     - id: space
-      resource:
+      externalRef:
         apiVersion: cloudfoundry.crossplane.io/v1alpha1
         kind: Space
-        name: ${schema.spec.spaceRef}
-
-  resources:
-    # Create InstanceMapping with GUIDs from referenced CF Provider resources
+        metadata:
+          name: ${schema.spec.spaceRef}
     - id: instanceMapping
-      includeWhen:
-        - ${org.status.atProvider.guid != ""}
-        - ${space.status.atProvider.guid != ""}
       template:
         apiVersion: inventory.hana.orchestrate.cloud.sap/v1alpha1
         kind: InstanceMapping
@@ -291,35 +286,30 @@ spec:
           name: ${schema.metadata.name}
         spec:
           forProvider:
-            serviceInstanceID: ${schema.spec.serviceInstanceID}
-            platform: "cloudfoundry"
-            primaryID: ${org.status.atProvider.guid}
-            secondaryID: ${space.status.atProvider.guid}
-            isDefault: ${schema.spec.isDefault}
+            platform: cloudfoundry
+            serviceInstanceID: ${serviceInstance.status.atProvider.id}
+            primaryID: ${org.status.atProvider.id}
+            secondaryID: ${space.status.atProvider.id}
             adminCredentialsSecretRef:
-              name: ${schema.spec.adminCredentialsSecretRef.name}
-              namespace: ${schema.spec.adminCredentialsSecretRef.namespace}
-              key: ${schema.spec.adminCredentialsSecretRef.key}
+              name: hana-api-binding-credentials
+              namespace: default
+              key: credentials
 ```
 
 **Usage:**
 
 ```yaml
-apiVersion: hana.example.com/v1alpha1
-kind: CfHanaMapping
+apiVersion: kro.run/v1alpha1
+kind: CfHanaInstanceMapping
 metadata:
-  name: my-cf-hana-mapping
+  name: cf-hana-instance-mapping
 spec:
-  organizationRef: my-cf-org        # Existing CF Provider Organization CR
-  spaceRef: my-cf-space             # Existing CF Provider Space CR
-  serviceInstanceID: "abc123-hana-instance-guid"
-  adminCredentialsSecretRef:
-    name: hana-admin-creds
-    namespace: crossplane-system
-    key: credentials
+  serviceInstanceRef: hana # existing BTP Provider ServiceInstance CR
+  orgRef: org-1 # existing CF Provider Organization CR
+  spaceRef: space-1 # existing CF Provider Space CR
 ```
 
-> **Note**: The exact status field paths (`status.atProvider.guid`) depend on the CloudFoundry Crossplane Provider's CRD schema. Adjust the CEL expressions accordingly. The `Organization` and `Space` CRs must be created independently using the CF Provider before creating the `CfHanaMapping`.
+> **Note**: The `ServiceInstance`, `Organization`, and `Space` CRs must be created independently using the BTP and CF Provider before creating the `CfHanaInstanceMapping`.
 
 ---
 
@@ -331,7 +321,7 @@ spec:
 
 ### 2. No Built-in CfInstanceMapping CR
 **Decision**: CF users use `InstanceMapping` directly or compose with KRO + CF Provider
-**Why**: The CloudFoundry Crossplane Provider + KRO already provides the composition capability. Building a dedicated CR would duplicate existing functionality without adding value.
+**Why**: The BTP and CloudFoundry Crossplane Provider + KRO already provides the composition capability. Building a dedicated CR would duplicate existing functionality without adding value.
 
 ### 3. Extract Credentials On-Demand (Kyma)
 **Decision**: Read ServiceBinding secret on every reconcile
@@ -362,5 +352,6 @@ spec:
 - [HANA Cloud Admin API - Instance Mappings](https://help.sap.com/docs/hana-cloud/sap-hana-cloud-administration-guide/creating-and-managing-instance-mappings-using-rest-api)
 - [SAP BTP Service Operator](https://github.com/SAP/sap-btp-service-operator)
 - [CloudFoundry Crossplane Provider](https://github.com/SAP/crossplane-provider-cloudfoundry/)
+- [BTP Crossplane Provider](https://github.com/SAP/crossplane-provider-btp)
 - [KRO - Kubernetes Resource Orchestrator](https://kro.run)
 - [CloudFoundry API v3](https://v3-apidocs.cloudfoundry.org/)

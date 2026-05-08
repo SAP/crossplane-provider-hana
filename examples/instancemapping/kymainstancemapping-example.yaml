@@ -34,7 +34,7 @@ data:
 
 ---
 # Step 2: ProviderConfig (placeholder - admin API credentials come from Kyma cluster)
-apiVersion: hana.orchestrate.cloud.sap/v1alpha1
+apiVersion: hana.sap.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
   name: default
