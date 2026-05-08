@@ -149,6 +149,22 @@ func MapDiff[K, V comparable](map1, map2 map[K]V) map[K]V {
 	return differenceMap
 }
 
+// MapDiffOnlyDesired compares only the keys that exist in the desired map.
+// This prevents comparing default values from observed state that weren't specified by the user.
+// Returns a map of parameters that need to be updated (keys from desired that differ in observed).
+func MapDiffOnlyDesired[K, V comparable](observed, desired map[K]V) map[K]V {
+	differenceMap := make(map[K]V)
+
+	// Only check keys that exist in desired (user-specified parameters)
+	for key, desiredVal := range desired {
+		if observedVal, ok := observed[key]; !ok || observedVal != desiredVal {
+			differenceMap[key] = desiredVal
+		}
+	}
+
+	return differenceMap
+}
+
 func arrayToSet[E comparable](arr []E) map[E]struct{} {
 	set := make(map[E]struct{})
 	for _, item := range arr {

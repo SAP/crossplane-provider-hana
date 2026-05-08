@@ -475,3 +475,183 @@ func TestDelete(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildDesiredParameters(t *testing.T) {
+	cases := map[string]struct {
+		reason string
+		cr     *v1alpha1.Role
+		want   *v1alpha1.RoleParameters
+	}{
+		"PreservesLowercaseRoleName": {
+			reason: "Lowercase role name should be preserved without conversion to uppercase",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName: "my_lowercase_role",
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName: "my_lowercase_role",
+			},
+		},
+		"PreservesMixedCaseRoleName": {
+			reason: "Mixed case role name should be preserved exactly as specified",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName: "MyMixedCaseRole",
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName: "MyMixedCaseRole",
+			},
+		},
+		"PreservesUppercaseRoleName": {
+			reason: "Uppercase role name should remain uppercase",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName: "UPPERCASE_ROLE",
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName: "UPPERCASE_ROLE",
+			},
+		},
+		"PreservesLowercaseSchema": {
+			reason: "Lowercase schema name should be preserved without conversion to uppercase",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName: "test_role",
+						Schema:   "my_schema",
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName: "test_role",
+				Schema:   "my_schema",
+			},
+		},
+		"PreservesCaseSensitiveLdapGroups": {
+			reason: "LDAP Distinguished Names are case-sensitive and should be preserved exactly",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName: "test_role",
+						LdapGroups: []string{
+							"cn=Securities_DBA,OU=Application,OU=Groups,ou=DatabaseAdmins,cn=Users,o=largebank.com",
+							"CN=Admins,DC=example,DC=com",
+						},
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName: "test_role",
+				LdapGroups: []string{
+					"cn=Securities_DBA,OU=Application,OU=Groups,ou=DatabaseAdmins,cn=Users,o=largebank.com",
+					"CN=Admins,DC=example,DC=com",
+				},
+			},
+		},
+		"PreservesCaseSensitivePrivileges": {
+			reason: "Privilege strings containing schema/object names should preserve their case",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName: "test_role",
+						Privileges: []string{
+							`SELECT ON SCHEMA "mySchema"`,
+							`INSERT ON "MySchema"."MyTable"`,
+							"CREATE ANY",
+						},
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName: "test_role",
+				Privileges: []string{
+					`SELECT ON SCHEMA "mySchema"`,
+					`INSERT ON "MySchema"."MyTable"`,
+					"CREATE ANY",
+				},
+			},
+		},
+		"PreservesAllFieldsWithMixedCase": {
+			reason: "All fields should preserve their original case in a complete role specification",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName:         "MyRole",
+						Schema:           "MySchema",
+						Privileges:       []string{`SELECT ON SCHEMA "testSchema"`},
+						LdapGroups:       []string{"cn=TestGroup,ou=Groups,dc=example,dc=com"},
+						NoGrantToCreator: true,
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName:         "MyRole",
+				Schema:           "MySchema",
+				Privileges:       []string{`SELECT ON SCHEMA "testSchema"`},
+				LdapGroups:       []string{"cn=TestGroup,ou=Groups,dc=example,dc=com"},
+				NoGrantToCreator: true,
+			},
+		},
+		"PreservesRoleNameWithSpecialCharacters": {
+			reason: "Role name with special characters like colons should be preserved exactly",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName:   "data::access_g",
+						Privileges: []string{"ACCESS_TEST WITH ADMIN OPTION"},
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName:   "data::access_g",
+				Privileges: []string{"ACCESS_TEST WITH ADMIN OPTION"},
+			},
+		},
+		"PreservesRoleNameWithDotsAndColons": {
+			reason: "Role name with dots and colons (namespace-style) should be preserved exactly",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName: "sap.hana::data_reader",
+						Schema:   "my_schema",
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName: "sap.hana::data_reader",
+				Schema:   "my_schema",
+			},
+		},
+		"PreservesRoleNameWithUnderscoresAndNumbers": {
+			reason: "Role name with underscores and numbers should be preserved exactly",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName: "role_123_test",
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName: "role_123_test",
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := buildDesiredParameters(tc.cr)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("\n%s\nbuildDesiredParameters(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}

@@ -2,20 +2,20 @@ package xsql
 
 import (
 	"context"
-	"errors"
-
 	"database/sql"
-
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
+	"errors"
 )
 
-// A DB client.
+// DB is the query interface satisfied by *sql.DB and used by clients.
 type DB interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	GetConnectionDetails(username, password string) managed.ConnectionDetails
-	Connect(ctx context.Context, creds map[string][]byte) error
+}
+
+// Connector manages a pool of DB connections keyed by credentials.
+type Connector interface {
+	Connect(ctx context.Context, creds map[string][]byte) (DB, error)
 	Disconnect() error
 }
 

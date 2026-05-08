@@ -17,7 +17,7 @@ stringData:
   endpoint: abc123-456.hanacloud.ondemand.com
   port: "443"
 ---
-apiVersion: hana.orchestrate.cloud.sap/v1alpha1
+apiVersion: hana.sap.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
   name: default

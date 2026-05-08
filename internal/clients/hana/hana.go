@@ -13,23 +13,19 @@ import (
 	_ "github.com/SAP/go-hdb/driver"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"golang.org/x/crypto/argon2"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
 type hanaDB struct {
-	*sql.DB
-	dbs      sync.Map
-	endpoint string
-	port     string
-	logger   logging.Logger
-	salt     []byte
+	dbs    sync.Map
+	logger logging.Logger
+	salt   []byte
 }
 
-// New returns a new DB client with the provided logger
-func New(logger logging.Logger) xsql.DB {
+// New returns a new Connector backed by a pool of HANA connections.
+func New(logger logging.Logger) xsql.Connector {
 	salt := make([]byte, 16)
 	_, _ = rand.Read(salt)
 	return &hanaDB{
@@ -39,12 +35,12 @@ func New(logger logging.Logger) xsql.DB {
 	}
 }
 
-func (h *hanaDB) Connect(ctx context.Context, creds map[string][]byte) error {
-	h.endpoint = string(creds[xpv1.ResourceCredentialsSecretEndpointKey])
-	h.port = string(creds[xpv1.ResourceCredentialsSecretPortKey])
+func (h *hanaDB) Connect(ctx context.Context, creds map[string][]byte) (xsql.DB, error) {
+	endpoint := string(creds[xpv1.ResourceCredentialsSecretEndpointKey])
+	port := string(creds[xpv1.ResourceCredentialsSecretPortKey])
 	username := string(creds[xpv1.ResourceCredentialsSecretUserKey])
 	password := string(creds[xpv1.ResourceCredentialsSecretPasswordKey])
-	dsn := DSN(username, password, h.endpoint, h.port)
+	dsn := DSN(username, password, endpoint, port)
 
 	hashBytes := argon2.IDKey([]byte(dsn), h.salt, 1, 64*1024, 4, 32)
 	dsnHash := base64.RawStdEncoding.EncodeToString(hashBytes)
@@ -52,20 +48,19 @@ func (h *hanaDB) Connect(ctx context.Context, creds map[string][]byte) error {
 	if val, ok := h.dbs.Load(dsnHash); ok {
 		if db, ok := val.(*sql.DB); ok {
 			if err := db.PingContext(ctx); err == nil {
-				h.DB = db
-				return nil
+				return db, nil
 			}
 		}
 	}
 
 	db, err := sql.Open("hdb", dsn)
 	if err != nil {
-		return fmt.Errorf("failed to open HANA DB connection: %w", err)
+		return nil, fmt.Errorf("failed to open HANA DB connection: %w", err)
 	}
 
 	if err := db.PingContext(ctx); err != nil {
 		go db.Close() // nolint:errcheck
-		return fmt.Errorf("failed to ping HANA DB: %w", err)
+		return nil, fmt.Errorf("failed to ping HANA DB: %w", err)
 	}
 
 	prev, loaded := h.dbs.Swap(dsnHash, db)
@@ -76,9 +71,8 @@ func (h *hanaDB) Connect(ctx context.Context, creds map[string][]byte) error {
 			h.logger.Info("Warning: sync.Map loaded value that is not *sql.DB", "type", fmt.Sprintf("%T", prev))
 		}
 	}
-	h.DB = db
 
-	return nil
+	return db, nil
 }
 
 func (h *hanaDB) Disconnect() error {
@@ -91,16 +85,13 @@ func (h *hanaDB) Disconnect() error {
 				_ = db.Close()
 			})
 		} else {
-			// Log warning when loaded value is not *sql.DB
 			h.logger.Info("Warning: sync.Map loaded value that is not *sql.DB", "type", fmt.Sprintf("%T", val))
 		}
 		return true
 	})
 
 	wg.Wait()
-
 	h.dbs.Clear()
-	h.DB = nil
 
 	return nil
 }
@@ -115,16 +106,6 @@ func DSN(username string, password string, endpoint string, port string) string 
 		RawQuery: fmt.Sprintf("TLSServerName=%s", endpoint),
 	}
 	return u.String()
-}
-
-// GetConnectionDetails returns the connection details
-func (h *hanaDB) GetConnectionDetails(username, password string) managed.ConnectionDetails {
-	return managed.ConnectionDetails{
-		xpv1.ResourceCredentialsSecretUserKey:     []byte(username),
-		xpv1.ResourceCredentialsSecretPasswordKey: []byte(password),
-		xpv1.ResourceCredentialsSecretEndpointKey: []byte(h.endpoint),
-		xpv1.ResourceCredentialsSecretPortKey:     []byte(h.port),
-	}
 }
 
 // QueryClient defines the base methods for a query client with typed parameters

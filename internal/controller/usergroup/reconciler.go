@@ -45,7 +45,7 @@ const (
 )
 
 // Setup adds a controller that reconciles usergroup managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.UsergroupGroupKind)
 
 	log := o.Logger.WithValues("controller", name)
@@ -76,7 +76,7 @@ type connector struct {
 	usage     resource.Tracker
 	newClient func(xsql.DB) usergroup.Client
 	log       logging.Logger
-	db        xsql.DB
+	db        xsql.Connector
 }
 
 // Connect typically produces an ExternalClient by:
@@ -111,12 +111,13 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	c.log.Info("Connecting to usergroup resource", "name", cr.Name)
 
-	if err := c.db.Connect(ctx, s.Data); err != nil {
+	conn, err := c.db.Connect(ctx, s.Data)
+	if err != nil {
 		return nil, fmt.Errorf("cannot connect to HANA DB: %w", err)
 	}
 
 	return &external{
-		client: c.newClient(c.db),
+		client: c.newClient(conn),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil
@@ -179,7 +180,9 @@ func upToDate(observed *v1alpha1.UsergroupObservation, desired *v1alpha1.Usergro
 	if observed.DisableUserAdmin != desired.DisableUserAdmin {
 		return false
 	}
-	if parametersToUpdate := utils.MapDiff(observed.Parameters, desired.Parameters); len(parametersToUpdate) > 0 {
+	// Only check parameters that are specified in desired state (user-specified)
+	// to avoid triggering updates due to HANA default values
+	if parametersToUpdate := utils.MapDiffOnlyDesired(observed.Parameters, desired.Parameters); len(parametersToUpdate) > 0 {
 		return false
 	}
 	return true
@@ -251,7 +254,9 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	observedParameters := cr.Status.AtProvider.Parameters
 	desiredParameters := parameters.Parameters
 
-	if parametersToUpdate := utils.MapDiff(observedParameters, desiredParameters); len(parametersToUpdate) > 0 {
+	// Only update parameters that are specified in desired state (user-specified)
+	// to avoid updating HANA default values that weren't set by the user
+	if parametersToUpdate := utils.MapDiffOnlyDesired(observedParameters, desiredParameters); len(parametersToUpdate) > 0 {
 		c.log.Debug("Updating usergroup parameters",
 			"name", cr.Name,
 			"usergroupName", parameters.UsergroupName,

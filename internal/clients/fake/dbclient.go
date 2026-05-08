@@ -5,15 +5,14 @@ import (
 	"database/sql"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
+
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
 type MockDB struct {
-	MockExecContext          func(ctx context.Context, query string, args ...any) (sql.Result, error)
-	MockQueryRowContext      func(ctx context.Context, query string, args ...any) *sql.Row
-	MockQueryContext         func(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	MockGetConnectionDetails func(username, password string) managed.ConnectionDetails
-	MockConnect              func(ctx context.Context, creds map[string][]byte) error
+	MockExecContext     func(ctx context.Context, query string, args ...any) (sql.Result, error)
+	MockQueryRowContext func(ctx context.Context, query string, args ...any) *sql.Row
+	MockQueryContext    func(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 func (m MockDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
@@ -29,14 +28,16 @@ func (m MockDB) QueryContext(ctx context.Context, query string, args ...any) (*s
 	// Return empty result set by default
 	return MockRowsToSQLRows(sqlmock.NewRows([]string{})), nil
 }
-func (m MockDB) GetConnectionDetails(username, password string) managed.ConnectionDetails {
-	return m.MockGetConnectionDetails(username, password)
+
+type MockConnector struct {
+	MockConnect func(ctx context.Context, creds map[string][]byte) (xsql.DB, error)
 }
-func (m MockDB) Connect(ctx context.Context, creds map[string][]byte) error {
+
+func (m MockConnector) Connect(ctx context.Context, creds map[string][]byte) (xsql.DB, error) {
 	return m.MockConnect(ctx, creds)
 }
 
-func (m MockDB) Disconnect() error {
+func (m MockConnector) Disconnect() error {
 	return nil
 }
 
