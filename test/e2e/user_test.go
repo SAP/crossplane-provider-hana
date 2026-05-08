@@ -36,10 +36,10 @@ type UserTestConfig struct {
 	Secret     *corev1.Secret
 	Objects    []k8s.Object
 
-	DBSchemas []string // Track schema names
-	DBObjects []string // Track object names
-	db        xsql.Connector
-	conn      xsql.DB
+	DBSchema string // Track schema names
+	DBObject string // Track object names
+	db       xsql.Connector
+	conn     xsql.DB
 }
 
 func TestUser(t *testing.T) {
