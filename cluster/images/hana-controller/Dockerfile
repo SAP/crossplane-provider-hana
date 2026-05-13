@@ -24,7 +24,7 @@ ARG GIT_COMMIT
 
 LABEL org.opencontainers.image.title="crossplane-provider-hana-controller" \
       org.opencontainers.image.description="Crossplane controller for hana in BTP" \
-      org.opencontainers.image.documentation="https://pages.github.tools.sap/cloud-orchestration/" \
+      org.opencontainers.image.documentation="https://sap.github.io/crossplane-provider-docs/" \
       org.opencontainers.image.url="https://github.com/SAP/crossplane-provider-hana" \
       org.opencontainers.image.source="https://github.com/SAP/crossplane-provider-hana.git" \
       org.opencontainers.image.vendor="SAP SE" \
