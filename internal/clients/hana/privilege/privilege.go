@@ -87,10 +87,11 @@ func (c *PrivilegeClient) GrantRoles(ctx context.Context, _ DefaultSchema, grant
 		if err != nil {
 			return err
 		}
-		if role.IsGrantable {
-			adminRoles = append(adminRoles, role.Name)
+		normalized := Role{Name: cleanIdentifier(role.Name), IsGrantable: role.IsGrantable}
+		if normalized.IsGrantable {
+			adminRoles = append(adminRoles, normalized.quotedName())
 		} else {
-			normalRoles = append(normalRoles, role.Name)
+			normalRoles = append(normalRoles, normalized.quotedName())
 		}
 	}
 
@@ -136,7 +137,8 @@ func (c *PrivilegeClient) RevokeRoles(ctx context.Context, _ DefaultSchema, gran
 		if err != nil {
 			return err
 		}
-		namesToRevoke = append(namesToRevoke, role.Name)
+		normalized := Role{Name: cleanIdentifier(role.Name)}
+		namesToRevoke = append(namesToRevoke, normalized.quotedName())
 	}
 
 	query := fmt.Sprintf("REVOKE %s FROM %s", strings.Join(namesToRevoke, ", "), grantee)
@@ -224,10 +226,19 @@ type Role struct {
 }
 
 func (r Role) String() string {
+	name := r.quotedName()
 	if r.IsGrantable {
-		return r.Name + " WITH ADMIN OPTION"
+		return name + " WITH ADMIN OPTION"
 	}
-	return r.Name
+	return name
+}
+
+// quotedName wraps the role name in double quotes unconditionally.
+// In HANA SQL, quoting is always safe for identifiers and ensures correct handling
+// of special characters. The result is used both in Role.String() for canonical
+// comparison and in GrantRoles/RevokeRoles for SQL generation.
+func (r Role) quotedName() string {
+	return fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(r.Name))
 }
 
 // PrivilegeGroup holds aggregated names to build optimized SQL: GRANT Name1, Name2 ON ...
@@ -341,6 +352,26 @@ func (p Privilege) String() string {
 		return base + " WITH ADMIN OPTION"
 	}
 	return base + " WITH GRANT OPTION"
+}
+
+// FormatRoleStrings parses and normalizes role strings to a canonical form.
+// This ensures that both quoted (e.g. `"data::access_g" WITH ADMIN OPTION`) and
+// unquoted (e.g. `data::access_g WITH ADMIN OPTION`) representations produce the
+// same output, enabling reliable comparison between spec and observed roles.
+func FormatRoleStrings(roleStrings []string) ([]string, error) {
+	res := make([]string, 0, len(roleStrings))
+	for _, rStr := range roleStrings {
+		role, err := parseRoleString(rStr)
+		if err != nil {
+			return nil, err
+		}
+		normalized := Role{
+			Name:        cleanIdentifier(role.Name),
+			IsGrantable: role.IsGrantable,
+		}
+		res = append(res, normalized.String())
+	}
+	return res, nil
 }
 
 func FormatPrivilegeStrings(privilegeStrings []string, username string) ([]string, error) {
@@ -517,7 +548,8 @@ var privilegePatterns = []privilegePattern{
 	// System privilege (standalone)
 	{
 		// Changed [A-Za-z\s]* to [A-Za-z\s]*? (added a question mark to enable non-greedy matching)
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?(?:\.[A-Za-z][A-Za-z0-9_]*)?)` + adminOptionRegex + `\s*$`),
+		// Extended character class to [A-Za-z0-9_\s] to support privilege names with digits and underscores (e.g. AFL__SYS_AFL_AFLPAL_EXECUTE)
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z0-9_\s]*?[A-Za-z0-9_])?(?:\.[A-Za-z][A-Za-z0-9_]*)?)` + adminOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: SystemPrivilegeType, Name: m[1], IsGrantable: m[2] != ""}
 		},
