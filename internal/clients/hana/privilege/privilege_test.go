@@ -230,7 +230,7 @@ func TestPrivilegeClient_QueryRoles(t *testing.T) {
 			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "IS_GRANTABLE"}).
 				AddRow(sql.NullString{String: "SCHEMA1", Valid: true}, "ROLE1", true).
 				AddRow(sql.NullString{String: "SCHEMA2", Valid: true}, "ROLE2", false),
-			want:    []string{"SCHEMA1.ROLE1 WITH ADMIN OPTION", "SCHEMA2.ROLE2"},
+			want:    []string{`"SCHEMA1.ROLE1" WITH ADMIN OPTION`, `"SCHEMA2.ROLE2"`},
 			wantErr: false,
 		},
 		"UnqualifiedRoles": {
@@ -238,7 +238,7 @@ func TestPrivilegeClient_QueryRoles(t *testing.T) {
 			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "IS_GRANTABLE"}).
 				AddRow(sql.NullString{Valid: false}, "ROLE1", true).
 				AddRow(sql.NullString{Valid: false}, "ROLE2", false),
-			want:    []string{"ROLE1 WITH ADMIN OPTION", "ROLE2"},
+			want:    []string{`"ROLE1" WITH ADMIN OPTION`, `"ROLE2"`},
 			wantErr: false,
 		},
 		"QueryError": {
@@ -491,6 +491,24 @@ func Test_stringToPrivilege(t *testing.T) {
 			name: "PSEPrivilegeInsert",
 			in:   "INSERT ON PSE test_pse",
 			want: Privilege{Type: ObjectPrivilegeType, Name: "INSERT", Identifier: "PSE test_pse"},
+			ok:   true,
+		},
+		{
+			name: "SystemPrivilegeWithUnderscores",
+			in:   "AFL__SYS_AFL_AFLPAL_EXECUTE",
+			want: Privilege{Type: SystemPrivilegeType, Name: "AFL__SYS_AFL_AFLPAL_EXECUTE"},
+			ok:   true,
+		},
+		{
+			name: "SystemPrivilegeWithUnderscoresAndAdminOption",
+			in:   "AFL__SYS_AFL_AFLPAL_EXECUTE WITH ADMIN OPTION",
+			want: Privilege{Type: SystemPrivilegeType, Name: "AFL__SYS_AFL_AFLPAL_EXECUTE", IsGrantable: true},
+			ok:   true,
+		},
+		{
+			name: "SystemPrivilegeNameContainingWithGrantOption",
+			in:   "AFL__SYS_AFL_AFLPAL_EXECUTE_WITH_GRANT_OPTION",
+			want: Privilege{Type: SystemPrivilegeType, Name: "AFL__SYS_AFL_AFLPAL_EXECUTE_WITH_GRANT_OPTION"},
 			ok:   true,
 		},
 	}
@@ -1471,6 +1489,183 @@ func TestFormatSpecialObjectPrivilege(t *testing.T) {
 			got := formatSpecialObjectPrivilege(tc.privilege, tc.identifier)
 			if got != tc.expected {
 				t.Errorf("formatSpecialObjectPrivilege(%q, %q) = %q, want %q", tc.privilege, tc.identifier, got, tc.expected)
+			}
+		})
+	}
+}
+
+// TestGrantRevokeRoles_SpecialCharRoleName verifies that role names containing special
+// characters (e.g. "::") are properly quoted in the generated SQL.
+// Without quoting, HANA rejects the statement with a syntax error at the "::" token.
+func TestGrantRevokeRoles_SpecialCharRoleName(t *testing.T) {
+	cases := []struct {
+		name      string
+		roleNames []string
+		grantee   string
+		isRevoke  bool
+		wantSQL   string
+	}{
+		{
+			name:      "GrantRoleWithDoubleColon",
+			roleNames: []string{"data::external_access_g"},
+			grantee:   "TESTUSER",
+			wantSQL:   `GRANT "data::external_access_g" TO TESTUSER`,
+		},
+		{
+			name:      "GrantRoleWithDoubleColonAndAdminOption",
+			roleNames: []string{"data::external_access_g WITH ADMIN OPTION"},
+			grantee:   "TESTUSER",
+			wantSQL:   `GRANT "data::external_access_g" TO TESTUSER WITH ADMIN OPTION`,
+		},
+		{
+			name:      "RevokeRoleWithDoubleColon",
+			roleNames: []string{"data::external_access_g"},
+			grantee:   "TESTUSER",
+			isRevoke:  true,
+			wantSQL:   `REVOKE "data::external_access_g" FROM TESTUSER`,
+		},
+		{
+			name:      "GrantSimpleRoleNoUnnecessaryQuoting",
+			roleNames: []string{"PUBLIC"},
+			grantee:   "TESTUSER",
+			wantSQL:   `GRANT "PUBLIC" TO TESTUSER`,
+		},
+		{
+			name:      "GrantQuotedSpecialCharRole",
+			roleNames: []string{`"data::external_access_g" WITH ADMIN OPTION`},
+			grantee:   "TESTUSER",
+			wantSQL:   `GRANT "data::external_access_g" TO TESTUSER WITH ADMIN OPTION`,
+		},
+		{
+			name:      "RevokeQuotedSpecialCharRole",
+			roleNames: []string{`"data::external_access" WITH ADMIN OPTION`},
+			grantee:   "TESTUSER",
+			isRevoke:  true,
+			wantSQL:   `REVOKE "data::external_access" FROM TESTUSER`,
+		},
+		{
+			name:      "GrantLowercaseRole",
+			roleNames: []string{"my_role"},
+			grantee:   "TESTUSER",
+			wantSQL:   `GRANT "my_role" TO TESTUSER`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var capturedSQL string
+			db := fake.MockDB{
+				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+					capturedSQL = query
+					return nil, nil
+				},
+			}
+			c := &PrivilegeClient{DB: db}
+
+			var err error
+			if tc.isRevoke {
+				err = c.RevokeRoles(context.Background(), "", tc.grantee, tc.roleNames)
+			} else {
+				err = c.GrantRoles(context.Background(), "", tc.grantee, tc.roleNames)
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if capturedSQL != tc.wantSQL {
+				t.Errorf("generated SQL = %q, want %q", capturedSQL, tc.wantSQL)
+			}
+		})
+	}
+}
+
+// TestRoleNormalizationMatchesObserved verifies that the formatted spec roles
+// will match what QueryRoles returns from the database, fixing the reconciliation
+// loop where quoted spec roles never matched unquoted observed roles.
+func TestRoleNormalizationMatchesObserved(t *testing.T) {
+	specRoles := []string{
+		"PUBLIC",
+		`"data::external_access_g" WITH ADMIN OPTION`,
+		`"data::external_access" WITH ADMIN OPTION`,
+	}
+	// QueryRoles constructs Role{Name: rawDBName} and calls .String(),
+	// which now unconditionally quotes all role names.
+	observedRoles := []string{
+		`"PUBLIC"`,
+		`"data::external_access_g" WITH ADMIN OPTION`,
+		`"data::external_access" WITH ADMIN OPTION`,
+	}
+
+	formatted, err := FormatRoleStrings(specRoles)
+	if err != nil {
+		t.Fatalf("FormatRoleStrings() error: %v", err)
+	}
+
+	if !cmp.Equal(observedRoles, formatted, cmpopts.SortSlices(func(a, b string) bool { return a < b })) {
+		t.Errorf("Normalized spec roles don't match observed.\nSpec (formatted): %v\nObserved:         %v", formatted, observedRoles)
+	}
+}
+
+func TestFormatRoleStrings(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   []string
+		want    []string
+		wantErr bool
+	}{
+		{
+			name:  "PlainRoles",
+			input: []string{"PUBLIC", "ROLE1"},
+			want:  []string{`"PUBLIC"`, `"ROLE1"`},
+		},
+		{
+			name:  "QuotedSpecialCharRoleNormalized",
+			input: []string{`"data::external_access_g" WITH ADMIN OPTION`},
+			want:  []string{`"data::external_access_g" WITH ADMIN OPTION`},
+		},
+		{
+			name:  "UnquotedSpecialCharRoleGetsQuoted",
+			input: []string{"data::external_access_g WITH ADMIN OPTION"},
+			want:  []string{`"data::external_access_g" WITH ADMIN OPTION`},
+		},
+		{
+			name: "MixedQuotedAndUnquotedNormalize",
+			input: []string{
+				"PUBLIC",
+				`"data::external_access_g" WITH ADMIN OPTION`,
+				`"data::external_access" WITH ADMIN OPTION`,
+			},
+			want: []string{
+				`"PUBLIC"`,
+				`"data::external_access_g" WITH ADMIN OPTION`,
+				`"data::external_access" WITH ADMIN OPTION`,
+			},
+		},
+		{
+			name:  "SchemaQualifiedRole",
+			input: []string{"MYSCHEMA.ROLE1 WITH ADMIN OPTION"},
+			want:  []string{`"MYSCHEMA.ROLE1" WITH ADMIN OPTION`},
+		},
+		{
+			name:    "InvalidRoleString",
+			input:   []string{"WITH GRANT OPTION"},
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FormatRoleStrings(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !cmp.Equal(tc.want, got) {
+				t.Errorf("FormatRoleStrings() got = %v, want %v", got, tc.want)
 			}
 		})
 	}

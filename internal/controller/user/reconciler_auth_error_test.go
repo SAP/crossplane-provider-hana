@@ -51,7 +51,7 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      &usergroup,
 							PasswordUpToDate:               nil,                             // No password authentication
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled, // Default value
@@ -94,7 +94,7 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      &usergroup,
 							PasswordUpToDate:               nil,                             // No password authentication
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled, // Default value
@@ -137,7 +137,7 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      &usergroup,
 							PasswordUpToDate:               nil,                             // No password authentication
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled, // Default value
@@ -181,7 +181,7 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      &usergroup,                      // Different from desired
 							PasswordUpToDate:               &passwordUpToDate,               // Password is correct, just outside validity period
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled, // Default value
@@ -228,7 +228,7 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{`"PUBLIC"`},
 							Usergroup:                      &usergroup,
 							PasswordUpToDate:               &passwordUpToDate, // Password is correct, user is just locked
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled,
