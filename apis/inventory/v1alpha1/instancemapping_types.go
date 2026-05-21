@@ -36,9 +36,9 @@ type InstanceMappingParameters struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="serviceInstanceID is immutable"
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// Platform is the deployment platform ("kubernetes" or "cloudfoundry")
+	// Platform is the deployment platform ("kubernetes" or "cloudfoundry" or "subaccount-api-access")
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=kubernetes;cloudfoundry
+	// +kubebuilder:validation:Enum=kubernetes;cloudfoundry;subaccount-api-access
 	Platform string `json:"platform"`
 
 	// PrimaryID is the cluster identifier (for kubernetes) or org GUID (for cloudfoundry)
