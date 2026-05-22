@@ -41,7 +41,7 @@ type InstanceMappingParameters struct {
 	// +kubebuilder:validation:Enum=kubernetes;cloudfoundry;subaccount-api-access
 	Platform string `json:"platform"`
 
-	// PrimaryID is the cluster identifier (for kubernetes) or org GUID (for cloudfoundry)
+	// PrimaryID is the cluster identifier (for kubernetes) or org GUID (for cloudfoundry) or subaccount GUID (for subaccount-api-access)
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="primaryID is immutable"
 	PrimaryID string `json:"primaryID"`

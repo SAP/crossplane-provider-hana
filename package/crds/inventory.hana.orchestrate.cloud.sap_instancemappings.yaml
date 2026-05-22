@@ -111,7 +111,7 @@ spec:
                     type: string
                   primaryID:
                     description: PrimaryID is the cluster identifier (for kubernetes)
-                      or org GUID (for cloudfoundry)
+                      or org GUID (for cloudfoundry) or subaccount GUID (for subaccount-api-access)
                     type: string
                     x-kubernetes-validations:
                     - message: primaryID is immutable
