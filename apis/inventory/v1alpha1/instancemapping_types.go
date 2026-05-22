@@ -73,10 +73,9 @@ type InstanceMappingObservation struct {
 }
 
 // InstanceMappingSpec defines the desired state of an InstanceMapping.
-// NOTE: InstanceMapping does NOT embed xpv1.ResourceSpec because it does not
-// require a ProviderConfig. All credentials come from AdminCredentialsSecretRef.
 type InstanceMappingSpec struct {
-	ForProvider InstanceMappingParameters `json:"forProvider"`
+	xpv1.ResourceSpec `json:",inline"`
+	ForProvider       InstanceMappingParameters `json:"forProvider"`
 }
 
 // InstanceMappingStatus represents the observed state of an InstanceMapping.
