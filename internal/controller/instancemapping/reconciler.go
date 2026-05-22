@@ -24,6 +24,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/inventory/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud"
 	imclient "github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud/instancemapping"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
 
 const (
@@ -59,7 +60,9 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		resource.ManagedKind(v1alpha1.InstanceMappingGroupVersionKind),
 		managed.WithExternalConnecter(NewConnector(mgr.GetClient(), log, nil)),
 		managed.WithLogger(log),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
+		features.ConfigureBetaManagementPolicies(o),
+	)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
