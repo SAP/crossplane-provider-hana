@@ -23,8 +23,6 @@ import (
 	schemav1alpha1 "github.com/SAP/crossplane-provider-hana/apis/schema/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 
-	"github.com/crossplane-contrib/xp-testing/pkg/vendored"
-
 	"sigs.k8s.io/e2e-framework/pkg/env"
 
 	"github.com/crossplane-contrib/xp-testing/pkg/images"
@@ -35,8 +33,7 @@ import (
 var testenv env.Environment
 
 var (
-	UUT_CONFIG_KEY     = "crossplane/provider-hana"
-	UUT_CONTROLLER_KEY = "crossplane/provider-hana-controller"
+	UUT_CONFIG_KEY = "crossplane/provider-hana"
 )
 
 func TestMain(m *testing.M) {
@@ -44,7 +41,7 @@ func TestMain(m *testing.M) {
 	logging.EnableVerboseLogging(&verbosity)
 	testenv = env.NewParallel()
 
-	imgs := images.GetImagesFromEnvironmentOrPanic(UUT_CONFIG_KEY, &UUT_CONTROLLER_KEY)
+	imgs := images.GetImagesFromEnvironmentOrPanic(UUT_CONFIG_KEY, nil)
 
 	secretData := getProviderConfigSecretData()
 
@@ -55,16 +52,6 @@ func TestMain(m *testing.M) {
 		CrossplaneSetup: setup.CrossplaneSetup{
 			Version:  "1.14.3",
 			Registry: setup.DockerRegistry,
-		},
-
-		ControllerConfig: &vendored.ControllerConfig{
-			Spec: vendored.ControllerConfigSpec{
-				Image: imgs.ControllerImage,
-				Args: []string{
-					"--sync=10s",
-					"--debug",
-				},
-			},
 		},
 		AddToSchemaFuncs: []func(s *runtime.Scheme) error{
 			apisv1alpha1.AddToScheme,
