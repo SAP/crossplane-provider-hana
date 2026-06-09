@@ -339,10 +339,14 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating user resource", "name", cr.Name, "username", cr.Spec.ForProvider.Username)
 
-	desired := c.buildDesiredParameters(cr)
+	desired, err := c.buildDesiredParameters(cr)
+	if err != nil {
+		c.log.Info("Error building desired parameters", "name", cr.Name, "error", err)
+		return managed.ExternalUpdate{}, err
+	}
 	observed := c.buildObservedParameters(cr)
 
-	observed, err := privilege.FilterManagedPrivileges(observed, cr.Spec.ForProvider.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
+	observed, err = privilege.FilterManagedPrivileges(observed, cr.Spec.ForProvider.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
 
 	if err != nil {
 		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
@@ -577,11 +581,27 @@ func (c *external) transformParameters(parameters map[string]string) map[string]
 	return filteredParameters
 }
 
-func (c *external) buildDesiredParameters(cr *v1alpha1.User) *v1alpha1.UserParameters {
+func (c *external) buildDesiredParameters(cr *v1alpha1.User) (*v1alpha1.UserParameters, error) {
 	parameters := handleDefaults(cr)
 
+	// Normalize roles and privileges to the same canonical (quoted) form Observe()
+	// uses to populate cr.Status.AtProvider. Without this, updateRoles/updatePrivileges
+	// in Update() would diff unquoted desired against quoted observed and emit
+	// spurious GRANT/REVOKE statements (notably GRANT PUBLIC, which HANA rejects
+	// with SQL Error 258 and which then aborts every subsequent step in Update,
+	// including updatePassword). Mirrors the calls in Observe() at lines 201 and 208.
+	var err error
+	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
+	if err != nil {
+		return nil, fmt.Errorf("cannot convert privileges: %w", err)
+	}
+	parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles)
+	if err != nil {
+		return nil, fmt.Errorf("cannot convert roles: %w", err)
+	}
+
 	parameters.Parameters = c.transformParameters(parameters.Parameters)
-	return parameters
+	return parameters, nil
 }
 
 func (c *external) buildObservedParameters(cr *v1alpha1.User) *v1alpha1.UserObservation {
