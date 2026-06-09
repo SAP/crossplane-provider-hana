@@ -199,7 +199,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	var err error
 	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
-
 	if err != nil {
 		c.log.Info("Error converting privileges", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, fmt.Errorf("cannot convert privileges: %w", err)
@@ -231,7 +230,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}
 
 	observed, err = privilege.FilterManagedPrivileges(observed, parameters.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
-
 	if err != nil {
 		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, fmt.Errorf(errFilterPrivileges, err)
@@ -339,18 +337,9 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating user resource", "name", cr.Name, "username", cr.Spec.ForProvider.Username)
 
-	desired, err := c.buildDesiredParameters(cr)
+	desired, observed, err := c.buildUpdateInputs(cr)
 	if err != nil {
-		c.log.Info("Error building desired parameters", "name", cr.Name, "error", err)
 		return managed.ExternalUpdate{}, err
-	}
-	observed := c.buildObservedParameters(cr)
-
-	observed, err = privilege.FilterManagedPrivileges(observed, cr.Spec.ForProvider.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
-
-	if err != nil {
-		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
-		return managed.ExternalUpdate{}, fmt.Errorf(errFilterPrivileges, err)
 	}
 
 	if err := c.updatePrivileges(ctx, cr, desired, observed); err != nil {
@@ -383,6 +372,24 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Successfully updated user resource", "name", cr.Name, "username", desired.Username)
 	return managed.ExternalUpdate{}, nil
+}
+
+// buildUpdateInputs assembles the desired and observed states needed by every
+// step in Update.
+func (c *external) buildUpdateInputs(cr *v1alpha1.User) (*v1alpha1.UserParameters, *v1alpha1.UserObservation, error) {
+	desired, err := c.buildDesiredParameters(cr)
+	if err != nil {
+		c.log.Info("Error building desired parameters", "name", cr.Name, "error", err)
+		return nil, nil, err
+	}
+
+	observed := c.buildObservedParameters(cr)
+	observed, err = privilege.FilterManagedPrivileges(observed, cr.Spec.ForProvider.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
+	if err != nil {
+		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
+		return nil, nil, fmt.Errorf(errFilterPrivileges, err)
+	}
+	return desired, observed, nil
 }
 
 func (c *external) updatePrivileges(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
@@ -626,7 +633,6 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 	cr.SetConditions(xpv1.Deleting())
 
 	err := c.client.Delete(ctx, parameters)
-
 	if err != nil {
 		c.log.Info("Error deleting user", "name", cr.Name, "error", err)
 		return managed.ExternalDelete{}, fmt.Errorf(errDropUser, err)
