@@ -1,0 +1,9 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: Rolegroup
+metadata:
+  name: example-rolegroup
+spec:
+  forProvider:
+    rolegroupName: EXAMPLE_ROLEGROUP
+  providerConfigRef:
+    name: example

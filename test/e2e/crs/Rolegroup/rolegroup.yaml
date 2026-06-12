@@ -1,0 +1,10 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: Rolegroup
+metadata:
+  name: e2e-test-rolegroup
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    rolegroupName: E2ETESTROLEGROUPBASIC
+  providerConfigRef:
+    name: example
