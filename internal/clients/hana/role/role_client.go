@@ -18,6 +18,7 @@ type RoleClient interface {
 	hana.QueryClient[v1alpha1.RoleParameters, v1alpha1.RoleObservation]
 	UpdateLdapGroups(ctx context.Context, parameters *v1alpha1.RoleParameters, groupsToAdd, groupsToRemove []string) error
 	UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error
+	UpdateRolegroup(ctx context.Context, parameters *v1alpha1.RoleParameters) error
 }
 
 // Client struct holds the connection to the db
@@ -47,15 +48,17 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.RoleParameters) (
 	}
 
 	var schema sql.NullString
-	query := "SELECT ROLE_SCHEMA_NAME, ROLE_NAME FROM SYS.ROLES WHERE ROLE_NAME = ?"
+	var rolegroupName sql.NullString
+	query := "SELECT ROLE_SCHEMA_NAME, ROLE_NAME, ROLEGROUP_NAME FROM SYS.ROLES WHERE ROLE_NAME = ?"
 
 	var err error
-	if err = c.QueryRowContext(ctx, query, parameters.RoleName).Scan(&schema, &observed.RoleName); xsql.IsNoRows(err) {
+	if err = c.QueryRowContext(ctx, query, parameters.RoleName).Scan(&schema, &observed.RoleName, &rolegroupName); xsql.IsNoRows(err) {
 		return observed, nil
 	} else if err != nil {
 		return observed, err
 	}
 	observed.Schema = schema.String
+	observed.Rolegroup = rolegroupName.String
 
 	if observed.LdapGroups, err = observeLdapGroups(ctx, c.DB, parameters.RoleName); err != nil {
 		return observed, err
@@ -107,6 +110,10 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.RoleParameters)
 		query += " NO GRANT TO CREATOR"
 	}
 
+	if parameters.Rolegroup != "" {
+		query += fmt.Sprintf(` SET ROLEGROUP "%s"`, utils.EscapeDoubleQuotes(parameters.Rolegroup))
+	}
+
 	if _, err := c.ExecContext(ctx, query); err != nil {
 		return err
 	}
@@ -152,6 +159,21 @@ func (c Client) UpdateLdapGroups(ctx context.Context, parameters *v1alpha1.RoleP
 // GetDefaultSchema returns the default schema for the client
 func (c Client) GetDefaultSchema() string {
 	return c.username
+}
+
+// UpdateRolegroup sets or unsets the rolegroup of an existing role
+func (c Client) UpdateRolegroup(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
+	roleName := getRoleName(parameters.Schema, parameters.RoleName)
+	var query string
+	if parameters.Rolegroup != "" {
+		query = fmt.Sprintf(`ALTER ROLE %s SET ROLEGROUP "%s"`, roleName, utils.EscapeDoubleQuotes(parameters.Rolegroup))
+	} else {
+		query = fmt.Sprintf(`ALTER ROLE %s UNSET ROLEGROUP`, roleName)
+	}
+	if _, err := c.ExecContext(ctx, query); err != nil {
+		return fmt.Errorf("failed to update rolegroup: %w", err)
+	}
+	return nil
 }
 
 // UpdatePrivileges modifies the privileges of an existing role in the db

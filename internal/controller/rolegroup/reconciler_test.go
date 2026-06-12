@@ -2,7 +2,7 @@
 Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
-package role
+package rolegroup
 
 import (
 	"context"
@@ -10,12 +10,6 @@ import (
 
 	"errors"
 	"fmt"
-
-	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/role"
-	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
-
-	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
-	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
@@ -25,6 +19,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/rolegroup"
+	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+
+	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
+	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 )
 
 // MockLogger is a mock implementation of logging.Logger
@@ -40,45 +40,26 @@ func (l *MockLogger) Info(_ string, _ ...any) {}
 func (l *MockLogger) WithValues(_ ...any) logging.Logger { return l }
 
 type mockClient struct {
-	MockRead             func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error)
-	MockCreate           func(ctx context.Context, parameters *v1alpha1.RoleParameters) error
-	MockDelete           func(ctx context.Context, parameters *v1alpha1.RoleParameters) error
-	MockUpdateLdapGroups func(ctx context.Context, parameters *v1alpha1.RoleParameters, groupsToAdd, groupsToRemove []string) error
-	MockUpdatePrivileges func(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error
-	MockUpdateRolegroup  func(ctx context.Context, parameters *v1alpha1.RoleParameters) error
+	MockRead                   func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) (observed *v1alpha1.RolegroupObservation, err error)
+	MockCreate                 func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error
+	MockDelete                 func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error
+	MockUpdateDisableRoleAdmin func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error
 }
 
-func (m mockClient) Read(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
+func (m mockClient) Read(ctx context.Context, parameters *v1alpha1.RolegroupParameters) (observed *v1alpha1.RolegroupObservation, err error) {
 	return m.MockRead(ctx, parameters)
 }
 
-func (m mockClient) Create(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
+func (m mockClient) Create(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error {
 	return m.MockCreate(ctx, parameters)
 }
 
-func (m mockClient) Delete(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
+func (m mockClient) Delete(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error {
 	return m.MockDelete(ctx, parameters)
 }
 
-func (m mockClient) UpdateLdapGroups(ctx context.Context, parameters *v1alpha1.RoleParameters, groupsToAdd, groupsToRemove []string) error {
-	if m.MockUpdateLdapGroups != nil {
-		return m.MockUpdateLdapGroups(ctx, parameters, groupsToAdd, groupsToRemove)
-	}
-	return nil
-}
-
-func (m mockClient) UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error {
-	if m.MockUpdatePrivileges != nil {
-		return m.MockUpdatePrivileges(ctx, parameters, privilegesToGrant, privilegesToRevoke)
-	}
-	return nil
-}
-
-func (m mockClient) UpdateRolegroup(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
-	if m.MockUpdateRolegroup != nil {
-		return m.MockUpdateRolegroup(ctx, parameters)
-	}
-	return nil
+func (m mockClient) UpdateDisableRoleAdmin(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error {
+	return m.MockUpdateDisableRoleAdmin(ctx, parameters)
 }
 
 func TestConnect(t *testing.T) {
@@ -87,7 +68,7 @@ func TestConnect(t *testing.T) {
 	type fields struct {
 		kube      client.Client
 		usage     resource.Tracker
-		newClient func(db xsql.DB, username string) role.Client
+		newClient func(db xsql.DB) rolegroup.Client
 	}
 
 	type args struct {
@@ -101,12 +82,12 @@ func TestConnect(t *testing.T) {
 		args   args
 		want   error
 	}{
-		"ErrNotRole": {
-			reason: "An error should be returned if the managed resource is not a *Role",
+		"ErrNotRoleGroup": {
+			reason: "An error should be returned if the managed resource is not a *Rolegroup",
 			args: args{
 				mg: nil,
 			},
-			want: errors.New(errNotRole),
+			want: errors.New(errNotRolegroup),
 		},
 		"ErrTrackProviderConfigUsage": {
 			reason: "An error should be returned if we can't track our ProviderConfig usage",
@@ -114,7 +95,7 @@ func TestConnect(t *testing.T) {
 				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return errBoom }),
 			},
 			args: args{
-				mg: &v1alpha1.Role{},
+				mg: &v1alpha1.Rolegroup{},
 			},
 			want: fmt.Errorf(errTrackPCUsage, errBoom),
 		},
@@ -127,8 +108,8 @@ func TestConnect(t *testing.T) {
 				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
 						ResourceSpec: xpv1.ResourceSpec{
 							ProviderConfigReference: &xpv1.Reference{},
 						},
@@ -141,16 +122,13 @@ func TestConnect(t *testing.T) {
 			reason: "An error should be returned if our ProviderConfig doesn't specify a connection secret",
 			fields: fields{
 				kube: &test.MockClient{
-					// We call get to populate the Database struct, then again
-					// to populate the (empty) ProviderConfig struct, resulting
-					// in a ProviderConfig with a nil connection secret.
 					MockGet: test.NewMockGetFn(nil),
 				},
 				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
 						ResourceSpec: xpv1.ResourceSpec{
 							ProviderConfigReference: &xpv1.Reference{},
 						},
@@ -176,8 +154,8 @@ func TestConnect(t *testing.T) {
 				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
 						ResourceSpec: xpv1.ResourceSpec{
 							ProviderConfigReference: &xpv1.Reference{},
 						},
@@ -203,7 +181,7 @@ func TestObserve(t *testing.T) {
 	errBoom := errors.New("boom")
 
 	type fields struct {
-		client role.RoleClient
+		client rolegroup.RolegroupClient
 		log    logging.Logger
 	}
 
@@ -223,56 +201,55 @@ func TestObserve(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotRole": {
-			reason: "An error should be returned if the managed resource is not a *Role",
+		"ErrNotRoleGroup": {
+			reason: "An error should be returned if the managed resource is not a *Rolegroup",
 			args: args{
 				mg: nil,
 			},
 			want: want{
-				err: errors.New(errNotRole),
+				err: errors.New(errNotRolegroup),
 			},
 		},
 		"ErrObserve": {
-			reason: "Any errors encountered while observing the role should be returned",
+			reason: "Any errors encountered while observing the Rolegroup should be returned",
 			fields: fields{
 				client: mockClient{
-					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
+					MockRead: func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) (observed *v1alpha1.RolegroupObservation, err error) {
 						return nil, errBoom
 					},
 				},
 				log: &MockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
-						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
+						ForProvider: v1alpha1.RolegroupParameters{
+							RolegroupName: "DEMO_ROLEGROUP",
 						},
 					},
 				},
 			},
 			want: want{
-				err: fmt.Errorf(errSelectRole, errBoom),
+				err: fmt.Errorf(errSelectRolegroup, errBoom),
 			},
 		},
 		"Success": {
-			reason: "No error should be returned when we successfully observe a role",
+			reason: "No error should be returned when we successfully observe a Rolegroup",
 			fields: fields{
 				client: mockClient{
-					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
-						return &v1alpha1.RoleObservation{
-							RoleName: "",
-							Schema:   "",
+					MockRead: func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) (observed *v1alpha1.RolegroupObservation, err error) {
+						return &v1alpha1.RolegroupObservation{
+							RolegroupName: "",
 						}, nil
 					},
 				},
 				log: &MockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
-						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
+						ForProvider: v1alpha1.RolegroupParameters{
+							RolegroupName: "DEMO_ROLEGROUP",
 						},
 					},
 				},
@@ -288,10 +265,10 @@ func TestObserve(t *testing.T) {
 			e := external{client: tc.fields.client, log: tc.fields.log}
 			got, err := e.Observe(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
-				t.Errorf("\n%s\ne.Read(...): -want error, +got error:\n%s\n", tc.reason, diff)
+				t.Errorf("\n%s\ne.Observe(...): -want error, +got error:\n%s\n", tc.reason, diff)
 			}
 			if diff := cmp.Diff(tc.want.c, got); diff != "" {
-				t.Errorf("\n%s\ne.Read(...): -want, +got:\n%s\n", tc.reason, diff)
+				t.Errorf("\n%s\ne.Observe(...): -want, +got:\n%s\n", tc.reason, diff)
 			}
 		})
 	}
@@ -301,7 +278,7 @@ func TestCreate(t *testing.T) {
 	errBoom := errors.New("boom")
 
 	type fields struct {
-		client role.RoleClient
+		client rolegroup.RolegroupClient
 		log    logging.Logger
 	}
 
@@ -321,53 +298,53 @@ func TestCreate(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotRole": {
-			reason: "An error should be returned if the managed resource is not a *Role",
+		"ErrNotRoleGroup": {
+			reason: "An error should be returned if the managed resource is not a *Rolegroup",
 			args: args{
 				mg: nil,
 			},
 			want: want{
-				err: errors.New(errNotRole),
+				err: errors.New(errNotRolegroup),
 			},
 		},
 		"ErrCreate": {
-			reason: "Any errors encountered while creating the role should be returned",
+			reason: "Any errors encountered while creating the Rolegroup should be returned",
 			fields: fields{
 				client: mockClient{
-					MockCreate: func(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
+					MockCreate: func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error {
 						return errBoom
 					},
 				},
 				log: &MockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
-						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
+						ForProvider: v1alpha1.RolegroupParameters{
+							RolegroupName: "DEMO_ROLEGROUP",
 						},
 					},
 				},
 			},
 			want: want{
-				err: fmt.Errorf(errCreateRole, errBoom),
+				err: fmt.Errorf(errCreateRolegroup, errBoom),
 			},
 		},
 		"Success": {
-			reason: "No error should be returned when we successfully create a role",
+			reason: "No error should be returned when we successfully create a Rolegroup",
 			fields: fields{
 				client: mockClient{
-					MockCreate: func(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
+					MockCreate: func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error {
 						return nil
 					},
 				},
 				log: &MockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
-						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
+						ForProvider: v1alpha1.RolegroupParameters{
+							RolegroupName: "DEMO_ROLEGROUP",
 						},
 					},
 				},
@@ -397,7 +374,7 @@ func TestDelete(t *testing.T) {
 	errBoom := errors.New("boom")
 
 	type fields struct {
-		client role.RoleClient
+		client rolegroup.RolegroupClient
 		log    logging.Logger
 	}
 
@@ -416,53 +393,53 @@ func TestDelete(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotRole": {
-			reason: "An error should be returned if the managed resource is not a *Role",
+		"ErrNotRoleGroup": {
+			reason: "An error should be returned if the managed resource is not a *Rolegroup",
 			args: args{
 				mg: nil,
 			},
 			want: want{
-				err: errors.New(errNotRole),
+				err: errors.New(errNotRolegroup),
 			},
 		},
 		"ErrDelete": {
-			reason: "Any errors encountered while deleting the role should be returned",
+			reason: "Any errors encountered while deleting the Rolegroup should be returned",
 			fields: fields{
 				client: mockClient{
-					MockDelete: func(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
+					MockDelete: func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error {
 						return errBoom
 					},
 				},
 				log: &MockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
-						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
+						ForProvider: v1alpha1.RolegroupParameters{
+							RolegroupName: "DEMO_ROLEGROUP",
 						},
 					},
 				},
 			},
 			want: want{
-				err: fmt.Errorf(errDropRole, errBoom),
+				err: fmt.Errorf(errDropRolegroup, errBoom),
 			},
 		},
 		"Success": {
-			reason: "No error should be returned when we successfully delete a role",
+			reason: "No error should be returned when we successfully delete a Rolegroup",
 			fields: fields{
 				client: mockClient{
-					MockDelete: func(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
+					MockDelete: func(ctx context.Context, parameters *v1alpha1.RolegroupParameters) error {
 						return nil
 					},
 				},
 				log: &MockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
-						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+				mg: &v1alpha1.Rolegroup{
+					Spec: v1alpha1.RolegroupSpec{
+						ForProvider: v1alpha1.RolegroupParameters{
+							RolegroupName: "DEMO_ROLEGROUP",
 						},
 					},
 				},
@@ -479,47 +456,6 @@ func TestDelete(t *testing.T) {
 			_, err := e.Delete(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Delete(...): -want error, +got error:\n%s\n", tc.reason, diff)
-			}
-		})
-	}
-}
-
-func TestBuildDesiredParameters(t *testing.T) {
-	cases := map[string]struct {
-		reason string
-		cr     *v1alpha1.Role
-		want   *v1alpha1.RoleParameters
-	}{
-		"AllFields": {
-			reason: "All ForProvider fields should be copied verbatim, preserving case and special characters",
-			cr: &v1alpha1.Role{
-				Spec: v1alpha1.RoleSpec{
-					ForProvider: v1alpha1.RoleParameters{
-						RoleName:         "sap.hana::MixedCase_Role",
-						Schema:           "mySchema",
-						Privileges:       []string{`SELECT ON SCHEMA "testSchema"`, "CREATE ANY"},
-						LdapGroups:       []string{"cn=Securities_DBA,OU=Groups,dc=example,dc=com"},
-						NoGrantToCreator: true,
-						Rolegroup:        "MY_ROLEGROUP",
-					},
-				},
-			},
-			want: &v1alpha1.RoleParameters{
-				RoleName:         "sap.hana::MixedCase_Role",
-				Schema:           "mySchema",
-				Privileges:       []string{`SELECT ON SCHEMA "testSchema"`, "CREATE ANY"},
-				LdapGroups:       []string{"cn=Securities_DBA,OU=Groups,dc=example,dc=com"},
-				NoGrantToCreator: true,
-				Rolegroup:        "MY_ROLEGROUP",
-			},
-		},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			got := buildDesiredParameters(tc.cr)
-			if diff := cmp.Diff(tc.want, got); diff != "" {
-				t.Errorf("\n%s\nbuildDesiredParameters(...): -want, +got:\n%s\n", tc.reason, diff)
 			}
 		})
 	}

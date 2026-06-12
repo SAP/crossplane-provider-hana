@@ -166,6 +166,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.Schema = observed.Schema
 	cr.Status.AtProvider.Privileges = observed.Privileges
 	cr.Status.AtProvider.LdapGroups = observed.LdapGroups
+	cr.Status.AtProvider.Rolegroup = observed.Rolegroup
 
 	cr.SetConditions(xpv1.Available())
 
@@ -186,6 +187,9 @@ func upToDate(observed *v1alpha1.RoleObservation, desired *v1alpha1.RoleParamete
 		return false
 	}
 	if !utils.ArraysEqual(observed.LdapGroups, desired.LdapGroups) {
+		return false
+	}
+	if observed.Rolegroup != desired.Rolegroup {
 		return false
 	}
 	return true
@@ -221,6 +225,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	cr.Status.AtProvider.Schema = parameters.Schema
 	cr.Status.AtProvider.Privileges = parameters.Privileges
 	cr.Status.AtProvider.LdapGroups = parameters.LdapGroups
+	cr.Status.AtProvider.Rolegroup = parameters.Rolegroup
 
 	c.log.Info("Successfully created role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalCreation{
@@ -278,6 +283,22 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		c.log.Info("Updated role privileges", "name", cr.Name, "roleName", parameters.RoleName)
 	}
 
+	if cr.Status.AtProvider.Rolegroup != parameters.Rolegroup {
+		c.log.Info("Updating role rolegroup",
+			"name", cr.Name,
+			"roleName", parameters.RoleName,
+			"from", cr.Status.AtProvider.Rolegroup,
+			"to", parameters.Rolegroup)
+
+		err := roleClient.UpdateRolegroup(ctx, parameters)
+		if err != nil {
+			c.log.Info("Error updating role rolegroup", "name", cr.Name, "error", err)
+			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
+		}
+		cr.Status.AtProvider.Rolegroup = parameters.Rolegroup
+		c.log.Info("Updated role rolegroup", "name", cr.Name, "roleName", parameters.RoleName)
+	}
+
 	c.log.Info("Successfully updated role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalUpdate{}, nil
 }
@@ -317,5 +338,6 @@ func buildDesiredParameters(cr *v1alpha1.Role) *v1alpha1.RoleParameters {
 		Privileges:       cr.Spec.ForProvider.Privileges,
 		LdapGroups:       cr.Spec.ForProvider.LdapGroups,
 		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
+		Rolegroup:        cr.Spec.ForProvider.Rolegroup,
 	}
 }

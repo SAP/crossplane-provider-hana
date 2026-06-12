@@ -15,6 +15,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/controller/kymainstancemapping"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/personalsecurityenvironment"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/role"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/rolegroup"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/user"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/usergroup"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/x509provider"
@@ -26,6 +27,7 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	// SQL-based controllers
 	for _, setup := range []func(ctrl.Manager, controller.Options, xsql.Connector) error{
 		role.Setup,
+		rolegroup.Setup,
 		usergroup.Setup,
 		dbschema.Setup,
 		auditpolicy.Setup,

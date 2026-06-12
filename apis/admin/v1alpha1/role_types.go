@@ -30,6 +30,9 @@ type RoleParameters struct {
 	Privileges []string `json:"privileges,omitempty"`
 
 	// +kubebuilder:validation:Optional
+	Rolegroup string `json:"rolegroup,omitempty"`
+
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	NoGrantToCreator bool `json:"noGrantToCreator,omitempty"`
 }
@@ -45,6 +48,8 @@ type RoleObservation struct {
 	LdapGroups []string `json:"ldapGroups,omitempty"`
 
 	Privileges []string `json:"privileges,omitempty"`
+
+	Rolegroup string `json:"rolegroup,omitempty"`
 }
 
 // A RoleSpec defines the desired state of a Role.
