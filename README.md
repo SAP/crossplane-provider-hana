@@ -102,9 +102,15 @@ To run E2E tests via make rule
 make e2e.run
 ```
 
-## Support, Feedback, Contributing
+## 👐 Support, Feedback
 
-This project is open to feature requests/suggestions, bug reports etc. via [GitHub issues](https://github.com/SAP/crossplane-provider-hana/issues). Contribution and feedback are encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](CONTRIBUTING.md).
+This project is open to feature requests/suggestions, bug reports etc. via [GitHub issues](https://github.com/SAP/crossplane-provider-hana/issues). Feedback is encouraged and always welcome.
+
+Join the conversation on Slack: [**#crossplane-provider-sap**](https://crossplane.slack.com/archives/C07UZ3UJY7Q)
+
+## Contributing
+
+For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](CONTRIBUTING.md).
 
 ## Security / Disclosure
 
