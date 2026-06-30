@@ -181,7 +181,7 @@ spec:
                     pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
                     type: string
                   username:
-                    pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
+                    pattern: ^[^",\$\.'\+<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable

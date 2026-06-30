@@ -17,7 +17,7 @@ import (
 type AuditPolicyParameters struct {
 	PolicyName string `json:"policyName"`
 
-	// +kubebuilder:validation:items:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
+	// +kubebuilder:validation:items:Pattern:=`^[^",\$'\+<>|\[\]\{\}\(\)!%,/:;=\?@\\^~\x60]+$`
 	// +listType=set
 	AuditActions []string `json:"auditActions"`
 
