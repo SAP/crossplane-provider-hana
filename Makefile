@@ -35,13 +35,45 @@ KIND_NODE_IMAGE_TAG ?= v1.34.0
 -include build/makelib/k8s_tools.mk
 
 # Setup Images
-DOCKER_REGISTRY ?= crossplane
-IMAGES = $(BASE_NAME) $(BASE_NAME)-controller
--include build/makelib/image.mk
+#
+# Migrated from the legacy two-image pattern (image.mk, IMAGES = $(BASE_NAME)
+# $(BASE_NAME)-controller) to the single-image xpkg pattern (imagelight.mk +
+# xpkg.mk). The package image now carries the provider runtime directly, which
+# is required for Crossplane v2 (spec.controller.image was removed from the
+# package API in crossplane#6487). Also fixes the missing io.crossplane.xpkg
+# label, which `crossplane xpkg build` sets automatically.
+#
+# Reference: SAP/crossplane-provider-btp#626
+IMAGES = provider-hana
+-include build/makelib/imagelight.mk
 
-export UUT_CONFIG = $(BUILD_REGISTRY)/$(subst crossplane-,crossplane/,$(PROJECT_NAME)):$(VERSION)
-export UUT_CONTROLLER = $(BUILD_REGISTRY)/$(subst crossplane-,crossplane/,$(PROJECT_NAME))-controller:$(VERSION)
-export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_CONFIG)","crossplane/provider-hana-controller":"$(UUT_CONTROLLER)"}
+# UUT_CONFIG / E2E_IMAGES preserve the existing repo conventions and continue
+# to be consumed by test/e2e via images.GetImagesFromEnvironmentOrPanic.
+# UUT_CONTROLLER is removed because the controller image no longer exists.
+# UUT_XPKG is new and points at the xpkg artifact loaded into the local docker
+# daemon by `make local-build`; it is what xp-testing sideloads into kind.
+export UUT_CONFIG = $(BUILD_REGISTRY)/provider-hana-$(ARCH):latest
+export UUT_XPKG = $(BUILD_REGISTRY)/provider-hana-xpkg:latest
+export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_XPKG)"}
+
+.PHONY: local-build
+local-build: build xpkg.build.provider-hana
+	$(INFO) "Loading xpkg into docker as $(UUT_XPKG)"
+	@XPKG_FILE=$(XPKG_OUTPUT_DIR)/$(PLATFORM)/provider-hana-$(VERSION).xpkg && \
+	XPKG_SHA=$$(docker load -i $$XPKG_FILE | sed -n 's/.*ID: //p') && \
+	docker tag $$XPKG_SHA $(UUT_XPKG);
+	$(OK) "Built local images: $(UUT_CONFIG) $(UUT_XPKG)"
+
+# ====================================================================================
+# Setup XPKG
+
+XPKGS ?= provider-hana
+XPKG_REG_ORGS ?= ghcr.io/sap/crossplane-provider-hana/crossplane
+-include build/makelib/xpkg.mk
+
+# NOTE(hasheddan): we force image building to happen prior to xpkg build so that
+# we ensure image is present in daemon.
+xpkg.build.provider-hana: do.build.images
 
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .
@@ -53,10 +85,9 @@ test.run: $(GOJUNIT) $(GOCOVER_COBERTURA) go.test.unit
 # e2e tests
 e2e.run: test-e2e
 
-test-e2e: $(KIND) $(HELM3) build
+test-e2e: local-build $(KIND) $(HELM3)
 	@$(INFO) running e2e tests
 	@echo E2E_IMAGES=$$E2E_IMAGES
-	# echo E2E_IMAGES=$$E2E_IMAGES > e2e.env
 	HANA_BINDINGS=$$HANA_BINDINGS go test $(PROJECT_REPO)/test/... -tags=e2e -test.v  -count=1
 	@$(OK) e2e tests passed
 
@@ -202,14 +233,3 @@ crossplane.help:
 help-special: crossplane.help
 
 .PHONY: crossplane.help help-special
-
-PUBLISH_IMAGES ?= crossplane/provider-hana crossplane/provider-hana-controller
-
-.PHONY: publish
-publish:
-	@$(INFO) "Publishing images $(PUBLISH_IMAGES) to $(DOCKER_REGISTRY)"
-	@for image in $(PUBLISH_IMAGES); do \
-		echo "Publishing image $(DOCKER_REGISTRY)/$${image}:$(VERSION)"; \
-		docker push $(DOCKER_REGISTRY)/$${image}:$(VERSION); \
-	done
-	@$(OK) "Publishing images $(PUBLISH_IMAGES) to $(DOCKER_REGISTRY)"

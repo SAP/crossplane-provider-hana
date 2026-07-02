@@ -1,4 +1,4 @@
-apiVersion: meta.pkg.crossplane.io/v1alpha1
+apiVersion: meta.pkg.crossplane.io/v1
 kind: Provider
 metadata:
   name: provider-hana
@@ -9,7 +9,3 @@ metadata:
     meta.crossplane.io/license: Apache-2.0
     meta.crossplane.io/description: |
       A Crossplane provider for managing SAP HANA databases.
-
-spec:
-  controller:
-    image: DOCKER_REGISTRY/crossplane/provider-hana-controller:VERSION

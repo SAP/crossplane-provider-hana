@@ -94,13 +94,13 @@ jobs:
         run: make vendor vendor.check
 
       - name: Build Images
-        run: make build
+        run: |
+          make build PLATFORM=linux_amd64 VERSION=${{ github.event.inputs.nextVersion }}
+          make build PLATFORM=linux_arm64 VERSION=${{ github.event.inputs.nextVersion }}
         env:
           # We're using docker buildx, which doesn't actually load the images it
           # builds by default. Specifying --load does so.
           BUILD_ARGS: "--load"
-          DOCKER_REGISTRY: ${{ vars.REGISTRY_URL }}
-          BUILD_REGISTRY: ${{ vars.REGISTRY_URL }}
 
       - name: Login to Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -110,10 +110,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Artifacts to DockerHub
-        run: make publish BRANCH_NAME=${GITHUB_REF##*/}
+        run: |
+          make xpkg.build PLATFORM=linux_amd64 VERSION=${{ github.event.inputs.nextVersion }} BRANCH_NAME=${GITHUB_REF##*/}
+          make xpkg.build PLATFORM=linux_arm64 VERSION=${{ github.event.inputs.nextVersion }} BRANCH_NAME=${GITHUB_REF##*/}
+          make xpkg.release.publish VERSION=${{ github.event.inputs.nextVersion }}
         env:
-          DOCKER_REGISTRY: ${{ vars.REGISTRY_URL }}
-          BUILD_REGISTRY: ${{ vars.REGISTRY_URL }}
+          XPKG_REG_ORGS: ${{ vars.REGISTRY_URL }}/crossplane
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
