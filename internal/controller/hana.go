@@ -12,8 +12,10 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/controller/auditpolicy"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/dbschema"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/instancemapping"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/jwtprovider"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/kymainstancemapping"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/personalsecurityenvironment"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/publickey"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/role"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/rolegroup"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/user"
@@ -33,6 +35,8 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 		auditpolicy.Setup,
 		user.Setup,
 		x509provider.Setup,
+		jwtprovider.Setup,
+		publickey.Setup,
 		personalsecurityenvironment.Setup,
 	} {
 		if err := setup(mgr, o, db); err != nil {

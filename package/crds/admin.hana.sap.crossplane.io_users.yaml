@@ -77,6 +77,59 @@ spec:
                     description: Authentication includes different authentication
                       methods
                     properties:
+                      jwtProviders:
+                        items:
+                          description: |-
+                            JWTUserMapping defines the mapping of an external JWT identity to a database
+                            user.
+                          properties:
+                            externalIdentity:
+                              description: |-
+                                ExternalIdentity is the value of the claim configured as EXTERNAL
+                                IDENTITY on the provider (commonly the user's email or subject ID).
+                              minLength: 1
+                              type: string
+                            name:
+                              default: ""
+                              type: string
+                            providerRef:
+                              description: A Reference to a named object.
+                              properties:
+                                name:
+                                  description: Name of the referenced object.
+                                  type: string
+                                policy:
+                                  description: Policies for referencing.
+                                  properties:
+                                    resolution:
+                                      default: Required
+                                      description: |-
+                                        Resolution specifies whether resolution of this reference is required.
+                                        The default is 'Required', which means the reconcile will fail if the
+                                        reference cannot be resolved. 'Optional' means this reference will be
+                                        a no-op if it cannot be resolved.
+                                      enum:
+                                      - Required
+                                      - Optional
+                                      type: string
+                                    resolve:
+                                      description: |-
+                                        Resolve specifies when this reference should be resolved. The default
+                                        is 'IfNotPresent', which will attempt to resolve the reference only when
+                                        the corresponding field is not present. Use 'Always' to resolve the
+                                        reference on every reconcile.
+                                      enum:
+                                      - Always
+                                      - IfNotPresent
+                                      type: string
+                                  type: object
+                              required:
+                              - name
+                              type: object
+                          required:
+                          - externalIdentity
+                          type: object
+                        type: array
                       password:
                         description: Password authentication type
                         properties:
@@ -150,6 +203,15 @@ spec:
                           type: object
                         type: array
                     type: object
+                  enableClientConnect:
+                    default: true
+                    description: |-
+                      EnableClientConnect controls whether the user is allowed to open
+                      external client connections. Crucial for JWT-mapped restricted users:
+                      `CREATE RESTRICTED USER` creates the user without this privilege, and
+                      JWT authentication fails with internal error U04 until it is granted.
+                      Defaults to true.
+                    type: boolean
                   isPasswordLifetimeCheckEnabled:
                     default: true
                     type: boolean
@@ -373,10 +435,73 @@ spec:
                   createdAt:
                     format: date-time
                     type: string
+                  isClientConnectEnabled:
+                    description: |-
+                      IsClientConnectEnabled reflects whether the user is permitted to open
+                      external client connections.
+                    type: boolean
+                  isJWTEnabled:
+                    description: |-
+                      IsJWTEnabled reflects whether `ALTER USER ... ENABLE JWT` has been
+                      applied to the user.
+                    type: boolean
                   isPasswordEnabled:
                     type: boolean
                   isPasswordLifetimeCheckEnabled:
                     type: boolean
+                  jwtProviders:
+                    items:
+                      description: |-
+                        JWTUserMapping defines the mapping of an external JWT identity to a database
+                        user.
+                      properties:
+                        externalIdentity:
+                          description: |-
+                            ExternalIdentity is the value of the claim configured as EXTERNAL
+                            IDENTITY on the provider (commonly the user's email or subject ID).
+                          minLength: 1
+                          type: string
+                        name:
+                          default: ""
+                          type: string
+                        providerRef:
+                          description: A Reference to a named object.
+                          properties:
+                            name:
+                              description: Name of the referenced object.
+                              type: string
+                            policy:
+                              description: Policies for referencing.
+                              properties:
+                                resolution:
+                                  default: Required
+                                  description: |-
+                                    Resolution specifies whether resolution of this reference is required.
+                                    The default is 'Required', which means the reconcile will fail if the
+                                    reference cannot be resolved. 'Optional' means this reference will be
+                                    a no-op if it cannot be resolved.
+                                  enum:
+                                  - Required
+                                  - Optional
+                                  type: string
+                                resolve:
+                                  description: |-
+                                    Resolve specifies when this reference should be resolved. The default
+                                    is 'IfNotPresent', which will attempt to resolve the reference only when
+                                    the corresponding field is not present. Use 'Always' to resolve the
+                                    reference on every reconcile.
+                                  enum:
+                                  - Always
+                                  - IfNotPresent
+                                  type: string
+                              type: object
+                          required:
+                          - name
+                          type: object
+                      required:
+                      - externalIdentity
+                      type: object
+                    type: array
                   lastPasswordChangeTime:
                     format: date-time
                     type: string

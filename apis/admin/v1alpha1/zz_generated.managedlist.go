@@ -16,8 +16,26 @@ func (l *AuditPolicyList) GetItems() []resource.Managed {
 	return items
 }
 
+// GetItems of this JWTProviderList.
+func (l *JWTProviderList) GetItems() []resource.Managed {
+	items := make([]resource.Managed, len(l.Items))
+	for i := range l.Items {
+		items[i] = &l.Items[i]
+	}
+	return items
+}
+
 // GetItems of this PersonalSecurityEnvironmentList.
 func (l *PersonalSecurityEnvironmentList) GetItems() []resource.Managed {
+	items := make([]resource.Managed, len(l.Items))
+	for i := range l.Items {
+		items[i] = &l.Items[i]
+	}
+	return items
+}
+
+// GetItems of this PublicKeyList.
+func (l *PublicKeyList) GetItems() []resource.Managed {
 	items := make([]resource.Managed, len(l.Items))
 	for i := range l.Items {
 		items[i] = &l.Items[i]
