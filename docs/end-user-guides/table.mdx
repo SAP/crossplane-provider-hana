@@ -6,9 +6,9 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 # Managing Tables
-Managing tables in a busy restaurant is hard. Doing it across multiple restaurants is even harder. Your database shouldn’t feel like that. With a clear, declarative workflow, managing schemas and tables in HANA Cloud can be straightforward. You can spend your time on what matters instead of manual work.
+Managing tables in a busy restaurant is hard. Doing it across multiple restaurants is even harder. Your database shouldn't feel like that. With a clear, declarative workflow, managing schemas and tables in HANA Cloud can be straightforward. You can spend your time on what matters instead of manual work.
 
-In this chapter, you’ll learn how to manage schemas and tables in SAP HANA Cloud in a simple, declarative way. Although the HANA Cloud Crossplane provider doesn’t yet support table management, there are practical alternatives you can use today to keep your database changes predictable and repeatable.
+In this chapter, you'll learn how to manage schemas and tables in SAP HANA Cloud in a simple, declarative way. Although the HANA Cloud Crossplane provider doesn't yet support table management, there are practical alternatives you can use today to keep your database changes predictable and repeatable.
 
 :::note This is a preview
 We're currently working on reviewing different ways to manage tables in HANA Cloud using a declarative workflow.
@@ -16,7 +16,7 @@ You have some ideas? Let's chat! Message us directly we are looking forward to y
 :::
 
 
-What you’ll get from this chapter:
+What you'll get from this chapter:
 - How to manage tables in HANA Cloud using a declarative workflow
 - Ways to keep your database changes predictable and versioned
 - How to save time with automation and CI/CD-friendly tools
@@ -24,20 +24,20 @@ What you’ll get from this chapter:
 See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/main/apis)
 
 ## 🚧 Prerequisites 
-- You’ve created a control plane
-- You’ve created a [HANA Cloud instance](/docs/crossplane-provider-hana/docs/end-user-guides/setup)
-- You’ve set up the [HANA Cloud Crossplane provider](/docs/crossplane-provider-hana/docs/end-user-guides/setup#install-provider)
+- You've created a control plane
+- You've created a [HANA Cloud instance](/docs/crossplane-provider-hana/docs/end-user-guides/setup)
+- You've set up the [HANA Cloud Crossplane provider](/docs/crossplane-provider-hana/docs/end-user-guides/setup#install-provider)
 
 <Tabs>
   <TabItem value="liquibase" label="Liquibase">
     Liquibase is an open-source tool for database schema change management. You define changes in XML, YAML, JSON, or SQL, and Liquibase applies them safely and consistently. It supports many databases including SAP HANA Cloud. It works locally and in CI/CD pipelines, so your changes are repeatable and traceable from dev to production.
 
     ### Prerequisites
-    For this approach, we’ll create one user and two schemas. One schema is managed with Liquibase and one schema stores Liquibase’s metadata (the changelog).
+    For this approach, we'll create one user and two schemas. One schema is managed with Liquibase and one schema stores Liquibase's metadata (the changelog).
 
     You can create the schemas and user using the HANA Cloud Crossplane provider as shown in our [Schema guide](/docs/crossplane-provider-hana/docs/end-user-guides/schema) and [User management guide](/docs/crossplane-provider-hana/docs/end-user-guides/users).
 
-    First, let’s create the user. We start with the user secret and then the user itself.
+    First, let's create the user. We start with the user secret and then the user itself.
 
     ```yaml title="user-secret.yaml"
     apiVersion: v1
@@ -132,7 +132,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
     <details>
       <summary>Just trying it out? No need to set up a whole project</summary>
 
-      If you just want to try it out, there’s no need to set up a whole project. I highly recommend it for production use.
+      If you just want to try it out, there's no need to set up a whole project. I highly recommend it for production use.
       You need to install the Liquibase CLI from here: https://docs.liquibase.com/pro/get-started
 
       :::note Using Homebrew?
@@ -251,7 +251,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
     ```
 
     ### Updating the schema
-    Now let’s say we want to add a new column named `EMAIL` to the `PERSONS` table. We can do this by creating a new changeset in the `changelog-master.yaml` file.
+    Now let's say we want to add a new column named `EMAIL` to the `PERSONS` table. We can do this by creating a new changeset in the `changelog-master.yaml` file.
 
     ```yaml title="changelog-master.yaml"
     databaseChangeLog:
@@ -688,7 +688,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
       Always review the generated changelog before applying it to your database. Automated changes may have unintended consequences.
       :::
 
-      If you now run the following SQL command, you’ll see that the drift table has been removed.
+      If you now run the following SQL command, you'll see that the drift table has been removed.
 
       ```sql
       SELECT * FROM LIQUIBASE_MANAGED.DRIFT_TABLE;
@@ -696,7 +696,7 @@ See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/ma
 
     </details>
 
-    And that's it! You’ve successfully managed your HANA Cloud tables using a declarative way with Liquibase.
+    And that's it! You've successfully managed your HANA Cloud tables using a declarative way with Liquibase.
   </TabItem>
 
   <TabItem value="cap_hdi" label="CAP HDI container">
