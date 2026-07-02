@@ -113,8 +113,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("TEST_USER", "TEST_GROUP", testTime.Time, testTime.Time, false, false, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("TEST_USER", "TEST_GROUP", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -166,6 +166,8 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(true),
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
+					IsJWTEnabled:                   new(false),
+					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
 			},
@@ -176,8 +178,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("POWER_USER", "", testTime.Time, testTime.Time, false, false, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("POWER_USER", "", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -215,6 +217,8 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(true),
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
+					IsJWTEnabled:                   new(false),
+					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
 			},
@@ -225,8 +229,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("RESTRICTED_USER", "", testTime.Time, testTime.Time, true, false, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("RESTRICTED_USER", "", testTime.Time, testTime.Time, true, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -263,6 +267,8 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(true),
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
+					IsJWTEnabled:                   new(false),
+					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
 			},
@@ -273,8 +279,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("X509_USER", "X509_GROUP", testTime.Time, testTime.Time, false, true, false)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("X509_USER", "X509_GROUP", testTime.Time, testTime.Time, false, true, false, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -324,6 +330,8 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               nil,
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              new(false),
+					IsJWTEnabled:                   new(false),
+					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
 							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
@@ -344,8 +352,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("HYBRID_USER", "HYBRID_GROUP", testTime.Time, testTime.Time, false, true, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("HYBRID_USER", "HYBRID_GROUP", testTime.Time, testTime.Time, false, true, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -394,6 +402,8 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(true),
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              new(true),
+					IsJWTEnabled:                   new(false),
+					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
 							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "MAIN_PROVIDER"},
@@ -410,8 +420,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("ERROR_USER", "", testTime.Time, testTime.Time, false, false, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("ERROR_USER", "", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -446,6 +456,7 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(false),
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
+					IsClientConnectEnabled:         new(true),
 				},
 				err: fmt.Errorf("failed to query x509 providers: %w", errBoom),
 			},
@@ -708,7 +719,7 @@ func TestCreate(t *testing.T) {
 				DB:     tc.fields.db,
 				Client: &privilege.PrivilegeClient{DB: tc.fields.db},
 			}
-			err := c.Create(tc.args.ctx, tc.args.parameters, tc.args.password, tc.args.providers)
+			err := c.Create(tc.args.ctx, tc.args.parameters, tc.args.password, tc.args.providers, nil)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\nCreate(...): -want error, +got error:\n%s\n", tc.reason, diff)
 			}
@@ -1337,6 +1348,284 @@ func TestTogglePasswordAuthentication(t *testing.T) {
 			err := c.TogglePasswordAuthentication(tc.args.ctx, tc.args.username, tc.args.isPasswordEnabled)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\nc.TogglePasswordAuthentication(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+// jwtCaptureExec collects every ExecContext query so the JWT-oriented tests
+// can assert on the exact DDL emitted. Same pattern as publickey and
+// jwtprovider client tests.
+type jwtCaptureExec struct {
+	queries []string
+}
+
+func (c *jwtCaptureExec) mock() fake.MockDB {
+	return fake.MockDB{
+		MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+			c.queries = append(c.queries, query)
+			return nil, nil
+		},
+	}
+}
+
+// TestUpdateJWTProviders covers the ADD/DROP IDENTITY DDL emitted when JWT
+// identity mappings drift on a user. Regression guard for the JWT-SSO flow.
+// nolint: contextcheck
+func TestUpdateJWTProviders(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	cases := map[string]struct {
+		reason   string
+		username string
+		toAdd    []ResolvedJWTUserMapping
+		toRemove []ResolvedJWTUserMapping
+		driver   error
+		wantSQL  []string
+		unwant   []string
+		wantErr  string
+	}{
+		"NoOp": {
+			reason:   "Empty add/remove lists emit no DDL",
+			username: "DEMO_USER",
+			unwant:   []string{"ALTER USER"},
+		},
+		"AddOne": {
+			reason:   "Single ADD IDENTITY ... FOR JWT PROVIDER emitted per resolved mapping",
+			username: "DEMO_USER",
+			toAdd: []ResolvedJWTUserMapping{
+				{Name: "IAS_JWT", ExternalIdentity: "user@example.com"},
+			},
+			wantSQL: []string{"ALTER USER DEMO_USER ADD IDENTITY 'user@example.com' FOR JWT PROVIDER IAS_JWT"},
+			unwant:  []string{"DROP IDENTITY"},
+		},
+		"RemoveOne": {
+			reason:   "Single DROP IDENTITY ... FOR JWT PROVIDER emitted per resolved mapping",
+			username: "DEMO_USER",
+			toRemove: []ResolvedJWTUserMapping{
+				{Name: "IAS_JWT", ExternalIdentity: "user@example.com"},
+			},
+			wantSQL: []string{"ALTER USER DEMO_USER DROP IDENTITY 'user@example.com' FOR JWT PROVIDER IAS_JWT"},
+			unwant:  []string{"ADD IDENTITY"},
+		},
+		"AddAndRemove": {
+			// A value-change on the same provider round-trips as remove + add;
+			// asserts the emit order is "removes first, then adds" to match the
+			// implementation loop.
+			reason:   "Mixed add/remove emits DROP before ADD",
+			username: "DEMO_USER",
+			toRemove: []ResolvedJWTUserMapping{
+				{Name: "IAS_JWT", ExternalIdentity: "old@example.com"},
+			},
+			toAdd: []ResolvedJWTUserMapping{
+				{Name: "IAS_JWT", ExternalIdentity: "new@example.com"},
+			},
+			wantSQL: []string{
+				"ALTER USER DEMO_USER ADD IDENTITY 'new@example.com' FOR JWT PROVIDER IAS_JWT",
+				"ALTER USER DEMO_USER DROP IDENTITY 'old@example.com' FOR JWT PROVIDER IAS_JWT",
+			},
+		},
+		"DriverErrorAdd": {
+			reason:   "Driver failure on ADD IDENTITY propagates wrapped with ErrUpdateUserJWTProviders",
+			username: "DEMO_USER",
+			toAdd: []ResolvedJWTUserMapping{
+				{Name: "IAS_JWT", ExternalIdentity: "user@example.com"},
+			},
+			driver:  errBoom,
+			wantErr: "cannot update user JWT providers",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var db fake.MockDB
+			var cap jwtCaptureExec
+			if tc.driver != nil {
+				db = fake.MockDB{
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						return nil, tc.driver
+					},
+				}
+			} else {
+				db = cap.mock()
+			}
+			c := Client{DB: db}
+			err := c.UpdateJWTProviders(context.Background(), tc.username, tc.toAdd, tc.toRemove)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("\n%s\nUpdateJWTProviders(...): want error containing %q, got: %v", tc.reason, tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.reason, err)
+			}
+			joined := strings.Join(cap.queries, "\n---\n")
+			for _, w := range tc.wantSQL {
+				if !strings.Contains(joined, w) {
+					t.Errorf("\n%s\nUpdateJWTProviders(...): missing SQL substring %q:\n%s", tc.reason, w, joined)
+				}
+			}
+			for _, u := range tc.unwant {
+				if strings.Contains(joined, u) {
+					t.Errorf("\n%s\nUpdateJWTProviders(...): forbidden SQL substring %q:\n%s", tc.reason, u, joined)
+				}
+			}
+		})
+	}
+}
+
+// TestToggleClientConnect covers the ENABLE/DISABLE CLIENT CONNECT DDL. Rest-
+// ricted users need this enabled before any external authentication (password,
+// X.509, JWT) succeeds — see user_client.go:585.
+// nolint: contextcheck
+func TestToggleClientConnect(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	cases := map[string]struct {
+		reason  string
+		enable  bool
+		driver  error
+		wantSQL string
+		wantErr string
+	}{
+		"Enable":  {reason: "enable=true emits ENABLE CLIENT CONNECT", enable: true, wantSQL: "ALTER USER U ENABLE CLIENT CONNECT"},
+		"Disable": {reason: "enable=false emits DISABLE CLIENT CONNECT", enable: false, wantSQL: "ALTER USER U DISABLE CLIENT CONNECT"},
+		"DriverError": {
+			reason:  "Driver failure wraps with ErrUpdateUserClientConnect",
+			enable:  true,
+			driver:  errBoom,
+			wantErr: "cannot toggle client connect",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var db fake.MockDB
+			var cap jwtCaptureExec
+			if tc.driver != nil {
+				db = fake.MockDB{
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						return nil, tc.driver
+					},
+				}
+			} else {
+				db = cap.mock()
+			}
+			c := Client{DB: db}
+			err := c.ToggleClientConnect(context.Background(), "U", tc.enable)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("\n%s\nToggleClientConnect(...): want error containing %q, got: %v", tc.reason, tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.reason, err)
+			}
+			if !strings.Contains(strings.Join(cap.queries, "\n"), tc.wantSQL) {
+				t.Errorf("\n%s\nToggleClientConnect(...): missing SQL %q, got: %v", tc.reason, tc.wantSQL, cap.queries)
+			}
+		})
+	}
+}
+
+// TestToggleJWTAuthentication covers the ENABLE/DISABLE JWT DDL. Users must
+// have this enabled before ADD IDENTITY ... FOR JWT PROVIDER succeeds — see
+// user_client.go:358.
+// nolint: contextcheck
+func TestToggleJWTAuthentication(t *testing.T) {
+	cases := map[string]struct {
+		reason  string
+		enable  bool
+		wantSQL string
+	}{
+		"Enable":  {reason: "enable=true emits ENABLE JWT", enable: true, wantSQL: "ALTER USER U ENABLE JWT"},
+		"Disable": {reason: "enable=false emits DISABLE JWT", enable: false, wantSQL: "ALTER USER U DISABLE JWT"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var cap jwtCaptureExec
+			c := Client{DB: cap.mock()}
+			if err := c.ToggleJWTAuthentication(context.Background(), "U", tc.enable); err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.reason, err)
+			}
+			if !strings.Contains(strings.Join(cap.queries, "\n"), tc.wantSQL) {
+				t.Errorf("\n%s\nToggleJWTAuthentication(...): missing SQL %q, got: %v", tc.reason, tc.wantSQL, cap.queries)
+			}
+		})
+	}
+}
+
+// TestQueryJWTProviders covers the SYS.JWT_USER_MAPPINGS row-parse path fed
+// into UserObservation.JWTProviders. Empty result, single mapping, and multi-
+// mapping cases; ensures the JWTProviderRef.Name and ExternalIdentity fields
+// round-trip.
+// nolint: contextcheck
+func TestQueryJWTProviders(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	cases := map[string]struct {
+		reason   string
+		rows     *sqlmock.Rows
+		queryErr error
+		want     []v1alpha1.JWTUserMapping
+		wantErr  string
+	}{
+		"None": {
+			reason: "Empty result set returns nil slice",
+			rows:   sqlmock.NewRows([]string{"JWT_PROVIDER_NAME", "EXTERNAL_IDENTITY"}),
+			want:   nil,
+		},
+		"One": {
+			reason: "Single row maps into one JWTUserMapping",
+			rows: sqlmock.NewRows([]string{"JWT_PROVIDER_NAME", "EXTERNAL_IDENTITY"}).
+				AddRow("IAS_JWT", "user@example.com"),
+			want: []v1alpha1.JWTUserMapping{
+				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: "IAS_JWT"}, ExternalIdentity: "user@example.com"},
+			},
+		},
+		"Many": {
+			reason: "Multiple rows preserve order and both fields",
+			rows: sqlmock.NewRows([]string{"JWT_PROVIDER_NAME", "EXTERNAL_IDENTITY"}).
+				AddRow("IAS_JWT", "user-a@example.com").
+				AddRow("IAS_JWT", "user-b@example.com").
+				AddRow("OTHER_JWT", "user-c@example.com"),
+			want: []v1alpha1.JWTUserMapping{
+				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: "IAS_JWT"}, ExternalIdentity: "user-a@example.com"},
+				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: "IAS_JWT"}, ExternalIdentity: "user-b@example.com"},
+				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: "OTHER_JWT"}, ExternalIdentity: "user-c@example.com"},
+			},
+		},
+		"QueryError": {
+			reason:   "Driver error on the mappings query propagates wrapped with 'failed to query jwt providers'",
+			queryErr: errBoom,
+			wantErr:  "failed to query jwt providers",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			db := fake.MockDB{
+				MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+					if tc.queryErr != nil {
+						return nil, tc.queryErr
+					}
+					return fake.MockRowsToSQLRows(tc.rows), nil
+				},
+			}
+			c := Client{DB: db, Client: &privilege.PrivilegeClient{DB: db}}
+			got, err := c.queryJWTProviders(context.Background(), "DEMO_USER")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("\n%s\nqueryJWTProviders(...): want error containing %q, got: %v", tc.reason, tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.reason, err)
+			}
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("\n%s\nqueryJWTProviders(...): -want, +got:\n%s", tc.reason, diff)
 			}
 		})
 	}

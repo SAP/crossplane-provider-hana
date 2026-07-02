@@ -56,7 +56,7 @@ func (l *MockLogger) WithValues(_ ...any) logging.Logger { return l }
 // mockUserClient implements the user.Client struct methods for testing
 type mockUserClient struct {
 	MockRead                   func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error)
-	MockCreate                 func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping) error
+	MockCreate                 func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping, jwtProviders []user.ResolvedJWTUserMapping) error
 	MockDelete                 func(ctx context.Context, parameters *v1alpha1.UserParameters) error
 	MockFormatPrivilegeStrings func(privilegeStrings []string) ([]string, error)
 }
@@ -69,9 +69,9 @@ func (m mockUserClient) Read(ctx context.Context, parameters *v1alpha1.UserParam
 	return &v1alpha1.UserObservation{}, nil
 }
 
-func (m mockUserClient) Create(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping) error {
+func (m mockUserClient) Create(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping, jwtProviders []user.ResolvedJWTUserMapping) error {
 	if m.MockCreate != nil {
-		return m.MockCreate(ctx, parameters, password, providers)
+		return m.MockCreate(ctx, parameters, password, providers, jwtProviders)
 	}
 	return nil
 }
@@ -108,6 +108,18 @@ func (m mockUserClient) UpdatePasswordLifetimeCheck(ctx context.Context, usernam
 }
 
 func (m mockUserClient) UpdateX509Providers(ctx context.Context, username string, toAdd, toRemove []user.ResolvedUserMapping) error {
+	return nil
+}
+
+func (m mockUserClient) UpdateJWTProviders(ctx context.Context, username string, toAdd, toRemove []user.ResolvedJWTUserMapping) error {
+	return nil
+}
+
+func (m mockUserClient) ToggleJWTAuthentication(ctx context.Context, username string, enable bool) error {
+	return nil
+}
+
+func (m mockUserClient) ToggleClientConnect(ctx context.Context, username string, enable bool) error {
 	return nil
 }
 
@@ -648,7 +660,7 @@ func TestCreate(t *testing.T) {
 			reason: "Any errors encountered while creating the User should be returned",
 			fields: fields{
 				client: mockUserClient{
-					MockCreate: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping) error {
+					MockCreate: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping, jwtProviders []user.ResolvedJWTUserMapping) error {
 						return errBoom
 					},
 				},
@@ -671,7 +683,7 @@ func TestCreate(t *testing.T) {
 			reason: "No error should be returned when we successfully create a User",
 			fields: fields{
 				client: mockUserClient{
-					MockCreate: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping) error {
+					MockCreate: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping, jwtProviders []user.ResolvedJWTUserMapping) error {
 						return nil
 					},
 				},
@@ -967,5 +979,111 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestResolveJWTProviderNames locks in the fix for the providerRef diff bug.
+// Before the fix, spec-side JWTUserMapping entries that used providerRef
+// were never resolved before isJWTMappingsUpToDate / updateJWTProviders
+// compared them against observed entries from SYS.JWT_USER_MAPPINGS. The
+// names never matched, so the controller emitted DROP IDENTITY + ADD IDENTITY
+// every reconcile and any auth attempt landing in the DROP-then-ADD window
+// failed with HANA A02 "No JWT mapping found".
+func TestResolveJWTProviderNames(t *testing.T) {
+	const (
+		k8sProviderName  = "ias-jwt"
+		hanaProviderName = "JWTTEST_IAS_JWT"
+		externalIdentity = "user@example.com"
+	)
+
+	resolverKube := &test.MockClient{
+		MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+			jp, ok := obj.(*v1alpha1.JWTProvider)
+			if !ok {
+				return fmt.Errorf("unexpected Get type %T", obj)
+			}
+			jp.Spec.ForProvider.Name = hanaProviderName
+			return nil
+		}),
+	}
+
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			JWTProviders: []v1alpha1.JWTUserMapping{{
+				JWTProviderRef: v1alpha1.JWTProviderRef{
+					ProviderRef: &xpv1.Reference{Name: k8sProviderName},
+				},
+				ExternalIdentity: externalIdentity,
+			}},
+		},
+	}
+
+	observed := &v1alpha1.UserObservation{
+		JWTProviders: []v1alpha1.JWTUserMapping{{
+			JWTProviderRef:   v1alpha1.JWTProviderRef{Name: hanaProviderName},
+			ExternalIdentity: externalIdentity,
+		}},
+	}
+
+	if isJWTMappingsUpToDate(observed, desired) {
+		t.Fatal("unresolved desired must not match observed; this is the precondition for the bug being fixed")
+	}
+
+	c := &external{kube: resolverKube, log: &MockLogger{}}
+	if err := c.resolveJWTProviderNames(context.Background(), desired); err != nil {
+		t.Fatalf("resolveJWTProviderNames: %v", err)
+	}
+
+	if got := desired.Authentication.JWTProviders[0].Name; got != hanaProviderName {
+		t.Errorf("desired Name after resolve: want %q, got %q", hanaProviderName, got)
+	}
+
+	if !isJWTMappingsUpToDate(observed, desired) {
+		t.Errorf("after resolveJWTProviderNames, desired and observed must compare equal")
+	}
+}
+
+// TestResolveJWTProviderNamesExplicitNameWins ensures an explicit Name on
+// the mapping is preserved and providerRef is not consulted.
+func TestResolveJWTProviderNamesExplicitNameWins(t *testing.T) {
+	const hanaName = "DIRECTLY_SET_PROVIDER"
+
+	resolverKube := &test.MockClient{
+		MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+			return fmt.Errorf("kube.Get must not be called when Name is set explicitly")
+		}),
+	}
+
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			JWTProviders: []v1alpha1.JWTUserMapping{{
+				JWTProviderRef:   v1alpha1.JWTProviderRef{Name: hanaName},
+				ExternalIdentity: "x@y.z",
+			}},
+		},
+	}
+	c := &external{kube: resolverKube, log: &MockLogger{}}
+	if err := c.resolveJWTProviderNames(context.Background(), desired); err != nil {
+		t.Fatalf("resolveJWTProviderNames: %v", err)
+	}
+	if got := desired.Authentication.JWTProviders[0].Name; got != hanaName {
+		t.Errorf("want %q, got %q", hanaName, got)
+	}
+}
+
+// TestResolveJWTProviderNamesMissingRef ensures we surface a clear error when
+// neither Name nor ProviderRef is set, rather than silently producing "".
+func TestResolveJWTProviderNamesMissingRef(t *testing.T) {
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			JWTProviders: []v1alpha1.JWTUserMapping{{
+				ExternalIdentity: "x@y.z",
+			}},
+		},
+	}
+	c := &external{kube: &test.MockClient{}, log: &MockLogger{}}
+	err := c.resolveJWTProviderNames(context.Background(), desired)
+	if err == nil {
+		t.Fatal("expected error for mapping without Name or ProviderRef")
 	}
 }

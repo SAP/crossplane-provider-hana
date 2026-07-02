@@ -482,7 +482,7 @@ func TestUpdate(t *testing.T) {
 			reason: "Any errors encountered while updating the PersonalSecurityEnvironment should be returned",
 			fields: fields{
 				client: &mockPersonalSecurityEnvironmentClient{
-					MockUpdate: func(ctx context.Context, pseName string, toAdd, toRemove []v1alpha1.CertificateRef, providerName string) error {
+					MockUpdate: func(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error {
 						return errBoom
 					},
 				},
@@ -532,7 +532,7 @@ func TestUpdate(t *testing.T) {
 			reason: "No error should be returned when we successfully update a PersonalSecurityEnvironment",
 			fields: fields{
 				client: &mockPersonalSecurityEnvironmentClient{
-					MockUpdate: func(ctx context.Context, pseName string, toAdd, toRemove []v1alpha1.CertificateRef, providerName string) error {
+					MockUpdate: func(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error {
 						return nil
 					},
 				},
@@ -720,7 +720,7 @@ func (l *mockLogger) WithValues(_ ...any) logging.Logger { return l }
 type mockPersonalSecurityEnvironmentClient struct {
 	MockRead   func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error)
 	MockCreate func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters, providerName string) error
-	MockUpdate func(ctx context.Context, pseName string, toAdd, toRemove []v1alpha1.CertificateRef, providerName string) error
+	MockUpdate func(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error
 	MockDelete func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) error
 }
 
@@ -738,9 +738,9 @@ func (m *mockPersonalSecurityEnvironmentClient) Create(ctx context.Context, para
 	return nil
 }
 
-func (m *mockPersonalSecurityEnvironmentClient) Update(ctx context.Context, pseName string, toAdd, toRemove []v1alpha1.CertificateRef, providerName string) error {
+func (m *mockPersonalSecurityEnvironmentClient) Update(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error {
 	if m.MockUpdate != nil {
-		return m.MockUpdate(ctx, pseName, toAdd, toRemove, providerName)
+		return m.MockUpdate(ctx, pseName, purpose, certsToAdd, certsToRemove, keysToAdd, keysToRemove, providerName)
 	}
 	return nil
 }
