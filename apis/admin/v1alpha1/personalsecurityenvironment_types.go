@@ -48,19 +48,51 @@ type X509ProviderRef struct {
 	ProviderRef *xpv1.Reference `json:"providerRef,omitempty"`
 }
 
+// PSEPurpose declares what kind of object the PSE is bound to. Defaults to
+// "X509" for backward compatibility; set to "JWT" to bind to a JWTProvider
+// and import public keys instead of certificates.
+// +kubebuilder:validation:Enum=X509;JWT
+type PSEPurpose string
+
+const (
+	// PSEPurposeX509 binds the PSE to an X509Provider and stores certificates.
+	PSEPurposeX509 PSEPurpose = "X509"
+
+	// PSEPurposeJWT binds the PSE to a JWTProvider and stores public keys
+	// used to verify JWT signatures.
+	PSEPurposeJWT PSEPurpose = "JWT"
+)
+
 // PersonalSecurityEnvironmentParameters defines the parameters for PSE
 type PersonalSecurityEnvironmentParameters struct {
 	// Name for the PSE
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
-	// Reference to X509Provider
+	// Purpose selects whether this PSE binds to an X509Provider or a
+	// JWTProvider. Defaults to X509 to preserve existing behavior.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=X509
+	Purpose PSEPurpose `json:"purpose,omitempty"`
+
+	// Reference to X509Provider. Only meaningful when Purpose is X509.
 	// +kubebuilder:validation:Optional
 	X509ProviderRef *X509ProviderRef `json:"x509ProviderRef,omitempty"`
 
-	// Certificate references to add to the PSE
+	// Reference to JWTProvider. Only meaningful when Purpose is JWT.
+	// +kubebuilder:validation:Optional
+	JWTProviderRef *JWTProviderRef `json:"jwtProviderRef,omitempty"`
+
+	// Certificate references to add to the PSE. Only meaningful when Purpose
+	// is X509.
 	// +kubebuilder:validation:Optional
 	CertificateRefs []CertificateRef `json:"certificateRefs,omitempty"`
+
+	// PublicKeyRefs are public keys to add to the PSE via
+	// `ALTER PSE <name> ADD PUBLIC KEY <key>`. Only meaningful when Purpose
+	// is JWT.
+	// +kubebuilder:validation:Optional
+	PublicKeyRefs []PublicKeyRef `json:"publicKeyRefs,omitempty"`
 }
 
 // PersonalSecurityEnvironmentSpec defines the desired state of PersonalSecurityEnvironment
@@ -80,13 +112,25 @@ type PersonalSecurityEnvironmentObservation struct {
 	// +kubebuilder:validation:Optional
 	Name string `json:"name,omitempty"`
 
+	// Purpose currently set on the PSE.
+	// +kubebuilder:validation:Optional
+	Purpose PSEPurpose `json:"purpose,omitempty"`
+
 	// Name of the X.509 provider associated with the PSE
 	// +kubebuilder:validation:Optional
 	X509ProviderName string `json:"x509ProviderName,omitempty"`
 
-	// Certificate references to add to the PSE
+	// Name of the JWT provider associated with the PSE
+	// +kubebuilder:validation:Optional
+	JWTProviderName string `json:"jwtProviderName,omitempty"`
+
+	// Certificate references currently in the PSE.
 	// +kubebuilder:validation:Optional
 	CertificateRefs []CertificateRef `json:"certificateRefs,omitempty"`
+
+	// Public key names currently in the PSE.
+	// +kubebuilder:validation:Optional
+	PublicKeys []string `json:"publicKeys,omitempty"`
 }
 
 // +kubebuilder:object:root=true

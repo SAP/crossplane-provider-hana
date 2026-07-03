@@ -267,6 +267,97 @@ func TestObserve(t *testing.T) {
 				err: fmt.Errorf("failed to get provider for pse: %w", errBoom),
 			},
 		},
+		"JWTSuccessUpToDate": {
+			reason: "Should return ResourceUpToDate true for a JWT-purpose PSE when provider and public keys match",
+			fields: fields{
+				client: &mockPersonalSecurityEnvironmentClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error) {
+						return &v1alpha1.PersonalSecurityEnvironmentObservation{
+							Name:            "test-pse",
+							JWTProviderName: testProvider,
+							PublicKeys:      []string{"ias-signing-key"},
+						}, nil
+					},
+				},
+				kube: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						if provider, ok := obj.(*v1alpha1.JWTProvider); ok {
+							provider.Spec.ForProvider.Name = testProvider
+						}
+						return nil
+					}),
+				},
+				log: &mockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.PersonalSecurityEnvironment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-pse", Namespace: "default"},
+					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
+						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
+							Name:    "test-pse",
+							Purpose: v1alpha1.PSEPurposeJWT,
+							JWTProviderRef: &v1alpha1.JWTProviderRef{
+								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+							},
+							PublicKeyRefs: []v1alpha1.PublicKeyRef{{Name: "ias-signing-key"}},
+						},
+					},
+					Status: v1alpha1.PersonalSecurityEnvironmentStatus{
+						AtProvider: v1alpha1.PersonalSecurityEnvironmentObservation{
+							PublicKeys: []string{"ias-signing-key"},
+						},
+					},
+				},
+			},
+			want: want{
+				o: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+			},
+		},
+		"JWTSuccessOutOfDate": {
+			reason: "Should return ResourceUpToDate false for a JWT-purpose PSE when the JWT provider has drifted",
+			fields: fields{
+				client: &mockPersonalSecurityEnvironmentClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error) {
+						return &v1alpha1.PersonalSecurityEnvironmentObservation{
+							Name:            "test-pse",
+							JWTProviderName: "old-jwt-provider",
+						}, nil
+					},
+				},
+				kube: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						if provider, ok := obj.(*v1alpha1.JWTProvider); ok {
+							provider.Spec.ForProvider.Name = testProvider
+						}
+						return nil
+					}),
+				},
+				log: &mockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.PersonalSecurityEnvironment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-pse", Namespace: "default"},
+					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
+						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
+							Name:    "test-pse",
+							Purpose: v1alpha1.PSEPurposeJWT,
+							JWTProviderRef: &v1alpha1.JWTProviderRef{
+								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+							},
+						},
+					},
+				},
+			},
+			want: want{
+				o: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: false,
+				},
+			},
+		},
 	}
 
 	for name, tc := range cases {
@@ -425,6 +516,42 @@ func TestCreate(t *testing.T) {
 				c: managed.ExternalCreation{},
 			},
 		},
+		"JWTSuccess": {
+			reason: "No error should be returned when creating a JWT-purpose PSE via JWTProviderRef",
+			fields: fields{
+				client: &mockPersonalSecurityEnvironmentClient{
+					MockCreate: func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters, providerName string) error {
+						return nil
+					},
+				},
+				kube: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						if provider, ok := obj.(*v1alpha1.JWTProvider); ok {
+							provider.Spec.ForProvider.Name = testProvider
+						}
+						return nil
+					}),
+				},
+				log: &mockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.PersonalSecurityEnvironment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-pse", Namespace: "default"},
+					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
+						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
+							Name:    "test-pse",
+							Purpose: v1alpha1.PSEPurposeJWT,
+							JWTProviderRef: &v1alpha1.JWTProviderRef{
+								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+							},
+						},
+					},
+				},
+			},
+			want: want{
+				c: managed.ExternalCreation{},
+			},
+		},
 	}
 
 	for name, tc := range cases {
@@ -482,7 +609,7 @@ func TestUpdate(t *testing.T) {
 			reason: "Any errors encountered while updating the PersonalSecurityEnvironment should be returned",
 			fields: fields{
 				client: &mockPersonalSecurityEnvironmentClient{
-					MockUpdate: func(ctx context.Context, pseName string, toAdd, toRemove []v1alpha1.CertificateRef, providerName string) error {
+					MockUpdate: func(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error {
 						return errBoom
 					},
 				},
@@ -532,7 +659,7 @@ func TestUpdate(t *testing.T) {
 			reason: "No error should be returned when we successfully update a PersonalSecurityEnvironment",
 			fields: fields{
 				client: &mockPersonalSecurityEnvironmentClient{
-					MockUpdate: func(ctx context.Context, pseName string, toAdd, toRemove []v1alpha1.CertificateRef, providerName string) error {
+					MockUpdate: func(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error {
 						return nil
 					},
 				},
@@ -570,6 +697,52 @@ func TestUpdate(t *testing.T) {
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(2), Name: new("cert2")},
 							},
+						},
+					},
+				},
+			},
+			want: want{
+				u: managed.ExternalUpdate{
+					ConnectionDetails: managed.ConnectionDetails{},
+				},
+			},
+		},
+		"JWTSuccess": {
+			reason: "No error should be returned when updating a JWT-purpose PSE (public key diff reconciled)",
+			fields: fields{
+				client: &mockPersonalSecurityEnvironmentClient{
+					MockUpdate: func(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error {
+						return nil
+					},
+				},
+				kube: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						if provider, ok := obj.(*v1alpha1.JWTProvider); ok {
+							provider.Spec.ForProvider.Name = testProvider
+						}
+						return nil
+					}),
+				},
+				log: &mockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.PersonalSecurityEnvironment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-pse", Namespace: "default"},
+					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
+						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
+							Name:    "test-pse",
+							Purpose: v1alpha1.PSEPurposeJWT,
+							JWTProviderRef: &v1alpha1.JWTProviderRef{
+								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+							},
+							PublicKeyRefs: []v1alpha1.PublicKeyRef{{Name: "new-key"}},
+						},
+					},
+					Status: v1alpha1.PersonalSecurityEnvironmentStatus{
+						AtProvider: v1alpha1.PersonalSecurityEnvironmentObservation{
+							Name:            "test-pse",
+							JWTProviderName: testProvider,
+							PublicKeys:      []string{"old-key"},
 						},
 					},
 				},
@@ -720,7 +893,7 @@ func (l *mockLogger) WithValues(_ ...any) logging.Logger { return l }
 type mockPersonalSecurityEnvironmentClient struct {
 	MockRead   func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error)
 	MockCreate func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters, providerName string) error
-	MockUpdate func(ctx context.Context, pseName string, toAdd, toRemove []v1alpha1.CertificateRef, providerName string) error
+	MockUpdate func(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error
 	MockDelete func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) error
 }
 
@@ -738,9 +911,9 @@ func (m *mockPersonalSecurityEnvironmentClient) Create(ctx context.Context, para
 	return nil
 }
 
-func (m *mockPersonalSecurityEnvironmentClient) Update(ctx context.Context, pseName string, toAdd, toRemove []v1alpha1.CertificateRef, providerName string) error {
+func (m *mockPersonalSecurityEnvironmentClient) Update(ctx context.Context, pseName string, purpose v1alpha1.PSEPurpose, certsToAdd, certsToRemove []v1alpha1.CertificateRef, keysToAdd, keysToRemove []string, providerName string) error {
 	if m.MockUpdate != nil {
-		return m.MockUpdate(ctx, pseName, toAdd, toRemove, providerName)
+		return m.MockUpdate(ctx, pseName, purpose, certsToAdd, certsToRemove, keysToAdd, keysToRemove, providerName)
 	}
 	return nil
 }

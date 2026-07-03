@@ -78,7 +78,9 @@ spec:
                   for PSE
                 properties:
                   certificateRefs:
-                    description: Certificate references to add to the PSE
+                    description: |-
+                      Certificate references to add to the PSE. Only meaningful when Purpose
+                      is X509.
                     items:
                       description: CertificateRef references certificates
                       properties:
@@ -96,11 +98,112 @@ spec:
                       x-kubernetes-validations:
                       - rule: has(self.id) || has(self.name)
                     type: array
+                  jwtProviderRef:
+                    description: Reference to JWTProvider. Only meaningful when Purpose
+                      is JWT.
+                    properties:
+                      name:
+                        default: ""
+                        type: string
+                      providerRef:
+                        description: A Reference to a named object.
+                        properties:
+                          name:
+                            description: Name of the referenced object.
+                            type: string
+                          policy:
+                            description: Policies for referencing.
+                            properties:
+                              resolution:
+                                default: Required
+                                description: |-
+                                  Resolution specifies whether resolution of this reference is required.
+                                  The default is 'Required', which means the reconcile will fail if the
+                                  reference cannot be resolved. 'Optional' means this reference will be
+                                  a no-op if it cannot be resolved.
+                                enum:
+                                - Required
+                                - Optional
+                                type: string
+                              resolve:
+                                description: |-
+                                  Resolve specifies when this reference should be resolved. The default
+                                  is 'IfNotPresent', which will attempt to resolve the reference only when
+                                  the corresponding field is not present. Use 'Always' to resolve the
+                                  reference on every reconcile.
+                                enum:
+                                - Always
+                                - IfNotPresent
+                                type: string
+                            type: object
+                        required:
+                        - name
+                        type: object
+                    type: object
                   name:
                     description: Name for the PSE
                     type: string
+                  publicKeyRefs:
+                    description: |-
+                      PublicKeyRefs are public keys to add to the PSE via
+                      `ALTER PSE <name> ADD PUBLIC KEY <key>`. Only meaningful when Purpose
+                      is JWT.
+                    items:
+                      description: |-
+                        PublicKeyRef references a public key, either by HANA name or via a
+                        Crossplane reference to a PublicKey managed resource.
+                      properties:
+                        name:
+                          default: ""
+                          type: string
+                        providerRef:
+                          description: A Reference to a named object.
+                          properties:
+                            name:
+                              description: Name of the referenced object.
+                              type: string
+                            policy:
+                              description: Policies for referencing.
+                              properties:
+                                resolution:
+                                  default: Required
+                                  description: |-
+                                    Resolution specifies whether resolution of this reference is required.
+                                    The default is 'Required', which means the reconcile will fail if the
+                                    reference cannot be resolved. 'Optional' means this reference will be
+                                    a no-op if it cannot be resolved.
+                                  enum:
+                                  - Required
+                                  - Optional
+                                  type: string
+                                resolve:
+                                  description: |-
+                                    Resolve specifies when this reference should be resolved. The default
+                                    is 'IfNotPresent', which will attempt to resolve the reference only when
+                                    the corresponding field is not present. Use 'Always' to resolve the
+                                    reference on every reconcile.
+                                  enum:
+                                  - Always
+                                  - IfNotPresent
+                                  type: string
+                              type: object
+                          required:
+                          - name
+                          type: object
+                      type: object
+                    type: array
+                  purpose:
+                    default: X509
+                    description: |-
+                      Purpose selects whether this PSE binds to an X509Provider or a
+                      JWTProvider. Defaults to X509 to preserve existing behavior.
+                    enum:
+                    - X509
+                    - JWT
+                    type: string
                   x509ProviderRef:
-                    description: Reference to X509Provider
+                    description: Reference to X509Provider. Only meaningful when Purpose
+                      is X509.
                     properties:
                       name:
                         default: ""
@@ -317,7 +420,7 @@ spec:
                   state of PersonalSecurityEnvironment
                 properties:
                   certificateRefs:
-                    description: Certificate references to add to the PSE
+                    description: Certificate references currently in the PSE.
                     items:
                       description: CertificateRef references certificates
                       properties:
@@ -335,8 +438,22 @@ spec:
                       x-kubernetes-validations:
                       - rule: has(self.id) || has(self.name)
                     type: array
+                  jwtProviderName:
+                    description: Name of the JWT provider associated with the PSE
+                    type: string
                   name:
                     description: Name of the PSE
+                    type: string
+                  publicKeys:
+                    description: Public key names currently in the PSE.
+                    items:
+                      type: string
+                    type: array
+                  purpose:
+                    description: Purpose currently set on the PSE.
+                    enum:
+                    - X509
+                    - JWT
                     type: string
                   x509ProviderName:
                     description: Name of the X.509 provider associated with the PSE
