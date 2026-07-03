@@ -35,6 +35,7 @@ const (
 	ErrUpdateUserUsergroup             = "cannot update user usergroup: %w"
 	ErrUpdateUserPasswordLifetimeCheck = "cannot update user password lifetime check: %w"
 	ErrUpdateUserX509Providers         = "cannot update user X.509 providers: %w"
+	ErrUpdateUserClientConnect         = "cannot toggle client connect: %w"
 	ErrGetCorrelationID                = "cannot extract correlation ID from error message: %w"
 	ErrCorrIDNotFound                  = "cannot get internal error code for correlation ID %s: %w"
 	ErrUnknownInternalErrorCode        = "unknown internal error code %s for correlation ID %s"
@@ -70,6 +71,7 @@ type UserClient interface {
 	UpdatePassword(ctx context.Context, username, password string, forceFirstPasswordChange bool) error
 	UpdatePasswordLifetimeCheck(ctx context.Context, username string, isPasswordLifetimeCheckEnabled bool) error
 	UpdateX509Providers(ctx context.Context, username string, toAdd, toRemove []ResolvedUserMapping) error
+	ToggleClientConnect(ctx context.Context, username string, enable bool) error
 	TogglePasswordAuthentication(ctx context.Context, username string, isPasswordEnabled bool) error
 	GetDefaultSchema() string
 }
@@ -95,6 +97,7 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 	var username, usergroup string
 	var createdAt, lastPasswordChangeTime time.Time
 	var restrictedUser, isPasswordLifetimeCheckEnabled, isPasswordEnabled bool
+	var isClientConnectEnabled sql.NullBool
 
 	query := "SELECT USER_NAME, " +
 		"USERGROUP_NAME, " +
@@ -102,7 +105,8 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 		"LAST_PASSWORD_CHANGE_TIME, " +
 		"IS_RESTRICTED, " +
 		"IS_PASSWORD_LIFETIME_CHECK_ENABLED, " +
-		"IS_PASSWORD_ENABLED " +
+		"IS_PASSWORD_ENABLED, " +
+		"IS_CLIENT_CONNECT_ENABLED " +
 		"FROM SYS.USERS " +
 		"WHERE USER_NAME = ?"
 
@@ -114,6 +118,7 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 		&restrictedUser,
 		&isPasswordLifetimeCheckEnabled,
 		&isPasswordEnabled,
+		&isClientConnectEnabled,
 	)
 
 	if xsql.IsNoRows(err) {
@@ -130,6 +135,10 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 		RestrictedUser:                 &restrictedUser,
 		IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled,
 		IsPasswordEnabled:              &isPasswordEnabled,
+	}
+	if isClientConnectEnabled.Valid {
+		v := isClientConnectEnabled.Bool
+		observed.IsClientConnectEnabled = &v
 	}
 
 	observed.Parameters, err = c.queryParameters(ctx, parameters.Username)
@@ -285,8 +294,33 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.UserParameters,
 	}
 
 	if !parameters.IsPasswordLifetimeCheckEnabled {
-		err := c.UpdatePasswordLifetimeCheck(ctx, parameters.Username, parameters.IsPasswordLifetimeCheckEnabled)
-		if err != nil {
+		// HANA refuses ENABLE/DISABLE PASSWORD LIFETIME on users that have
+		// no password set (restricted users created without one). Skip the
+		// call in that case — the property is meaningless without a
+		// password.
+		hasPassword := parameters.Authentication.Password != nil &&
+			parameters.Authentication.Password.PasswordSecretRef != nil
+		if hasPassword {
+			err := c.UpdatePasswordLifetimeCheck(ctx, parameters.Username, parameters.IsPasswordLifetimeCheckEnabled)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// Restricted users start with client-connect disabled; without this
+	// toggle any external login attempt fails with internal error U04.
+	// Defaulting EnableClientConnect to true matches the common case, but
+	// we still emit the explicit DDL so the reconciler stays authoritative
+	// for drift.
+	if parameters.RestrictedUser && parameters.EnableClientConnect {
+		if err := c.ToggleClientConnect(ctx, parameters.Username, true); err != nil {
+			return err
+		}
+	} else if !parameters.RestrictedUser && !parameters.EnableClientConnect {
+		// Unusual but coherent: allow operators to deny client connect on
+		// non-restricted users.
+		if err := c.ToggleClientConnect(ctx, parameters.Username, false); err != nil {
 			return err
 		}
 	}
@@ -434,6 +468,21 @@ func (c Client) UpdateX509Providers(ctx context.Context, username string, toAdd,
 		}
 	}
 
+	return nil
+}
+
+// ToggleClientConnect flips `ENABLE/DISABLE CLIENT CONNECT` on the user.
+// Restricted users need this enabled before any external authentication
+// (password, X.509, and later JWT) succeeds.
+func (c Client) ToggleClientConnect(ctx context.Context, username string, enable bool) error {
+	verb := "DISABLE"
+	if enable {
+		verb = "ENABLE"
+	}
+	query := fmt.Sprintf("ALTER USER %s %s CLIENT CONNECT", username, verb)
+	if _, err := c.ExecContext(ctx, query); err != nil {
+		return fmt.Errorf(ErrUpdateUserClientConnect, err)
+	}
 	return nil
 }
 

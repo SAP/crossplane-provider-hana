@@ -150,6 +150,15 @@ spec:
                           type: object
                         type: array
                     type: object
+                  enableClientConnect:
+                    default: true
+                    description: |-
+                      EnableClientConnect controls whether the user is allowed to open
+                      external client connections. `CREATE RESTRICTED USER` creates the
+                      user without this privilege by default; without it, non-password
+                      auth flows fail with internal error U04 at connect time. Defaults
+                      to true.
+                    type: boolean
                   isPasswordLifetimeCheckEnabled:
                     default: true
                     type: boolean
@@ -373,6 +382,11 @@ spec:
                   createdAt:
                     format: date-time
                     type: string
+                  isClientConnectEnabled:
+                    description: |-
+                      IsClientConnectEnabled reflects whether the user is permitted to open
+                      external client connections.
+                    type: boolean
                   isPasswordEnabled:
                     type: boolean
                   isPasswordLifetimeCheckEnabled:

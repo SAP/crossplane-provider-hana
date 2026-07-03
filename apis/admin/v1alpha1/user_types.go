@@ -56,6 +56,14 @@ type UserParameters struct {
 	// +kubebuilder:default:=true
 	// +kubebuilder:validation:Optional
 	IsPasswordLifetimeCheckEnabled bool `json:"isPasswordLifetimeCheckEnabled" default:"true"`
+
+	// EnableClientConnect controls whether the user is allowed to open
+	// external client connections. `CREATE RESTRICTED USER` creates the user
+	// without this privilege by default; without it, non-password auth flows
+	// fail with internal error U04 at connect time. Defaults to true.
+	// +kubebuilder:default:=true
+	// +kubebuilder:validation:Optional
+	EnableClientConnect bool `json:"enableClientConnect,omitempty" default:"true"`
 }
 
 // UserObservation are the observable fields of a User.
@@ -95,6 +103,11 @@ type UserObservation struct {
 
 	// +kubebuilder:validation:Optional
 	IsPasswordEnabled *bool `json:"isPasswordEnabled,omitempty"`
+
+	// IsClientConnectEnabled reflects whether the user is permitted to open
+	// external client connections.
+	// +kubebuilder:validation:Optional
+	IsClientConnectEnabled *bool `json:"isClientConnectEnabled,omitempty"`
 }
 
 // A UserSpec defines the desired state of a User.

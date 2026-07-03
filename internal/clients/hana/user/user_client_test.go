@@ -113,8 +113,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("TEST_USER", "TEST_GROUP", testTime.Time, testTime.Time, false, false, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("TEST_USER", "TEST_GROUP", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -166,6 +166,7 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(true),
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
+					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
 			},
@@ -176,8 +177,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("POWER_USER", "", testTime.Time, testTime.Time, false, false, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("POWER_USER", "", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -215,6 +216,7 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(true),
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
+					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
 			},
@@ -225,8 +227,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("RESTRICTED_USER", "", testTime.Time, testTime.Time, true, false, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("RESTRICTED_USER", "", testTime.Time, testTime.Time, true, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -263,6 +265,7 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(true),
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
+					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
 			},
@@ -273,8 +276,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("X509_USER", "X509_GROUP", testTime.Time, testTime.Time, false, true, false)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("X509_USER", "X509_GROUP", testTime.Time, testTime.Time, false, true, false, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -324,6 +327,7 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               nil,
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              new(false),
+					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
 							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
@@ -344,8 +348,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("HYBRID_USER", "HYBRID_GROUP", testTime.Time, testTime.Time, false, true, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("HYBRID_USER", "HYBRID_GROUP", testTime.Time, testTime.Time, false, true, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -394,6 +398,7 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(true),
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              new(true),
+					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
 							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "MAIN_PROVIDER"},
@@ -410,8 +415,8 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED"}).
-							AddRow("ERROR_USER", "", testTime.Time, testTime.Time, false, false, true)
+						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+							AddRow("ERROR_USER", "", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -446,6 +451,7 @@ func TestRead(t *testing.T) {
 					PasswordUpToDate:               new(false),
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
+					IsClientConnectEnabled:         new(true),
 				},
 				err: fmt.Errorf("failed to query x509 providers: %w", errBoom),
 			},

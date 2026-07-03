@@ -111,6 +111,10 @@ func (m mockUserClient) UpdateX509Providers(ctx context.Context, username string
 	return nil
 }
 
+func (m mockUserClient) ToggleClientConnect(ctx context.Context, username string, enable bool) error {
+	return nil
+}
+
 func (m mockUserClient) TogglePasswordAuthentication(ctx context.Context, username string, isPasswordEnabled bool) error {
 	return nil
 }

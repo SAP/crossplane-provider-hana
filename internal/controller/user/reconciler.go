@@ -260,6 +260,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 func upToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
 	return isPasswordUpToDate(observed, desired) &&
 		isX509MappingsUpToDate(observed, desired) &&
+		isClientConnectUpToDate(observed, desired) &&
 		observed.Usergroup != nil &&
 		*observed.Usergroup == desired.Usergroup &&
 		observed.IsPasswordLifetimeCheckEnabled != nil &&
@@ -281,6 +282,15 @@ func isX509MappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha
 		return utils.ArraysEqual(observed.X509Providers, desired.Authentication.X509Providers)
 	}
 	return len(observed.X509Providers) == 0
+}
+
+func isClientConnectUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
+	if observed.IsClientConnectEnabled == nil {
+		// Older HANA builds do not surface this column. Treat as up-to-date
+		// to avoid flapping; the toggle is idempotent if we do issue it.
+		return true
+	}
+	return *observed.IsClientConnectEnabled == desired.EnableClientConnect
 }
 
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
@@ -359,6 +369,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 
 	if err := c.updateX509Providers(ctx, cr, desired, observed); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	if err := c.updateClientConnect(ctx, cr, desired, observed); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
 
@@ -525,6 +539,28 @@ func (c *external) updatePasswordLifetimeCheck(ctx context.Context, cr *v1alpha1
 		cr.Status.AtProvider.IsPasswordLifetimeCheckEnabled = &desired.IsPasswordLifetimeCheckEnabled
 		c.log.Info("Updated user password lifetime check", "name", cr.Name, "username", desired.Username)
 	}
+	return nil
+}
+
+func (c *external) updateClientConnect(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
+	if observed.IsClientConnectEnabled == nil {
+		// HANA build without IS_CLIENT_CONNECT_ENABLED column. Best-effort
+		// noop to avoid issuing an ALTER we cannot verify.
+		return nil
+	}
+	if *observed.IsClientConnectEnabled == desired.EnableClientConnect {
+		return nil
+	}
+	c.log.Info("Toggling CLIENT CONNECT",
+		"name", cr.Name,
+		"username", desired.Username,
+		"enable", desired.EnableClientConnect)
+	if err := c.client.ToggleClientConnect(ctx, desired.Username, desired.EnableClientConnect); err != nil {
+		c.log.Info("Error toggling CLIENT CONNECT", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+	v := desired.EnableClientConnect
+	cr.Status.AtProvider.IsClientConnectEnabled = &v
 	return nil
 }
 
