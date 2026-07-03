@@ -17,6 +17,7 @@ import (
 type Authentication struct {
 	Password      *Password         `json:"password,omitempty"`
 	X509Providers []X509UserMapping `json:"x509Providers,omitempty"`
+	JWTProviders  []JWTUserMapping  `json:"jwtProviders,omitempty"`
 }
 
 // Password authentication type
@@ -78,6 +79,9 @@ type UserObservation struct {
 	X509Providers []X509UserMapping `json:"x509Providers,omitempty"`
 
 	// +kubebuilder:validation:Optional
+	JWTProviders []JWTUserMapping `json:"jwtProviders,omitempty"`
+
+	// +kubebuilder:validation:Optional
 	LastPasswordChangeTime metav1.Time `json:"lastPasswordChangeTime,omitempty"`
 
 	// +kubebuilder:validation:Optional
@@ -108,6 +112,11 @@ type UserObservation struct {
 	// external client connections.
 	// +kubebuilder:validation:Optional
 	IsClientConnectEnabled *bool `json:"isClientConnectEnabled,omitempty"`
+
+	// IsJWTEnabled reflects whether `ALTER USER ... ENABLE JWT` has been
+	// applied to the user.
+	// +kubebuilder:validation:Optional
+	IsJWTEnabled *bool `json:"isJWTEnabled,omitempty"`
 }
 
 // A UserSpec defines the desired state of a User.

@@ -35,6 +35,8 @@ const (
 	ErrUpdateUserUsergroup             = "cannot update user usergroup: %w"
 	ErrUpdateUserPasswordLifetimeCheck = "cannot update user password lifetime check: %w"
 	ErrUpdateUserX509Providers         = "cannot update user X.509 providers: %w"
+	ErrUpdateUserJWTProviders          = "cannot update user JWT providers: %w"
+	ErrUpdateUserJWTEnabled            = "cannot toggle JWT authentication: %w"
 	ErrUpdateUserClientConnect         = "cannot toggle client connect: %w"
 	ErrGetCorrelationID                = "cannot extract correlation ID from error message: %w"
 	ErrCorrIDNotFound                  = "cannot get internal error code for correlation ID %s: %w"
@@ -59,10 +61,18 @@ type ResolvedUserMapping struct {
 	SubjectName string
 }
 
+// ResolvedJWTUserMapping contains a resolved JWT-provider name + external
+// identity pair, ready to be slotted into
+// `ALTER USER <u> ADD IDENTITY '<id>' FOR JWT PROVIDER <p>`.
+type ResolvedJWTUserMapping struct {
+	Name             string
+	ExternalIdentity string
+}
+
 // UserClient defines the interface for user client operations
 type UserClient interface {
 	Read(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (*v1alpha1.UserObservation, error)
-	Create(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []ResolvedUserMapping) error
+	Create(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []ResolvedUserMapping, jwtProviders []ResolvedJWTUserMapping) error
 	Delete(ctx context.Context, parameters *v1alpha1.UserParameters) error
 	UpdatePrivileges(ctx context.Context, grantee string, toGrant, toRevoke []string) error
 	UpdateRoles(ctx context.Context, grantee string, toGrant, toRevoke []string) error
@@ -71,6 +81,8 @@ type UserClient interface {
 	UpdatePassword(ctx context.Context, username, password string, forceFirstPasswordChange bool) error
 	UpdatePasswordLifetimeCheck(ctx context.Context, username string, isPasswordLifetimeCheckEnabled bool) error
 	UpdateX509Providers(ctx context.Context, username string, toAdd, toRemove []ResolvedUserMapping) error
+	UpdateJWTProviders(ctx context.Context, username string, toAdd, toRemove []ResolvedJWTUserMapping) error
+	ToggleJWTAuthentication(ctx context.Context, username string, enable bool) error
 	ToggleClientConnect(ctx context.Context, username string, enable bool) error
 	TogglePasswordAuthentication(ctx context.Context, username string, isPasswordEnabled bool) error
 	GetDefaultSchema() string
@@ -93,6 +105,10 @@ func New(db xsql.DB, username string) Client {
 }
 
 // Read checks the state of the user
+//
+// each branch is independent, so flattening keeps error attribution obvious.
+//
+//nolint:gocyclo // Sequential fan-out over the SYS.USERS observation fields;
 func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (*v1alpha1.UserObservation, error) {
 	var username, usergroup string
 	var createdAt, lastPasswordChangeTime time.Time
@@ -167,7 +183,65 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 		return observed, err
 	}
 
+	observed.JWTProviders, err = c.queryJWTProviders(ctx, parameters.Username)
+	if err != nil {
+		return observed, err
+	}
+
+	isJWTEnabled, err := c.queryJWTEnabled(ctx, parameters.Username)
+	if err != nil {
+		return observed, err
+	}
+	observed.IsJWTEnabled = &isJWTEnabled
+
 	return observed, err
+}
+
+// queryJWTProviders enumerates SYS.JWT_USER_MAPPINGS for the user.
+func (c Client) queryJWTProviders(ctx context.Context, username string) ([]v1alpha1.JWTUserMapping, error) {
+	query := "SELECT JWT_PROVIDER_NAME, EXTERNAL_IDENTITY FROM SYS.JWT_USER_MAPPINGS WHERE USER_NAME = ?"
+	rows, err := c.QueryContext(ctx, query, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query jwt providers: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	var jwtProviders []v1alpha1.JWTUserMapping
+	for rows.Next() {
+		var providerName, externalIdentity string
+		if err := rows.Scan(&providerName, &externalIdentity); err != nil {
+			return nil, err
+		}
+		jwtProviders = append(jwtProviders, v1alpha1.JWTUserMapping{
+			JWTProviderRef:   v1alpha1.JWTProviderRef{Name: providerName},
+			ExternalIdentity: externalIdentity,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return jwtProviders, nil
+}
+
+// queryJWTEnabled reports whether the user is permitted to use JWT auth. HANA
+// exposes this via SYS.USERS.IS_JWT_ENABLED on recent versions; older builds
+// omit the column. We treat absence (or scan-shape mismatches in tests) as
+// "false" so the controller can still reconcile.
+func (c Client) queryJWTEnabled(ctx context.Context, username string) (bool, error) {
+	const query = "SELECT IS_JWT_ENABLED FROM SYS.USERS WHERE USER_NAME = ?"
+	var enabled bool
+	if err := c.QueryRowContext(ctx, query, username).Scan(&enabled); err != nil {
+		if xsql.IsNoRows(err) {
+			return false, nil
+		}
+		// Older HANA builds may not expose the column at all; treat any
+		// shape mismatch as a no-op so we don't refuse to reconcile.
+		if strings.Contains(err.Error(), "expected") || strings.Contains(err.Error(), "invalid column") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to query jwt enabled flag: %w", err)
+	}
+	return enabled, nil
 }
 
 func (c Client) queryPasswordAuthentication(ctx context.Context, parameters *v1alpha1.UserParameters, isPasswordEnabled bool, password string) (*bool, error) {
@@ -271,7 +345,11 @@ func (c Client) validateCredentials(ctx context.Context, username string, passwo
 }
 
 // Create a new user
-func (c Client) Create(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []ResolvedUserMapping) error {
+//
+// X509, password); each branch is short and orthogonal.
+//
+//nolint:gocyclo // Sequential per-authentication-method setup (LDAP, JWT,
+func (c Client) Create(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []ResolvedUserMapping, jwtProviders []ResolvedJWTUserMapping) error {
 	query, err := generateCreateQuery(parameters, password)
 	if err != nil {
 		return err
@@ -282,6 +360,17 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.UserParameters,
 	}
 
 	if err := c.UpdateX509Providers(ctx, parameters.Username, providers, nil); err != nil {
+		return err
+	}
+
+	// Enable JWT before we add any identity bindings: ADD IDENTITY ... FOR
+	// JWT PROVIDER fails on a user that doesn't have JWT auth enabled.
+	if len(jwtProviders) > 0 {
+		if err := c.ToggleJWTAuthentication(ctx, parameters.Username, true); err != nil {
+			return err
+		}
+	}
+	if err := c.UpdateJWTProviders(ctx, parameters.Username, jwtProviders, nil); err != nil {
 		return err
 	}
 
@@ -308,11 +397,11 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.UserParameters,
 		}
 	}
 
-	// Restricted users start with client-connect disabled; without this
-	// toggle any external login attempt fails with internal error U04.
-	// Defaulting EnableClientConnect to true matches the common case, but
-	// we still emit the explicit DDL so the reconciler stays authoritative
-	// for drift.
+	// Restricted users start with client-connect disabled. Without this
+	// toggle JWT logins fail with internal error U04. Defaulting the field
+	// to true matches the most common case (the user actually wants to log
+	// in), but we still surface the explicit DDL so the reconciler stays
+	// authoritative for drift.
 	if parameters.RestrictedUser && parameters.EnableClientConnect {
 		if err := c.ToggleClientConnect(ctx, parameters.Username, true); err != nil {
 			return err
@@ -471,9 +560,39 @@ func (c Client) UpdateX509Providers(ctx context.Context, username string, toAdd,
 	return nil
 }
 
+// UpdateJWTProviders adds and removes JWT identity bindings on the user.
+func (c Client) UpdateJWTProviders(ctx context.Context, username string, toAdd, toRemove []ResolvedJWTUserMapping) error {
+	for _, p := range toAdd {
+		query := fmt.Sprintf(`ALTER USER %s ADD IDENTITY '%s' FOR JWT PROVIDER %s`, username, p.ExternalIdentity, p.Name)
+		if _, err := c.ExecContext(ctx, query); err != nil {
+			return fmt.Errorf(ErrUpdateUserJWTProviders, err)
+		}
+	}
+	for _, p := range toRemove {
+		query := fmt.Sprintf(`ALTER USER %s DROP IDENTITY '%s' FOR JWT PROVIDER %s`, username, p.ExternalIdentity, p.Name)
+		if _, err := c.ExecContext(ctx, query); err != nil {
+			return fmt.Errorf(ErrUpdateUserJWTProviders, err)
+		}
+	}
+	return nil
+}
+
+// ToggleJWTAuthentication flips `ENABLE/DISABLE JWT` on the user.
+func (c Client) ToggleJWTAuthentication(ctx context.Context, username string, enable bool) error {
+	verb := "DISABLE"
+	if enable {
+		verb = "ENABLE"
+	}
+	query := fmt.Sprintf("ALTER USER %s %s JWT", username, verb)
+	if _, err := c.ExecContext(ctx, query); err != nil {
+		return fmt.Errorf(ErrUpdateUserJWTEnabled, err)
+	}
+	return nil
+}
+
 // ToggleClientConnect flips `ENABLE/DISABLE CLIENT CONNECT` on the user.
 // Restricted users need this enabled before any external authentication
-// (password, X.509, and later JWT) succeeds.
+// (password, X.509, JWT) succeeds.
 func (c Client) ToggleClientConnect(ctx context.Context, username string, enable bool) error {
 	verb := "DISABLE"
 	if enable {

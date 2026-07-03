@@ -1,0 +1,68 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: PublicKey
+metadata:
+  name: e2e-jwt-key
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    name: E2EJWTKEY
+    comment: e2e JWT test key
+    pem: |
+{{.PEM}}
+  providerConfigRef:
+    name: example
+---
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: JWTProvider
+metadata:
+  name: e2e-jwt-provider
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    name: E2EJWTPROVIDER
+    issuer: https://e2e.example.invalid
+    externalIdentityClaim: sub
+    caseInsensitiveIdentity: true
+    applicationUserClaim: azp
+    priority: 100
+    claimFilters:
+      - claim: groups
+        value: 00000000-0000-0000-0000-deadbeefcafe
+  providerConfigRef:
+    name: example
+---
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: PersonalSecurityEnvironment
+metadata:
+  name: e2e-jwt-pse
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    name: E2EJWTPSE
+    purpose: JWT
+    jwtProviderRef:
+      providerRef:
+        name: e2e-jwt-provider
+    publicKeyRefs:
+      - name: E2EJWTKEY
+  providerConfigRef:
+    name: example
+---
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: e2e-jwt-user
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    username: E2EJWTUSER
+    restrictedUser: true
+    isPasswordLifetimeCheckEnabled: false
+    enableClientConnect: true
+    authentication:
+      jwtProviders:
+        - providerRef:
+            name: e2e-jwt-provider
+          externalIdentity: e2e-user@example.com
+  providerConfigRef:
+    name: example
