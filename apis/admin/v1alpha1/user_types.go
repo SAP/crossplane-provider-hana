@@ -29,7 +29,7 @@ type Password struct {
 type UserParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
+	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
 	Username string `json:"username"`
 
 	// +kubebuilder:validation:Optional
