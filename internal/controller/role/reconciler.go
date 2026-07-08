@@ -165,6 +165,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.RoleName = observed.RoleName
 	cr.Status.AtProvider.Schema = observed.Schema
 	cr.Status.AtProvider.Privileges = observed.Privileges
+	cr.Status.AtProvider.Roles = observed.Roles
 	cr.Status.AtProvider.LdapGroups = observed.LdapGroups
 	cr.Status.AtProvider.Rolegroup = observed.Rolegroup
 
@@ -184,6 +185,9 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 func upToDate(observed *v1alpha1.RoleObservation, desired *v1alpha1.RoleParameters) bool {
 	if !utils.ArraysEqual(observed.Privileges, desired.Privileges) {
+		return false
+	}
+	if !utils.ArraysEqual(observed.Roles, desired.Roles) {
 		return false
 	}
 	if !utils.ArraysEqual(observed.LdapGroups, desired.LdapGroups) {
@@ -211,6 +215,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		"roleName", parameters.RoleName,
 		"schema", parameters.Schema,
 		"privileges", parameters.Privileges,
+		"roles", parameters.Roles,
 		"ldapGroups", parameters.LdapGroups,
 		"noGrantToCreator", parameters.NoGrantToCreator)
 
@@ -224,6 +229,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	cr.Status.AtProvider.RoleName = parameters.RoleName
 	cr.Status.AtProvider.Schema = parameters.Schema
 	cr.Status.AtProvider.Privileges = parameters.Privileges
+	cr.Status.AtProvider.Roles = parameters.Roles
 	cr.Status.AtProvider.LdapGroups = parameters.LdapGroups
 	cr.Status.AtProvider.Rolegroup = parameters.Rolegroup
 
@@ -248,6 +254,8 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	observedPrivileges := cr.Status.AtProvider.Privileges
 	desiredPrivileges := parameters.Privileges
+	observedRoles := cr.Status.AtProvider.Roles
+	desiredRoles := parameters.Roles
 	// roleClient has additional functions not defined in global interface
 	roleClient, _ := c.client.(role.Client)
 
@@ -281,6 +289,27 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		}
 		cr.Status.AtProvider.Privileges = parameters.Privileges
 		c.log.Info("Updated role privileges", "name", cr.Name, "roleName", parameters.RoleName)
+	}
+
+	// Roles granted TO this role (e.g. HDI container roles like
+	// "CONTAINER"."ns::reader") live in the GRANTED_ROLES catalog and are
+	// managed via GRANT ROLE / REVOKE ROLE. They are strictly separate from
+	// direct privileges (GRANTED_PRIVILEGES) — a role granted to a role
+	// never appears in the privileges list — so a dedicated diff is required.
+	if isEqual, rolesToAdd, rolesToRemove := utils.ArraysBothDiff(desiredRoles, observedRoles); !isEqual {
+		c.log.Info("Updating role roles",
+			"name", cr.Name,
+			"roleName", parameters.RoleName,
+			"rolesToAdd", rolesToAdd,
+			"rolesToRemove", rolesToRemove)
+
+		err := roleClient.UpdateRoles(ctx, parameters, rolesToAdd, rolesToRemove)
+		if err != nil {
+			c.log.Info("Error updating role roles", "name", cr.Name, "error", err)
+			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
+		}
+		cr.Status.AtProvider.Roles = parameters.Roles
+		c.log.Info("Updated role roles", "name", cr.Name, "roleName", parameters.RoleName)
 	}
 
 	if cr.Status.AtProvider.Rolegroup != parameters.Rolegroup {
@@ -336,6 +365,7 @@ func buildDesiredParameters(cr *v1alpha1.Role) *v1alpha1.RoleParameters {
 		RoleName:         cr.Spec.ForProvider.RoleName,
 		Schema:           cr.Spec.ForProvider.Schema,
 		Privileges:       cr.Spec.ForProvider.Privileges,
+		Roles:            cr.Spec.ForProvider.Roles,
 		LdapGroups:       cr.Spec.ForProvider.LdapGroups,
 		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
 		Rolegroup:        cr.Spec.ForProvider.Rolegroup,

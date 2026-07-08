@@ -226,11 +226,11 @@ func TestPrivilegeClient_QueryRoles(t *testing.T) {
 			wantErr:  false,
 		},
 		"SchemaQualifiedRoles": {
-			reason: "Should correctly format schema-qualified roles and admin option",
+			reason: "Should format schema-qualified roles as \"SCHEMA\".\"NAME\" (dot outside the quotes, HANA's only valid form for schema-qualified role identifiers)",
 			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "IS_GRANTABLE"}).
 				AddRow(sql.NullString{String: "SCHEMA1", Valid: true}, "ROLE1", true).
 				AddRow(sql.NullString{String: "SCHEMA2", Valid: true}, "ROLE2", false),
-			want:    []string{`"SCHEMA1.ROLE1" WITH ADMIN OPTION`, `"SCHEMA2.ROLE2"`},
+			want:    []string{`"SCHEMA1"."ROLE1" WITH ADMIN OPTION`, `"SCHEMA2"."ROLE2"`},
 			wantErr: false,
 		},
 		"UnqualifiedRoles": {
@@ -1098,9 +1098,12 @@ func TestParseRoleString_WithOptions(t *testing.T) {
 		{
 			name: "SchemaQualifiedRoleWithAdmin",
 			in:   "MYSCHEMA.ROLE1 WITH ADMIN OPTION",
-			want: Role{Name: "MYSCHEMA.ROLE1", IsGrantable: true},
+			want: Role{Schema: "MYSCHEMA", Name: "ROLE1", IsGrantable: true},
 		},
-		// Special character role name tests (e.g., HANA namespace-style roles)
+		// Special character role name tests (e.g., HANA namespace-style roles).
+		// A dot is always the schema/name separator in HANA — dots are never
+		// part of an identifier — so "sap.hana::data_reader" parses as
+		// schema=sap, name=hana::data_reader.
 		{
 			name: "RoleWithDoubleColons",
 			in:   "data::access_g",
@@ -1114,22 +1117,25 @@ func TestParseRoleString_WithOptions(t *testing.T) {
 		{
 			name: "RoleWithDotsAndDoubleColons",
 			in:   "sap.hana::data_reader",
-			want: Role{Name: "sap.hana::data_reader", IsGrantable: false},
+			want: Role{Schema: "sap", Name: "hana::data_reader", IsGrantable: false},
 		},
 		{
 			name: "RoleWithDotsAndDoubleColonsAndAdminOption",
 			in:   "sap.hana::data_reader WITH ADMIN OPTION",
-			want: Role{Name: "sap.hana::data_reader", IsGrantable: true},
+			want: Role{Schema: "sap", Name: "hana::data_reader", IsGrantable: true},
 		},
+		// Quoted identifiers: parseRoleString strips outer quotes via
+		// cleanIdentifier so the stored Name/Schema are the raw identifier
+		// values. quotedName() re-quotes on output for canonical form.
 		{
 			name: "QuotedRoleWithSpecialChars",
 			in:   `"data::access_g"`,
-			want: Role{Name: `"data::access_g"`, IsGrantable: false},
+			want: Role{Name: "data::access_g", IsGrantable: false},
 		},
 		{
 			name: "QuotedRoleWithSpecialCharsAndAdminOption",
 			in:   `"data::access_g" WITH ADMIN OPTION`,
-			want: Role{Name: `"data::access_g"`, IsGrantable: true},
+			want: Role{Name: "data::access_g", IsGrantable: true},
 		},
 		{
 			name: "LowercaseRoleName",
@@ -1644,7 +1650,7 @@ func TestFormatRoleStrings(t *testing.T) {
 		{
 			name:  "SchemaQualifiedRole",
 			input: []string{"MYSCHEMA.ROLE1 WITH ADMIN OPTION"},
-			want:  []string{`"MYSCHEMA.ROLE1" WITH ADMIN OPTION`},
+			want:  []string{`"MYSCHEMA"."ROLE1" WITH ADMIN OPTION`},
 		},
 		{
 			name:    "InvalidRoleString",
@@ -1666,6 +1672,92 @@ func TestFormatRoleStrings(t *testing.T) {
 			}
 			if !cmp.Equal(tc.want, got) {
 				t.Errorf("FormatRoleStrings() got = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSchemaQualifiedRoleRoundTrip pins down the fix for the schema-qualified
+// role syntax bug. HANA rejects "SCHEMA.NAME" (single pair of quotes, dot
+// inside) as an invalid role name; the only valid form for a schema-qualified
+// role identifier is "SCHEMA"."NAME" (two independently quoted identifiers,
+// dot outside). This test enforces that:
+//  1. parseRoleString splits the schema and name into separate fields;
+//  2. String()/quotedName() re-emit them as "SCHEMA"."NAME";
+//  3. what QueryRoles reads from GRANTED_ROLES (schema + name as two columns)
+//     produces the same canonical string as what the user wrote in spec,
+//     so upToDate comparisons are stable.
+//
+// All identifiers here are generic placeholders — no production names.
+func TestSchemaQualifiedRoleRoundTrip(t *testing.T) {
+	cases := []struct {
+		name        string
+		specInput   string // what the user writes in the CR spec
+		dbSchema    string // ROLE_SCHEMA_NAME column returned by HANA
+		dbName      string // ROLE_NAME column returned by HANA
+		dbGrantable bool   // IS_GRANTABLE column returned by HANA
+		wantString  string // canonical form both paths must agree on
+	}{
+		{
+			name:        "QuotedSchemaAndName",
+			specInput:   `"MY_CONTAINER"."ns::reader"`,
+			dbSchema:    "MY_CONTAINER",
+			dbName:      "ns::reader",
+			dbGrantable: false,
+			wantString:  `"MY_CONTAINER"."ns::reader"`,
+		},
+		{
+			name:        "QuotedSchemaAndNameWithAdminOption",
+			specInput:   `"MY_CONTAINER"."ns::reader" WITH ADMIN OPTION`,
+			dbSchema:    "MY_CONTAINER",
+			dbName:      "ns::reader",
+			dbGrantable: true,
+			wantString:  `"MY_CONTAINER"."ns::reader" WITH ADMIN OPTION`,
+		},
+		{
+			name:        "UnquotedSchemaAndName",
+			specInput:   "APP_SCHEMA.ROLE1",
+			dbSchema:    "APP_SCHEMA",
+			dbName:      "ROLE1",
+			dbGrantable: false,
+			wantString:  `"APP_SCHEMA"."ROLE1"`,
+		},
+		{
+			name:        "TopLevelRoleNoSchema",
+			specInput:   "PUBLIC",
+			dbSchema:    "", // NULL in DB
+			dbName:      "PUBLIC",
+			dbGrantable: false,
+			wantString:  `"PUBLIC"`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Spec side: what FormatRoleStrings emits given the user's input.
+			formatted, err := FormatRoleStrings([]string{tc.specInput})
+			if err != nil {
+				t.Fatalf("FormatRoleStrings(%q) error: %v", tc.specInput, err)
+			}
+			if len(formatted) != 1 || formatted[0] != tc.wantString {
+				t.Errorf("spec side: FormatRoleStrings(%q) = %v, want [%q]",
+					tc.specInput, formatted, tc.wantString)
+			}
+
+			// DB side: what QueryRoles builds from the two DB columns.
+			// Mirrors the row-handling code in QueryRoles directly, without
+			// requiring a mocked *sql.Rows.
+			r := Role{Schema: tc.dbSchema, Name: tc.dbName, IsGrantable: tc.dbGrantable}
+			observed := r.String()
+			if observed != tc.wantString {
+				t.Errorf("db side: Role{Schema:%q, Name:%q}.String() = %q, want %q",
+					tc.dbSchema, tc.dbName, observed, tc.wantString)
+			}
+
+			// Round-trip: the two sides must agree for upToDate to be stable.
+			if formatted[0] != observed {
+				t.Errorf("round-trip mismatch: spec=%q observed=%q",
+					formatted[0], observed)
 			}
 		})
 	}

@@ -45,6 +45,7 @@ type mockClient struct {
 	MockDelete           func(ctx context.Context, parameters *v1alpha1.RoleParameters) error
 	MockUpdateLdapGroups func(ctx context.Context, parameters *v1alpha1.RoleParameters, groupsToAdd, groupsToRemove []string) error
 	MockUpdatePrivileges func(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error
+	MockUpdateRoles      func(ctx context.Context, parameters *v1alpha1.RoleParameters, rolesToGrant, rolesToRevoke []string) error
 	MockUpdateRolegroup  func(ctx context.Context, parameters *v1alpha1.RoleParameters) error
 }
 
@@ -70,6 +71,13 @@ func (m mockClient) UpdateLdapGroups(ctx context.Context, parameters *v1alpha1.R
 func (m mockClient) UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error {
 	if m.MockUpdatePrivileges != nil {
 		return m.MockUpdatePrivileges(ctx, parameters, privilegesToGrant, privilegesToRevoke)
+	}
+	return nil
+}
+
+func (m mockClient) UpdateRoles(ctx context.Context, parameters *v1alpha1.RoleParameters, rolesToGrant, rolesToRevoke []string) error {
+	if m.MockUpdateRoles != nil {
+		return m.MockUpdateRoles(ctx, parameters, rolesToGrant, rolesToRevoke)
 	}
 	return nil
 }

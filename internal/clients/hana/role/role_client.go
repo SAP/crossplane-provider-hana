@@ -18,6 +18,7 @@ type RoleClient interface {
 	hana.QueryClient[v1alpha1.RoleParameters, v1alpha1.RoleObservation]
 	UpdateLdapGroups(ctx context.Context, parameters *v1alpha1.RoleParameters, groupsToAdd, groupsToRemove []string) error
 	UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error
+	UpdateRoles(ctx context.Context, parameters *v1alpha1.RoleParameters, rolesToGrant, rolesToRevoke []string) error
 	UpdateRolegroup(ctx context.Context, parameters *v1alpha1.RoleParameters) error
 }
 
@@ -66,6 +67,13 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.RoleParameters) (
 
 	grantee := getRoleName(parameters.Schema, parameters.RoleName)
 	observed.Privileges, err = c.QueryPrivileges(ctx, grantee, privilege.GranteeTypeRole)
+	if err != nil {
+		return observed, err
+	}
+
+	// Roles granted to this role (e.g. HDI container roles) are separate from
+	// direct privileges and live in the GRANTED_ROLES catalog view.
+	observed.Roles, err = c.QueryRoles(ctx, grantee, privilege.GranteeTypeRole)
 	if err != nil {
 		return observed, err
 	}
@@ -122,6 +130,12 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.RoleParameters)
 	if len(parameters.Privileges) > 0 {
 		if err := c.GrantPrivileges(ctx, c.username, grantee, parameters.Privileges); err != nil {
 			return fmt.Errorf("failed to grant privileges: %w", err)
+		}
+	}
+
+	if len(parameters.Roles) > 0 {
+		if err := c.GrantRoles(ctx, c.username, grantee, parameters.Roles); err != nil {
+			return fmt.Errorf("failed to grant roles: %w", err)
 		}
 	}
 
@@ -189,6 +203,27 @@ func (c Client) UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleP
 	if len(toRevoke) > 0 {
 		if err := c.RevokePrivileges(ctx, c.username, grantee, toRevoke); err != nil {
 			return fmt.Errorf("failed to revoke privileges: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// UpdateRoles grants and/or revokes roles to/from this role. Mirrors
+// UpdatePrivileges but delegates to GrantRoles/RevokeRoles, which handle
+// schema-qualified role names (e.g. HDI container roles) correctly.
+func (c Client) UpdateRoles(ctx context.Context, parameters *v1alpha1.RoleParameters, toGrant, toRevoke []string) error {
+
+	grantee := getRoleName(parameters.Schema, parameters.RoleName)
+	if len(toGrant) > 0 {
+		if err := c.GrantRoles(ctx, c.username, grantee, toGrant); err != nil {
+			return fmt.Errorf("failed to grant roles: %w", err)
+		}
+	}
+
+	if len(toRevoke) > 0 {
+		if err := c.RevokeRoles(ctx, c.username, grantee, toRevoke); err != nil {
+			return fmt.Errorf("failed to revoke roles: %w", err)
 		}
 	}
 
