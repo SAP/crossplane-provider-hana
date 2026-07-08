@@ -298,6 +298,9 @@ spec:
                   rolegroup:
                     type: string
                   roles:
+                    description: |-
+                      Roles observed on the role, in the canonical `"SCHEMA"."NAME"` form
+                      (top-level roles are emitted as `"NAME"`).
                     items:
                       type: string
                     type: array
