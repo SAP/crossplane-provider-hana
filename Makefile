@@ -63,7 +63,7 @@ XPKG_REG_ORGS ?= ghcr.io/sap/crossplane-provider-hana/crossplane
 
 # NOTE(hasheddan): we force image building to happen prior to xpkg build so that
 # we ensure image is present in daemon.
-xpkg.build.provider-hana: do.build.images
+xpkg.build.provider-hana: do.build.images $(UP)
 
 # ====================================================================================
 # Local e2e setup (mirrors SAP/crossplane-provider-cloudfoundry)
