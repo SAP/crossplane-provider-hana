@@ -47,22 +47,8 @@ KIND_NODE_IMAGE_TAG ?= v1.34.0
 IMAGES = provider-hana
 -include build/makelib/imagelight.mk
 
-# UUT_CONFIG / E2E_IMAGES preserve the existing repo conventions and continue
-# to be consumed by test/e2e via images.GetImagesFromEnvironmentOrPanic.
-# UUT_CONTROLLER is removed because the controller image no longer exists.
-# UUT_XPKG is new and points at the xpkg artifact loaded into the local docker
-# daemon by `make local-build`; it is what xp-testing sideloads into kind.
 export UUT_CONFIG = $(BUILD_REGISTRY)/provider-hana-$(ARCH):latest
-export UUT_XPKG = $(BUILD_REGISTRY)/provider-hana-xpkg:latest
-export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_XPKG)"}
-
-.PHONY: local-build
-local-build: build xpkg.build.provider-hana
-	$(INFO) "Loading xpkg into docker as $(UUT_XPKG)"
-	@XPKG_FILE=$(XPKG_OUTPUT_DIR)/$(PLATFORM)/provider-hana-$(VERSION).xpkg && \
-	XPKG_SHA=$$(docker load -i $$XPKG_FILE | sed -n 's/.*ID: //p') && \
-	docker tag $$XPKG_SHA $(UUT_XPKG);
-	$(OK) "Built local images: $(UUT_CONFIG) $(UUT_XPKG)"
+export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_CONFIG)"}
 
 # ====================================================================================
 # Setup XPKG
@@ -75,6 +61,25 @@ XPKG_REG_ORGS ?= ghcr.io/sap/crossplane-provider-hana/crossplane
 # we ensure image is present in daemon.
 xpkg.build.provider-hana: do.build.images
 
+# ====================================================================================
+# Local e2e setup (mirrors SAP/crossplane-provider-btp#626)
+#
+# local-deploy: builds the xpkg, creates a kind cluster, installs Crossplane,
+# sideloads the package + runtime image, and deploys the provider with
+# packagePullPolicy:Never via a DeploymentRuntimeConfig.
+# E2E_REUSE_CLUSTER / E2E_CLUSTER_NAME tell xp-testing to reuse this cluster
+# so it skips provider installation entirely.
+
+KIND_CLUSTER_NAME ?= local-dev
+CROSSPLANE_VERSION ?= 1.14.3
+export E2E_REUSE_CLUSTER = $(KIND_CLUSTER_NAME)
+export E2E_CLUSTER_NAME = $(KIND_CLUSTER_NAME)
+-include build/makelib/local.xpkg.mk
+-include build/makelib/controlplane.mk
+
+.PHONY: local-deploy
+local-deploy: build xpkg.build.provider-hana controlplane.up local.xpkg.deploy.provider.provider-hana
+
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .
 	@make
@@ -85,7 +90,7 @@ test.run: $(GOJUNIT) $(GOCOVER_COBERTURA) go.test.unit
 # e2e tests
 e2e.run: test-e2e
 
-test-e2e: local-build $(KIND) $(HELM3)
+test-e2e: local-deploy
 	@$(INFO) running e2e tests
 	@echo E2E_IMAGES=$$E2E_IMAGES
 	HANA_BINDINGS=$$HANA_BINDINGS go test $(PROJECT_REPO)/test/... -tags=e2e -test.v  -count=1
@@ -147,7 +152,7 @@ dev-clean: $(KIND) $(KUBECTL)
 	@$(INFO) Deleting kind cluster
 	@$(KIND) delete cluster --name=$(PROJECT_NAME)-dev
 
-.PHONY: submodules fallthrough test-integration run dev dev-clean test-e2e test.run
+.PHONY: submodules fallthrough test-integration run dev dev-clean test-e2e test.run local-deploy
 
 # ====================================================================================
 # Special Targets

@@ -25,29 +25,21 @@ import (
 
 	"sigs.k8s.io/e2e-framework/pkg/env"
 
-	"github.com/crossplane-contrib/xp-testing/pkg/images"
 	"github.com/crossplane-contrib/xp-testing/pkg/logging"
 	"github.com/crossplane-contrib/xp-testing/pkg/setup"
 )
 
 var testenv env.Environment
 
-var (
-	UUT_CONFIG_KEY = "crossplane/provider-hana"
-)
-
 func TestMain(m *testing.M) {
 	var verbosity = 4
 	logging.EnableVerboseLogging(&verbosity)
 	testenv = env.NewParallel()
 
-	imgs := images.GetImagesFromEnvironmentOrPanic(UUT_CONFIG_KEY, nil)
-
 	secretData := getProviderConfigSecretData()
 
 	clusterSetup := setup.ClusterSetup{
 		ProviderName:       "hana-provider",
-		Images:             imgs,
 		ProviderCredential: &setup.ProviderCredentials{SecretData: secretData},
 		CrossplaneSetup: setup.CrossplaneSetup{
 			Version:  "1.14.3",
