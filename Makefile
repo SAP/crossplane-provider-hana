@@ -91,6 +91,8 @@ test.run: $(GOJUNIT) $(GOCOVER_COBERTURA) go.test.unit
 e2e.run: test-e2e
 
 test-e2e: local-deploy
+	@$(INFO) waiting for provider-hana to become healthy
+	@$(KUBECTL) wait provider.pkg.crossplane.io/provider-hana --for=condition=Healthy --timeout=120s
 	@$(INFO) running e2e tests
 	@echo E2E_IMAGES=$$E2E_IMAGES
 	HANA_BINDINGS=$$HANA_BINDINGS go test $(PROJECT_REPO)/test/... -tags=e2e -test.v  -count=1
