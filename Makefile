@@ -38,6 +38,10 @@ UP_CHANNEL = stable
 # Setup Kubernetes tools
 -include build/makelib/k8s_tools.mk
 
+# NOTE(hasheddan): we ensure up is installed prior to running platform-specific
+# build steps in parallel to avoid encountering an installation race condition.
+build.init: $(UP)
+
 # Setup Images
 #
 # Migrated from the legacy two-image pattern (image.mk, IMAGES = $(BASE_NAME)
@@ -63,7 +67,7 @@ XPKG_REG_ORGS ?= ghcr.io/sap/crossplane-provider-hana/crossplane
 
 # NOTE(hasheddan): we force image building to happen prior to xpkg build so that
 # we ensure image is present in daemon.
-xpkg.build.provider-hana: do.build.images $(UP)
+xpkg.build.provider-hana: do.build.images
 
 # ====================================================================================
 # Local e2e setup (mirrors SAP/crossplane-provider-cloudfoundry)
