@@ -31,6 +31,10 @@ GO111MODULE = on
 KIND_VERSION ?= v0.30.0
 KIND_NODE_IMAGE_TAG ?= v1.34.0
 
+# up (UXP installer) versions — required by controlplane.mk at build submodule a0925d3
+UP_VERSION = v0.31.0
+UP_CHANNEL = stable
+
 # Setup Kubernetes tools
 -include build/makelib/k8s_tools.mk
 
@@ -43,7 +47,7 @@ KIND_NODE_IMAGE_TAG ?= v1.34.0
 # package API in crossplane#6487). Also fixes the missing io.crossplane.xpkg
 # label, which `crossplane xpkg build` sets automatically.
 #
-# Reference: SAP/crossplane-provider-btp#626
+# Reference: SAP/crossplane-provider-btp#626, SAP/crossplane-provider-cloudfoundry
 IMAGES = provider-hana
 -include build/makelib/imagelight.mk
 
@@ -62,16 +66,16 @@ XPKG_REG_ORGS ?= ghcr.io/sap/crossplane-provider-hana/crossplane
 xpkg.build.provider-hana: do.build.images
 
 # ====================================================================================
-# Local e2e setup (mirrors SAP/crossplane-provider-btp#626)
+# Local e2e setup (mirrors SAP/crossplane-provider-cloudfoundry)
 #
-# local-deploy: builds the xpkg, creates a kind cluster, installs Crossplane,
-# sideloads the package + runtime image, and deploys the provider with
-# packagePullPolicy:Never via a DeploymentRuntimeConfig.
-# E2E_REUSE_CLUSTER / E2E_CLUSTER_NAME tell xp-testing to reuse this cluster
-# so it skips provider installation entirely.
+# Uses UXP (Universal Crossplane) installed via `up uxp install`, same as the
+# CloudFoundry provider. The build submodule at a0925d3 provides controlplane.mk
+# (UXP install) and local.xpkg.mk (sidecar xpkg cache) for this pattern.
+# E2E_REUSE_CLUSTER / E2E_CLUSTER_NAME tell xp-testing to reuse the pre-deployed
+# cluster so it skips provider installation entirely.
 
+CROSSPLANE_NAMESPACE = upbound-system
 KIND_CLUSTER_NAME ?= local-dev
-CROSSPLANE_VERSION ?= 1.14.3
 export E2E_REUSE_CLUSTER = $(KIND_CLUSTER_NAME)
 export E2E_CLUSTER_NAME = $(KIND_CLUSTER_NAME)
 -include build/makelib/local.xpkg.mk
@@ -79,6 +83,10 @@ export E2E_CLUSTER_NAME = $(KIND_CLUSTER_NAME)
 
 .PHONY: local-deploy
 local-deploy: build xpkg.build.provider-hana controlplane.up local.xpkg.deploy.provider.provider-hana
+	@$(INFO) waiting for provider-hana to become healthy
+	@$(KUBECTL) wait provider.pkg provider-hana --for condition=Healthy --timeout=5m
+	@$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) wait --for=condition=Available deployment --all --timeout=5m
+	@$(OK) provider-hana is healthy
 
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .
@@ -91,8 +99,6 @@ test.run: $(GOJUNIT) $(GOCOVER_COBERTURA) go.test.unit
 e2e.run: test-e2e
 
 test-e2e: local-deploy
-	@$(INFO) waiting for provider-hana to become healthy
-	@$(KUBECTL) wait provider.pkg.crossplane.io/provider-hana --for=condition=Healthy --timeout=120s
 	@$(INFO) running e2e tests
 	@echo E2E_IMAGES=$$E2E_IMAGES
 	HANA_BINDINGS=$$HANA_BINDINGS go test $(PROJECT_REPO)/test/... -tags=e2e -test.v  -count=1
