@@ -91,6 +91,8 @@ local-deploy: build xpkg.build.provider-hana controlplane.up local.xpkg.deploy.p
 	@$(KUBECTL) wait provider.pkg provider-hana --for condition=Healthy --timeout=5m
 	@$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) wait --for=condition=Available deployment --all --timeout=5m
 	@$(OK) provider-hana is healthy
+	@# xp-testing puts the provider secret in crossplane-system; UXP installs into upbound-system so the namespace isn't created upstream.
+	@$(KUBECTL) get namespace crossplane-system >/dev/null 2>&1 || $(KUBECTL) create namespace crossplane-system
 
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .

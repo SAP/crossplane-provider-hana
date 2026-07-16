@@ -6,5 +6,5 @@ spec:
   credentials:
     source: Secret
     connectionSecretRef:
-      namespace: upbound-system
+      namespace: crossplane-system
       name: secret

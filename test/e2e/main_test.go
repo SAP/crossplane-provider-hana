@@ -12,11 +12,8 @@ import (
 	"testing"
 
 	"github.com/crossplane-contrib/xp-testing/pkg/envvar"
-	"github.com/crossplane-contrib/xp-testing/pkg/xpenvfuncs"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
-	"sigs.k8s.io/e2e-framework/pkg/envfuncs"
 	"sigs.k8s.io/e2e-framework/support/kind"
 
 	servicescloudsapv1 "github.com/SAP/sap-btp-service-operator/api/v1"
@@ -25,55 +22,42 @@ import (
 	inventoryv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/inventory/v1alpha1"
 	schemav1alpha1 "github.com/SAP/crossplane-provider-hana/apis/schema/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
-)
 
-const (
-	// UXP installs into upbound-system, not crossplane-system.
-	crossplaneNamespace = "upbound-system"
-	providerSecretName  = "secret"
+	"sigs.k8s.io/e2e-framework/pkg/env"
+
+	"github.com/crossplane-contrib/xp-testing/pkg/logging"
+	"github.com/crossplane-contrib/xp-testing/pkg/setup"
 )
 
 var testenv env.Environment
 
 func TestMain(m *testing.M) {
+	var verbosity = 4
+	logging.EnableVerboseLogging(&verbosity)
 	testenv = env.NewParallel()
 
 	secretData := getProviderConfigSecretData()
-	clusterName := envvar.GetOrDefault("E2E_CLUSTER_NAME", "local-dev")
-	reuseCluster := envvar.CheckEnvVarExists("E2E_REUSE_CLUSTER")
 
-	testenv.Setup(
-		envfuncs.CreateCluster(&kind.Cluster{}, clusterName),
-		installBTPOperatorCRDs(clusterName),
-		xpenvfuncs.Conditional(
-			func(ctx context.Context, cfg *envconf.Config) (context.Context, error) {
-				r, err := cfg.NewClient()
-				if err != nil {
-					return ctx, err
-				}
-				secret := xpenvfuncs.SimpleSecret(providerSecretName, crossplaneNamespace, secretData)
-				if err := r.Resources().Create(ctx, secret); err != nil {
-					return ctx, fmt.Errorf("create provider secret: %w", err)
-				}
-				return ctx, nil
-			},
-			!reuseCluster,
-		),
-		xpenvfuncs.ApplyProviderConfigFromDir("./provider"),
-		xpenvfuncs.LoadSchemas(
-			func(s *runtime.Scheme) error { return apisv1alpha1.AddToScheme(s) },
-			func(s *runtime.Scheme) error { return adminv1alpha1.AddToScheme(s) },
-			func(s *runtime.Scheme) error { return schemav1alpha1.AddToScheme(s) },
-			func(s *runtime.Scheme) error { return inventoryv1alpha1.AddToScheme(s) },
-			func(s *runtime.Scheme) error { return servicescloudsapv1.AddToScheme(s) },
-		),
-		xpenvfuncs.AwaitCRDsEstablished,
-	)
+	clusterSetup := setup.ClusterSetup{
+		ProviderName:       "hana-provider",
+		ProviderCredential: &setup.ProviderCredentials{SecretData: secretData},
+		CrossplaneSetup: setup.CrossplaneSetup{
+			Version:  "1.20.1",
+			Registry: setup.DockerRegistry,
+		},
+		AddToSchemaFuncs: []func(s *runtime.Scheme) error{
+			apisv1alpha1.AddToScheme,
+			adminv1alpha1.AddToScheme,
+			schemav1alpha1.AddToScheme,
+			inventoryv1alpha1.AddToScheme,
+			servicescloudsapv1.AddToScheme,
+		},
+	}
 
-	testenv.Finish(
-		xpenvfuncs.DumpLogs(clusterName, "post-tests"),
-		xpenvfuncs.Conditional(envfuncs.DestroyCluster(clusterName), !reuseCluster),
-	)
+	// Install BTP operator CRDs for KymaInstanceMapping tests
+	clusterSetup.PostCreate(installBTPOperatorCRDs)
+
+	_ = clusterSetup.Configure(testenv, &kind.Cluster{})
 
 	os.Exit(testenv.Run(m))
 }
