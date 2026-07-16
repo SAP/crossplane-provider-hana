@@ -6,7 +6,7 @@ PROJECT_NAME := crossplane-provider-$(BASE_NAME)
 PROJECT_REPO := github.com/SAP/$(PROJECT_NAME)
 
 
-PLATFORMS ?= linux_amd64
+PLATFORMS ?= linux_amd64 linux_arm64
 
 VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || git rev-parse HEAD)
 $(info VERSION is $(VERSION))
@@ -80,6 +80,9 @@ xpkg.build.provider-hana: do.build.images
 
 CROSSPLANE_NAMESPACE = upbound-system
 KIND_CLUSTER_NAME ?= local-dev
+# E2E_REUSE_CLUSTER is unconditionally exported so CI always reuses the cluster
+# that local-deploy just created, skipping redundant provider installation.
+# If local-deploy fails mid-way locally, reset with: make controlplane.down && make local-deploy
 export E2E_REUSE_CLUSTER = $(KIND_CLUSTER_NAME)
 export E2E_CLUSTER_NAME = $(KIND_CLUSTER_NAME)
 -include build/makelib/local.xpkg.mk
