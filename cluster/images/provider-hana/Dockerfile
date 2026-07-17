@@ -7,7 +7,7 @@ ARG TARGETARCH
 ADD bin/${TARGETOS}_${TARGETARCH}/provider /usr/local/bin/crossplane-hana-provider
 
 EXPOSE 8080
-USER 1001
+USER 65532
 ENTRYPOINT ["crossplane-hana-provider"]
 
 LABEL org.opencontainers.image.title="provider-hana" \
