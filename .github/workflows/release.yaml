@@ -97,10 +97,6 @@ jobs:
         run: |
           make build PLATFORM=linux_amd64 VERSION=${{ github.event.inputs.nextVersion }}
           make build PLATFORM=linux_arm64 VERSION=${{ github.event.inputs.nextVersion }}
-        env:
-          # We're using docker buildx, which doesn't actually load the images it
-          # builds by default. Specifying --load does so.
-          BUILD_ARGS: "--load"
 
       - name: Login to Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -109,15 +105,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push Runtime Images
-        run: |
-          REAL_REGISTRY="${{ vars.REGISTRY_URL }}/crossplane"
-          BUILD_REG="build-$(echo "${HOSTNAME}-${GITHUB_WORKSPACE}" | sha256sum | cut -c1-8)"
-          for arch in amd64 arm64; do
-            docker tag "${BUILD_REG}/provider-hana-${arch}" "${REAL_REGISTRY}/provider-hana-${arch}:${{ github.event.inputs.nextVersion }}"
-            docker push "${REAL_REGISTRY}/provider-hana-${arch}:${{ github.event.inputs.nextVersion }}"
-          done
-
       - name: Publish Artifacts to DockerHub
         run: |
           make xpkg.build PLATFORM=linux_amd64 VERSION=${{ github.event.inputs.nextVersion }} BRANCH_NAME=${GITHUB_REF##*/}
@@ -125,7 +112,6 @@ jobs:
           make xpkg.release.publish VERSION=${{ github.event.inputs.nextVersion }}
         env:
           XPKG_REG_ORGS: ${{ vars.REGISTRY_URL }}/crossplane
-          BUILD_REGISTRY: ${{ vars.REGISTRY_URL }}/crossplane
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
