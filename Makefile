@@ -55,6 +55,11 @@ build.init: $(UP)
 IMAGES = provider-hana
 -include build/makelib/imagelight.mk
 
+# UUT_CONFIG and E2E_IMAGES are currently dead code: E2E_REUSE_CLUSTER is always
+# set so xp-testing's InstallCrossplaneProvider is never called and these values
+# are never consumed. Note: UUT_CONFIG is a runtime OCI image, not an xpkg
+# artifact — if the full xp-testing install path is ever re-enabled, this would
+# need to point at the output of `up xpkg build` instead.
 export UUT_CONFIG = $(BUILD_REGISTRY)/provider-hana-$(ARCH):latest
 export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_CONFIG)"}
 

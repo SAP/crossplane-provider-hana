@@ -57,13 +57,9 @@ func TestMain(m *testing.M) {
 	// Install BTP operator CRDs for KymaInstanceMapping tests
 	clusterSetup.PostCreate(installBTPOperatorCRDs)
 
-	// NOTE: on the very first run, E2E_REUSE_CLUSTER is set but the kind cluster
-	// does not yet exist, so xp-testing treats this as firstSetup=true and installs
-	// upstream Crossplane 1.20.1 into crossplane-system alongside the already-running
-	// UXP in upbound-system. The two instances operate in separate namespaces and do
-	// not conflict in practice, but CRD ownership is shared — avoid running both
-	// permanently. Subsequent runs skip this step (firstSetup=false) because the
-	// cluster already exists.
+	// E2E_REUSE_CLUSTER is always set; local-deploy (a prerequisite of test-e2e)
+	// creates the kind cluster and installs UXP before go test starts, so xp-testing
+	// always reuses the existing cluster and skips provider installation.
 	_ = clusterSetup.Configure(testenv, &kind.Cluster{})
 
 	os.Exit(testenv.Run(m))
