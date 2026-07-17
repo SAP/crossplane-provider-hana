@@ -93,10 +93,33 @@ export E2E_CLUSTER_NAME = $(KIND_CLUSTER_NAME)
 -include build/makelib/local.xpkg.mk
 -include build/makelib/controlplane.mk
 
+# Override local.xpkg.sync to fix arch collision: the upstream rule extracts all
+# platform xpkgs to the same basename (provider-hana-<ver>.gz), so arm64 silently
+# overwrites amd64. We include the arch in the filename and reference it in the
+# Provider CR so each platform lands in its own file.
+local.xpkg.sync: local.xpkg.init $(UP)
+	@$(INFO) copying local xpkg cache to Crossplane pod
+	@mkdir -p $(XPKG_OUTPUT_DIR)/cache
+	@for pkg in $(XPKG_OUTPUT_DIR)/linux_*/*; do \
+		arch=$$(echo $$pkg | sed 's|.*/linux_\([^/]*\)/.*|\1|'); \
+		$(UP) xpkg xp-extract --from-xpkg $$pkg -o $(XPKG_OUTPUT_DIR)/cache/$$(basename $$pkg .xpkg)-$$arch.gz; \
+	done
+	@XPPOD=$$($(KUBECTL) -n $(CROSSPLANE_NAMESPACE) get pod -l app=crossplane,patched=true -o jsonpath="{.items[0].metadata.name}"); \
+		$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) cp $(XPKG_OUTPUT_DIR)/cache -c dev $$XPPOD:/tmp
+	@$(OK) copying local xpkg cache to Crossplane pod
+
+# Override local.xpkg.deploy.provider to reference the arch-qualified cache filename.
+local.xpkg.deploy.provider.%: $(KIND) local.xpkg.sync
+	@$(INFO) deploying provider package $* $(VERSION)
+	@$(KIND) load docker-image $(BUILD_REGISTRY)/$*-$(ARCH) -n $(KIND_CLUSTER_NAME)
+	@echo '{"apiVersion":"pkg.crossplane.io/v1alpha1","kind":"ControllerConfig","metadata":{"name":"config-$*"},"spec":{"args":["-d"],"image":"$(BUILD_REGISTRY)/$*-$(ARCH)"}}' | $(KUBECTL) apply -f -
+	@echo '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"$*"},"spec":{"package":"$*-$(VERSION)-$(ARCH).gz","skipDependencyResolution": $(XPKG_SKIP_DEP_RESOLUTION), "packagePullPolicy":"Never","controllerConfigRef":{"name":"config-$*"}}}' | $(KUBECTL) apply -f -
+	@$(OK) deploying provider package $* $(VERSION)
+
 .PHONY: local-deploy
 local-deploy: build xpkg.build.provider-hana controlplane.up local.xpkg.deploy.provider.provider-hana
 	@$(INFO) waiting for provider-hana to become healthy
-	@$(KUBECTL) wait provider.pkg provider-hana --for condition=Healthy --timeout=5m
+	@$(foreach x,$(XPKGS),$(KUBECTL) wait provider.pkg $(x) --for condition=Healthy --timeout=5m;)
 	@$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) wait --for=condition=Available deployment --all --timeout=5m
 	@$(OK) provider-hana is healthy
 	@# xp-testing puts the provider secret in crossplane-system; UXP installs into upbound-system so the namespace isn't created upstream.

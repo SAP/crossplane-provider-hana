@@ -39,7 +39,7 @@ func TestMain(m *testing.M) {
 	secretData := getProviderConfigSecretData()
 
 	clusterSetup := setup.ClusterSetup{
-		ProviderName:       "hana-provider",
+		ProviderName:       "provider-hana",
 		ProviderCredential: &setup.ProviderCredentials{SecretData: secretData},
 		CrossplaneSetup: setup.CrossplaneSetup{
 			Version:  "1.20.1",

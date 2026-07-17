@@ -109,6 +109,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Push Runtime Images
+        run: |
+          REAL_REGISTRY="${{ vars.REGISTRY_URL }}/crossplane"
+          BUILD_REG="build-$(echo "${HOSTNAME}-${GITHUB_WORKSPACE}" | sha256sum | cut -c1-8)"
+          for arch in amd64 arm64; do
+            docker tag "${BUILD_REG}/provider-hana-${arch}" "${REAL_REGISTRY}/provider-hana-${arch}:${{ github.event.inputs.nextVersion }}"
+            docker push "${REAL_REGISTRY}/provider-hana-${arch}:${{ github.event.inputs.nextVersion }}"
+          done
+
       - name: Publish Artifacts to DockerHub
         run: |
           make xpkg.build PLATFORM=linux_amd64 VERSION=${{ github.event.inputs.nextVersion }} BRANCH_NAME=${GITHUB_REF##*/}
@@ -116,6 +125,7 @@ jobs:
           make xpkg.release.publish VERSION=${{ github.event.inputs.nextVersion }}
         env:
           XPKG_REG_ORGS: ${{ vars.REGISTRY_URL }}/crossplane
+          BUILD_REGISTRY: ${{ vars.REGISTRY_URL }}/crossplane
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
