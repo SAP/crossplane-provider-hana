@@ -1555,6 +1555,53 @@ func TestGrantRevokeRoles_SpecialCharRoleName(t *testing.T) {
 			grantee:   "TESTUSER",
 			wantSQL:   `GRANT "my_role" TO TESTUSER`,
 		},
+		// Schema-qualified roles (e.g. HDI container roles) must be emitted as
+		// "SCHEMA"."NAME" — the dot OUTSIDE the quotes. This is the only form
+		// HANA accepts for a schema-qualified role identifier; "SCHEMA.NAME"
+		// inside a single pair of quotes is parsed as one identifier and rejected.
+		{
+			name:      "GrantRoleWithSchemaQualified",
+			roleNames: []string{`"CONTAINER"."ns::reader"`},
+			grantee:   "TESTUSER",
+			wantSQL:   `GRANT "CONTAINER"."ns::reader" TO TESTUSER`,
+		},
+		{
+			name:      "GrantRoleWithSchemaQualifiedAndAdminOption",
+			roleNames: []string{`"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
+			grantee:   "TESTUSER",
+			wantSQL:   `GRANT "CONTAINER"."ns::reader" TO TESTUSER WITH ADMIN OPTION`,
+		},
+		{
+			name:      "GrantRoleWithUnquotedSchemaQualified",
+			roleNames: []string{"APP_SCHEMA.ROLE1"},
+			grantee:   "TESTUSER",
+			wantSQL:   `GRANT "APP_SCHEMA"."ROLE1" TO TESTUSER`,
+		},
+		{
+			name:      "RevokeRoleWithSchemaQualified",
+			roleNames: []string{`"CONTAINER"."ns::reader"`},
+			grantee:   "TESTUSER",
+			isRevoke:  true,
+			wantSQL:   `REVOKE "CONTAINER"."ns::reader" FROM TESTUSER`,
+		},
+		{
+			name:      "RevokeRoleWithUnquotedSchemaQualified",
+			roleNames: []string{"APP_SCHEMA.ROLE1"},
+			grantee:   "TESTUSER",
+			isRevoke:  true,
+			wantSQL:   `REVOKE "APP_SCHEMA"."ROLE1" FROM TESTUSER`,
+		},
+		// A single REVOKE batches all roles into one statement (privilege.go
+		// RevokeRoles joins with ", "). Mixing a top-level role and a
+		// schema-qualified role must keep each correctly quoted; order follows
+		// the input slice.
+		{
+			name:      "RevokeMixedTopLevelAndSchemaQualified",
+			roleNames: []string{"PUBLIC", `"CONTAINER"."ns::reader"`},
+			grantee:   "TESTUSER",
+			isRevoke:  true,
+			wantSQL:   `REVOKE "PUBLIC", "CONTAINER"."ns::reader" FROM TESTUSER`,
+		},
 	}
 
 	for _, tc := range cases {

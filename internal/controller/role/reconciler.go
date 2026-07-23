@@ -226,13 +226,10 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, fmt.Errorf(errCreateRole, err)
 	}
 
-	cr.Status.AtProvider.RoleName = parameters.RoleName
-	cr.Status.AtProvider.Schema = parameters.Schema
-	cr.Status.AtProvider.Privileges = parameters.Privileges
-	cr.Status.AtProvider.Roles = parameters.Roles
-	cr.Status.AtProvider.LdapGroups = parameters.LdapGroups
-	cr.Status.AtProvider.Rolegroup = parameters.Rolegroup
-
+	// Note: status.atProvider is intentionally NOT written here. crossplane-runtime
+	// calls Observe immediately after a successful Create, and Observe populates every
+	// atProvider field from the real DB read. Stamping desired (spec) values here would
+	// make status reflect intent rather than observed state, masking real drift.
 	c.log.Info("Successfully created role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalCreation{
 		ConnectionDetails: managed.ConnectionDetails{},
@@ -256,8 +253,6 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	desiredPrivileges := parameters.Privileges
 	observedRoles := cr.Status.AtProvider.Roles
 	desiredRoles := parameters.Roles
-	// roleClient has additional functions not defined in global interface
-	roleClient, _ := c.client.(role.Client)
 
 	if isEqual, groupsToAdd, groupsToRemove := utils.ArraysBothDiff(desiredLdapGroups, observedLdapGroups); !isEqual {
 		c.log.Debug("Updating role LDAP groups",
@@ -266,12 +261,11 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 			"groupsToAdd", groupsToAdd,
 			"groupsToRemove", groupsToRemove)
 
-		err := roleClient.UpdateLdapGroups(ctx, parameters, groupsToAdd, groupsToRemove)
+		err := c.client.UpdateLdapGroups(ctx, parameters, groupsToAdd, groupsToRemove)
 		if err != nil {
 			c.log.Info("Error updating role LDAP groups", "name", cr.Name, "error", err)
 			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
 		}
-		cr.Status.AtProvider.LdapGroups = parameters.LdapGroups
 		c.log.Info("Updated role LDAP groups", "name", cr.Name, "roleName", parameters.RoleName)
 	}
 
@@ -287,7 +281,6 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 			c.log.Info("Error updating role privileges", "name", cr.Name, "error", err)
 			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
 		}
-		cr.Status.AtProvider.Privileges = parameters.Privileges
 		c.log.Info("Updated role privileges", "name", cr.Name, "roleName", parameters.RoleName)
 	}
 
@@ -303,12 +296,11 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 			"rolesToAdd", rolesToAdd,
 			"rolesToRemove", rolesToRemove)
 
-		err := roleClient.UpdateRoles(ctx, parameters, rolesToAdd, rolesToRemove)
+		err := c.client.UpdateRoles(ctx, parameters, rolesToAdd, rolesToRemove)
 		if err != nil {
 			c.log.Info("Error updating role roles", "name", cr.Name, "error", err)
 			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
 		}
-		cr.Status.AtProvider.Roles = parameters.Roles
 		c.log.Info("Updated role roles", "name", cr.Name, "roleName", parameters.RoleName)
 	}
 
@@ -319,12 +311,11 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 			"from", cr.Status.AtProvider.Rolegroup,
 			"to", parameters.Rolegroup)
 
-		err := roleClient.UpdateRolegroup(ctx, parameters)
+		err := c.client.UpdateRolegroup(ctx, parameters)
 		if err != nil {
 			c.log.Info("Error updating role rolegroup", "name", cr.Name, "error", err)
 			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
 		}
-		cr.Status.AtProvider.Rolegroup = parameters.Rolegroup
 		c.log.Info("Updated role rolegroup", "name", cr.Name, "roleName", parameters.RoleName)
 	}
 
