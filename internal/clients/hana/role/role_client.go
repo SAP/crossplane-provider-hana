@@ -65,7 +65,7 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.RoleParameters) (
 		return observed, err
 	}
 
-	grantee := getRoleName(parameters.Schema, parameters.RoleName)
+	grantee := buildGranteeLiteral(parameters.Schema, parameters.RoleName)
 	observed.Privileges, err = c.QueryPrivileges(ctx, grantee, privilege.GranteeTypeRole)
 	if err != nil {
 		return observed, err
@@ -242,11 +242,42 @@ func (c Client) Delete(ctx context.Context, parameters *v1alpha1.RoleParameters)
 	return nil
 }
 
+// getRoleName builds a quoted SQL identifier for use in DDL/DCL statements
+// (CREATE ROLE, GRANT ... TO <grantee>, etc.), where the role name must be a
+// quoted identifier: "NAME" or "SCHEMA"."NAME".
 func getRoleName(schemaName, roleName string) string {
-	roleNameEscaped := fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(roleName))
-	if schemaName != "" {
-		schemaNameEscaped := fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(schemaName))
-		return fmt.Sprintf("%s.%s", schemaNameEscaped, roleNameEscaped)
+	return joinRoleIdentifier(schemaName, roleName, true)
+}
+
+// buildGranteeLiteral builds the grantee value used to match the GRANTEE column
+// of the GRANTED_PRIVILEGES / GRANTED_ROLES catalog views. Those columns store
+// the raw, UNQUOTED identifier value (e.g. data::external_access_g), so the
+// grantee passed to QueryPrivileges/QueryRoles must be unquoted — unlike
+// getRoleName, which quotes for use as a SQL identifier. When a schema is set,
+// the two are joined by a bare dot (schema.name) so addGranteeQuery can split
+// them into the GRANTEE and GRANTEE_SCHEMA_NAME predicates.
+func buildGranteeLiteral(schemaName, roleName string) string {
+	return joinRoleIdentifier(schemaName, roleName, false)
+}
+
+// joinRoleIdentifier joins an optional schema and a role name using HANA's
+// schema-qualification structure (schema and name are separate components joined
+// by a dot). When quoted is true each component is wrapped in double quotes for
+// use as a SQL identifier ("SCHEMA"."NAME"); when false the raw values are joined
+// (schema.name) to match a catalog column literal. The dot always sits between
+// the two components, never inside a quoted identifier — HANA treats "A.B" as a
+// single identifier but "A"."B" (or a.b) as schema-qualified.
+func joinRoleIdentifier(schemaName, roleName string, quoted bool) string {
+	name := roleName
+	if quoted {
+		name = fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(roleName))
 	}
-	return roleNameEscaped
+	if schemaName == "" {
+		return name
+	}
+	schema := schemaName
+	if quoted {
+		schema = fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(schemaName))
+	}
+	return fmt.Sprintf("%s.%s", schema, name)
 }

@@ -16,6 +16,32 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 )
 
+// TestBuildGranteeLiteral pins down that the grantee passed to the catalog-view
+// queries (GRANTED_PRIVILEGES / GRANTED_ROLES) is the UNQUOTED identifier value,
+// matching how those views store the GRANTEE column. This is the direct fix for
+// the read bug where a quoted grantee ("data::external_access_g") never matched
+// the raw column value, so QueryPrivileges/QueryRoles always returned empty and
+// the controller re-granted every reconcile.
+func TestBuildGranteeLiteral(t *testing.T) {
+	cases := map[string]struct {
+		schema   string
+		roleName string
+		want     string
+	}{
+		"NoSchema":          {schema: "", roleName: "data::external_access_g", want: "data::external_access_g"},
+		"NoSchemaSimple":    {schema: "", roleName: "DEMO_ROLE", want: "DEMO_ROLE"},
+		"SchemaQualified":   {schema: "MY_CONTAINER", roleName: "ns::reader", want: "MY_CONTAINER.ns::reader"},
+		"NoQuotesEverAdded": {schema: "", roleName: `AFL__SYS_AFL_AFLPAL_EXECUTE_WITH_GRANT_OPTION`, want: `AFL__SYS_AFL_AFLPAL_EXECUTE_WITH_GRANT_OPTION`},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := buildGranteeLiteral(tc.schema, tc.roleName); got != tc.want {
+				t.Errorf("buildGranteeLiteral(%q, %q) = %q, want %q", tc.schema, tc.roleName, got, tc.want)
+			}
+		})
+	}
+}
+
 // nolint: contextcheck
 func TestRead(t *testing.T) {
 	errBoom := errors.New("boom")
@@ -139,6 +165,88 @@ func TestRead(t *testing.T) {
 			}
 			if diff := cmp.Diff(tc.want.observed, got); diff != "" {
 				t.Errorf("\n%s\ne.Read(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+// TestReadPassesUnquotedGrantee is the regression lock for the read bug: Read
+// must pass the UNQUOTED role name as the grantee to QueryPrivileges/QueryRoles,
+// because the GRANTED_PRIVILEGES / GRANTED_ROLES catalog views store GRANTEE as
+// the raw identifier value. A quoted grantee ("data::external_access_g") matches
+// no rows, so both queries silently returned empty and the controller re-granted
+// the role every reconcile (grant thrash). The role name here contains "::",
+// which forces quoting in SQL identifiers — making the quoted-vs-unquoted
+// difference unmistakable.
+//
+// nolint: contextcheck
+func TestReadPassesUnquotedGrantee(t *testing.T) {
+	cases := map[string]struct {
+		schema      string
+		roleName    string
+		wantGrantee string // expected GRANTEE arg value (the raw column match)
+	}{
+		"TopLevelRole": {
+			schema:      "",
+			roleName:    "data::external_access_g",
+			wantGrantee: "data::external_access_g",
+		},
+		"SchemaQualifiedRole": {
+			schema:      "MY_CONTAINER",
+			roleName:    "ns::reader",
+			wantGrantee: "ns::reader", // addGranteeQuery splits schema.name; GRANTEE = name
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var capturedGranteeArgs [][]any
+			db := fake.MockDB{
+				MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+					// QueryPrivileges and QueryRoles both funnel through here.
+					// Capture the args of the grantee-filtered queries.
+					if len(args) > 0 {
+						capturedGranteeArgs = append(capturedGranteeArgs, args)
+					}
+					return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{})), nil
+				},
+				MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
+					db, mock, _ := sqlmock.New()
+					rows := sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "ROLEGROUP_NAME"}).
+						AddRow(tc.schema, tc.roleName, nil)
+					mock.ExpectQuery("SELECT").WillReturnRows(rows)
+					return db.QueryRowContext(context.Background(), "SELECT")
+				},
+			}
+			c := Client{DB: db, Client: &privilege.PrivilegeClient{DB: db}, username: "ADMIN"}
+			if _, err := c.Read(context.Background(), &v1alpha1.RoleParameters{Schema: tc.schema, RoleName: tc.roleName}); err != nil {
+				t.Fatalf("Read(...) unexpected error: %v", err)
+			}
+
+			// QueryPrivileges and QueryRoles are both grantee-filtered, so we
+			// expect at least two captured arg sets, none of which may contain a
+			// quoted grantee value.
+			if len(capturedGranteeArgs) < 2 {
+				t.Fatalf("expected >=2 grantee-filtered queries (privileges + roles), got %d", len(capturedGranteeArgs))
+			}
+			quoted := fmt.Sprintf(`"%s"`, tc.roleName)
+			for _, args := range capturedGranteeArgs {
+				foundExpected := false
+				for _, a := range args {
+					s, ok := a.(string)
+					if !ok {
+						continue
+					}
+					if s == quoted {
+						t.Errorf("grantee arg is quoted %q; catalog GRANTEE column stores the raw value, so this matches no rows", s)
+					}
+					if s == tc.wantGrantee {
+						foundExpected = true
+					}
+				}
+				if !foundExpected {
+					t.Errorf("expected unquoted grantee %q among query args %v", tc.wantGrantee, args)
+				}
 			}
 		})
 	}
