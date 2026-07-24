@@ -90,10 +90,6 @@ func (m mockClient) UpdateRolegroup(ctx context.Context, parameters *v1alpha1.Ro
 	return nil
 }
 
-func (m mockClient) GetDefaultSchema() string {
-	return "ADMIN"
-}
-
 func TestConnect(t *testing.T) {
 	errBoom := errors.New("boom")
 
@@ -339,47 +335,6 @@ func TestObserve(t *testing.T) {
 					Privileges: []string{"CREATE ANY"},
 					Roles:      []string{`"CONTAINER"."ns::reader"`},
 					Rolegroup:  "MY_ROLEGROUP",
-				},
-			},
-		},
-		"UpToDateWhenSpecUnquotedMatchesQuotedObservation": {
-			// Regression lock for the grant-thrash bug: the catalog read returns
-			// canonical, quoted identifiers ("MY_ROLE"), but a user writes the
-			// spec unquoted (MY_ROLE). Observe must normalize the desired side so
-			// the two compare equal and the resource reports up-to-date instead of
-			// re-granting every reconcile forever.
-			reason: "Unquoted spec privileges/roles must compare equal to the quoted observed values (no infinite reconcile)",
-			fields: fields{
-				client: mockClient{
-					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
-						return &v1alpha1.RoleObservation{
-							RoleName:   "DEMO_ROLE",
-							Schema:     "",
-							Privileges: []string{"CREATE ANY"},
-							// QueryRoles always emits the quoted canonical form.
-							Roles: []string{`"MY_ROLE"`, `"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
-						}, nil
-					},
-				},
-				log: &MockLogger{},
-			},
-			args: args{
-				mg: &v1alpha1.Role{
-					Spec: v1alpha1.RoleSpec{
-						ForProvider: v1alpha1.RoleParameters{
-							RoleName:   "DEMO_ROLE",
-							Privileges: []string{"CREATE ANY"},
-							// Spec is written unquoted, as a user naturally would.
-							Roles: []string{`MY_ROLE`, `"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
-						},
-					},
-				},
-			},
-			want: want{
-				err: nil,
-				c: managed.ExternalObservation{
-					ResourceExists:   true,
-					ResourceUpToDate: true,
 				},
 			},
 		},

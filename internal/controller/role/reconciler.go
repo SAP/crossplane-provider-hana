@@ -13,7 +13,6 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/SAP/crossplane-provider-hana/internal/utils"
 
-	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/role"
 
 	"errors"
@@ -151,11 +150,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	parameters := buildDesiredParameters(cr)
 
-	if err := c.normalizeDesired(parameters); err != nil {
-		c.log.Info("Error normalizing desired role parameters", "name", cr.Name, "error", err)
-		return managed.ExternalObservation{}, fmt.Errorf(errSelectRole, err)
-	}
-
 	observed, err := c.client.Read(ctx, parameters)
 
 	if err != nil {
@@ -251,11 +245,6 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	c.log.Info("Updating role resource", "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
 
 	parameters := buildDesiredParameters(cr)
-
-	if err := c.normalizeDesired(parameters); err != nil {
-		c.log.Info("Error normalizing desired role parameters", "name", cr.Name, "error", err)
-		return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
-	}
 
 	observedLdapGroups := cr.Status.AtProvider.LdapGroups
 	desiredLdapGroups := parameters.LdapGroups
@@ -355,31 +344,6 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Successfully deleted role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalDelete{}, err
-}
-
-// normalizeDesired rewrites the desired privilege/role strings into the same
-// canonical form the catalog read returns, so upToDate and the Update diff
-// compare like-for-like. The catalog read (QueryPrivileges/QueryRoles) always
-// emits quoted, canonical identifiers (e.g. "MY_ROLE"), whereas a user typically
-// writes the spec unquoted (MY_ROLE); without this both would never compare
-// equal and the controller would re-grant every reconcile (grant thrash). Only
-// the in-memory comparison copy (parameters) is normalized — cr.Spec.ForProvider
-// is left verbatim and cr.Status.AtProvider keeps the observed values. This
-// mirrors how the user controller normalizes its desired privileges/roles.
-func (c *external) normalizeDesired(parameters *v1alpha1.RoleParameters) error {
-	formatted, err := privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
-	if err != nil {
-		return fmt.Errorf("cannot normalize privileges: %w", err)
-	}
-	parameters.Privileges = formatted
-
-	formattedRoles, err := privilege.FormatRoleStrings(parameters.Roles)
-	if err != nil {
-		return fmt.Errorf("cannot normalize roles: %w", err)
-	}
-	parameters.Roles = formattedRoles
-
-	return nil
 }
 
 // buildDesiredParameters constructs the desired role parameters from the CR spec.
