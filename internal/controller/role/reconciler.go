@@ -151,6 +151,24 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	parameters := buildDesiredParameters(cr)
 
+	// Normalize the desired privileges/roles to the same canonical form the
+	// catalog read returns, so upToDate compares like-for-like. Mirrors the user
+	// controller: QueryRoles/QueryPrivileges emit quoted identifiers, whereas a
+	// user writes the spec unquoted — without this they never compare equal and
+	// the controller re-grants every reconcile (grant thrash).
+	var err error
+	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
+	if err != nil {
+		c.log.Info("Error converting privileges", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, fmt.Errorf(errSelectRole, err)
+	}
+
+	parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles)
+	if err != nil {
+		c.log.Info("Error converting roles", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, fmt.Errorf(errSelectRole, err)
+	}
+
 	observed, err := c.client.Read(ctx, parameters)
 
 	if err != nil {
@@ -246,6 +264,22 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	c.log.Info("Updating role resource", "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
 
 	parameters := buildDesiredParameters(cr)
+
+	// Same normalization as Observe, so the desired side matches the observed
+	// (catalog-canonical) values stored in status.atProvider and the grant/revoke
+	// diffs are computed like-for-like.
+	var err error
+	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
+	if err != nil {
+		c.log.Info("Error converting privileges", "name", cr.Name, "error", err)
+		return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
+	}
+
+	parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles)
+	if err != nil {
+		c.log.Info("Error converting roles", "name", cr.Name, "error", err)
+		return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
+	}
 
 	observedLdapGroups := cr.Status.AtProvider.LdapGroups
 	desiredLdapGroups := parameters.LdapGroups
@@ -352,29 +386,12 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 // - RoleName/Schema: HANA uses double-quoted identifiers which preserve case
 // - Privileges: May contain schema/object names that are case-sensitive
 // - LdapGroups: LDAP Distinguished Names are case-sensitive
-//
-// Roles are the one exception: they are normalized to the same canonical,
-// quoted form the catalog read emits (via privilege.FormatRoleStrings). A user
-// writes a role unquoted in the spec (MY_ROLE), but QueryRoles always reads it
-// back quoted ("MY_ROLE"); without aligning them here the two never compare
-// equal and the controller re-grants the role every reconcile (grant thrash).
-// Privileges need no such treatment — a system privilege round-trips unchanged
-// (CREATE ANY), and object/schema privileges are already written in the same
-// quoted form the catalog returns. If a role string cannot be parsed it is
-// left as-is so the error surfaces downstream at grant time rather than here.
 func buildDesiredParameters(cr *v1alpha1.Role) *v1alpha1.RoleParameters {
-	roles := cr.Spec.ForProvider.Roles
-	if len(roles) > 0 {
-		if normalized, err := privilege.FormatRoleStrings(roles); err == nil {
-			roles = normalized
-		}
-	}
-
 	return &v1alpha1.RoleParameters{
 		RoleName:         cr.Spec.ForProvider.RoleName,
 		Schema:           cr.Spec.ForProvider.Schema,
 		Privileges:       cr.Spec.ForProvider.Privileges,
-		Roles:            roles,
+		Roles:            cr.Spec.ForProvider.Roles,
 		LdapGroups:       cr.Spec.ForProvider.LdapGroups,
 		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
 		Rolegroup:        cr.Spec.ForProvider.Rolegroup,

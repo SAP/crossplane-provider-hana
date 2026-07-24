@@ -90,6 +90,10 @@ func (m mockClient) UpdateRolegroup(ctx context.Context, parameters *v1alpha1.Ro
 	return nil
 }
 
+func (m mockClient) GetDefaultSchema() string {
+	return "ADMIN"
+}
+
 func TestConnect(t *testing.T) {
 	errBoom := errors.New("boom")
 
@@ -338,6 +342,47 @@ func TestObserve(t *testing.T) {
 				},
 			},
 		},
+		"UpToDateWhenSpecUnquotedMatchesQuotedObservation": {
+			// Regression lock for the grant-thrash bug: the catalog read returns
+			// canonical, quoted identifiers ("MY_ROLE"), but a user writes the spec
+			// unquoted (MY_ROLE). Observe normalizes the desired side (as the user
+			// controller does) so the two compare equal and the resource reports
+			// up-to-date instead of re-granting every reconcile forever.
+			reason: "Unquoted spec privileges/roles must compare equal to the quoted observed values (no infinite reconcile)",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
+						return &v1alpha1.RoleObservation{
+							RoleName:   "DEMO_ROLE",
+							Schema:     "",
+							Privileges: []string{"CREATE ANY"},
+							// QueryRoles always emits the quoted canonical form.
+							Roles: []string{`"MY_ROLE"`, `"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.Role{
+					Spec: v1alpha1.RoleSpec{
+						ForProvider: v1alpha1.RoleParameters{
+							RoleName:   "DEMO_ROLE",
+							Privileges: []string{"CREATE ANY"},
+							// Spec is written unquoted, as a user naturally would.
+							Roles: []string{`MY_ROLE`, `"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
+						},
+					},
+				},
+			},
+			want: want{
+				err: nil,
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+			},
+		},
 	}
 
 	for name, tc := range cases {
@@ -577,13 +622,11 @@ func TestBuildDesiredParameters(t *testing.T) {
 			},
 		},
 		"RolesNormalizedToCanonicalQuotedForm": {
-			// Regression lock for the grant-thrash bug: roles read back from the
-			// catalog are always quoted ("MY_ROLE"), but a user writes the spec
-			// unquoted. buildDesiredParameters must canonicalize the desired roles
-			// to the same quoted form so upToDate / the Update diff compare equal
-			// and the controller stops re-granting every reconcile. Privileges are
-			// deliberately left verbatim (a system privilege round-trips unchanged).
-			reason: "Desired roles are normalized to the canonical quoted form; a schema-qualified role and its WITH ADMIN OPTION suffix are preserved",
+			// buildDesiredParameters is a verbatim copy — normalization now happens
+			// in Observe/Update (mirroring the user controller), so this asserts the
+			// factory copies roles unchanged. The quoted-vs-unquoted comparison is
+			// locked by TestObserve's UpToDate case below.
+			reason: "buildDesiredParameters copies all fields verbatim, including roles",
 			cr: &v1alpha1.Role{
 				Spec: v1alpha1.RoleSpec{
 					ForProvider: v1alpha1.RoleParameters{
@@ -600,7 +643,7 @@ func TestBuildDesiredParameters(t *testing.T) {
 				RoleName:   "DEMO_ROLE",
 				Privileges: []string{"CREATE ANY"},
 				Roles: []string{
-					`"MY_ROLE"`,
+					"MY_ROLE",
 					`"CONTAINER"."ns::reader" WITH ADMIN OPTION`,
 				},
 			},

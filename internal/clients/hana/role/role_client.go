@@ -20,6 +20,7 @@ type RoleClient interface {
 	UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error
 	UpdateRoles(ctx context.Context, parameters *v1alpha1.RoleParameters, rolesToGrant, rolesToRevoke []string) error
 	UpdateRolegroup(ctx context.Context, parameters *v1alpha1.RoleParameters) error
+	GetDefaultSchema() string
 }
 
 // Client struct holds the connection to the db
