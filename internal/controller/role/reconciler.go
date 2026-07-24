@@ -152,20 +152,11 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	parameters := buildDesiredParameters(cr)
 
 	// Normalize the desired privileges/roles to the same canonical form the
-	// catalog read returns, so upToDate compares like-for-like. Mirrors the user
-	// controller: QueryRoles/QueryPrivileges emit quoted identifiers, whereas a
-	// user writes the spec unquoted — without this they never compare equal and
-	// the controller re-grants every reconcile (grant thrash).
-	var err error
-	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
-	if err != nil {
-		c.log.Info("Error converting privileges", "name", cr.Name, "error", err)
-		return managed.ExternalObservation{}, fmt.Errorf(errSelectRole, err)
-	}
-
-	parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles)
-	if err != nil {
-		c.log.Info("Error converting roles", "name", cr.Name, "error", err)
+	// catalog read returns, so upToDate compares like-for-like (see
+	// normalizeDesired). Without this an unquoted spec value never matches the
+	// quoted observed value and the controller re-grants every reconcile.
+	if err := c.normalizeDesired(parameters); err != nil {
+		c.log.Info("Error normalizing desired role parameters", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, fmt.Errorf(errSelectRole, err)
 	}
 
@@ -268,55 +259,27 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	// Same normalization as Observe, so the desired side matches the observed
 	// (catalog-canonical) values stored in status.atProvider and the grant/revoke
 	// diffs are computed like-for-like.
-	var err error
-	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
-	if err != nil {
-		c.log.Info("Error converting privileges", "name", cr.Name, "error", err)
-		return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
-	}
-
-	parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles)
-	if err != nil {
-		c.log.Info("Error converting roles", "name", cr.Name, "error", err)
+	if err := c.normalizeDesired(parameters); err != nil {
+		c.log.Info("Error normalizing desired role parameters", "name", cr.Name, "error", err)
 		return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
 	}
 
 	observedLdapGroups := cr.Status.AtProvider.LdapGroups
-	desiredLdapGroups := parameters.LdapGroups
-
 	observedPrivileges := cr.Status.AtProvider.Privileges
-	desiredPrivileges := parameters.Privileges
 	observedRoles := cr.Status.AtProvider.Roles
-	desiredRoles := parameters.Roles
 
-	if isEqual, groupsToAdd, groupsToRemove := utils.ArraysBothDiff(desiredLdapGroups, observedLdapGroups); !isEqual {
-		c.log.Debug("Updating role LDAP groups",
-			"name", cr.Name,
-			"roleName", parameters.RoleName,
-			"groupsToAdd", groupsToAdd,
-			"groupsToRemove", groupsToRemove)
-
-		err := c.client.UpdateLdapGroups(ctx, parameters, groupsToAdd, groupsToRemove)
-		if err != nil {
-			c.log.Info("Error updating role LDAP groups", "name", cr.Name, "error", err)
-			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
-		}
-		c.log.Info("Updated role LDAP groups", "name", cr.Name, "roleName", parameters.RoleName)
+	if err := c.applyArrayUpdate(cr, "LDAP groups", parameters.LdapGroups, observedLdapGroups,
+		func(toAdd, toRemove []string) error {
+			return c.client.UpdateLdapGroups(ctx, parameters, toAdd, toRemove)
+		}); err != nil {
+		return managed.ExternalUpdate{}, err
 	}
 
-	if isEqual, privilegesToAdd, privilegesToRemove := utils.ArraysBothDiff(desiredPrivileges, observedPrivileges); !isEqual {
-		c.log.Info("Updating role privileges",
-			"name", cr.Name,
-			"roleName", parameters.RoleName,
-			"privilegesToAdd", privilegesToAdd,
-			"privilegesToRemove", privilegesToRemove)
-
-		err := c.client.UpdatePrivileges(ctx, parameters, privilegesToAdd, privilegesToRemove)
-		if err != nil {
-			c.log.Info("Error updating role privileges", "name", cr.Name, "error", err)
-			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
-		}
-		c.log.Info("Updated role privileges", "name", cr.Name, "roleName", parameters.RoleName)
+	if err := c.applyArrayUpdate(cr, "privileges", parameters.Privileges, observedPrivileges,
+		func(toAdd, toRemove []string) error {
+			return c.client.UpdatePrivileges(ctx, parameters, toAdd, toRemove)
+		}); err != nil {
+		return managed.ExternalUpdate{}, err
 	}
 
 	// Roles granted TO this role (e.g. HDI container roles like
@@ -324,19 +287,11 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	// managed via GRANT ROLE / REVOKE ROLE. They are strictly separate from
 	// direct privileges (GRANTED_PRIVILEGES) — a role granted to a role
 	// never appears in the privileges list — so a dedicated diff is required.
-	if isEqual, rolesToAdd, rolesToRemove := utils.ArraysBothDiff(desiredRoles, observedRoles); !isEqual {
-		c.log.Info("Updating role roles",
-			"name", cr.Name,
-			"roleName", parameters.RoleName,
-			"rolesToAdd", rolesToAdd,
-			"rolesToRemove", rolesToRemove)
-
-		err := c.client.UpdateRoles(ctx, parameters, rolesToAdd, rolesToRemove)
-		if err != nil {
-			c.log.Info("Error updating role roles", "name", cr.Name, "error", err)
-			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
-		}
-		c.log.Info("Updated role roles", "name", cr.Name, "roleName", parameters.RoleName)
+	if err := c.applyArrayUpdate(cr, "roles", parameters.Roles, observedRoles,
+		func(toAdd, toRemove []string) error {
+			return c.client.UpdateRoles(ctx, parameters, toAdd, toRemove)
+		}); err != nil {
+		return managed.ExternalUpdate{}, err
 	}
 
 	if cr.Status.AtProvider.Rolegroup != parameters.Rolegroup {
@@ -379,6 +334,47 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Successfully deleted role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalDelete{}, err
+}
+
+// applyArrayUpdate diffs a desired vs observed string slice and, when they
+// differ, invokes apply with the entries to add and remove. It centralizes the
+// diff/log/error-wrap boilerplate shared by the LDAP-group, privilege and role
+// updates so Update stays flat. A no-op (already equal) returns nil without
+// calling apply.
+func (c *external) applyArrayUpdate(cr *v1alpha1.Role, kind string, desired, observed []string, apply func(toAdd, toRemove []string) error) error {
+	isEqual, toAdd, toRemove := utils.ArraysBothDiff(desired, observed)
+	if isEqual {
+		return nil
+	}
+	c.log.Info("Updating role "+kind,
+		"name", cr.Name,
+		"roleName", cr.Spec.ForProvider.RoleName,
+		"toAdd", toAdd,
+		"toRemove", toRemove)
+	if err := apply(toAdd, toRemove); err != nil {
+		c.log.Info("Error updating role "+kind, "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateRole, err)
+	}
+	c.log.Info("Updated role "+kind, "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
+	return nil
+}
+
+// normalizeDesired rewrites the desired privileges/roles into the same
+// canonical, quoted form the catalog read returns, so upToDate and the Update
+// diff compare like-for-like. QueryRoles/QueryPrivileges emit quoted
+// identifiers, whereas a user writes the spec unquoted — without this they
+// never compare equal and the controller re-grants every reconcile (grant
+// thrash). Mirrors the user controller; only the in-memory comparison copy is
+// changed (spec and status are untouched).
+func (c *external) normalizeDesired(parameters *v1alpha1.RoleParameters) error {
+	var err error
+	if parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema()); err != nil {
+		return fmt.Errorf("cannot convert privileges: %w", err)
+	}
+	if parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles); err != nil {
+		return fmt.Errorf("cannot convert roles: %w", err)
+	}
+	return nil
 }
 
 // buildDesiredParameters constructs the desired role parameters from the CR spec.
