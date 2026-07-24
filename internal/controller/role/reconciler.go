@@ -13,6 +13,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/SAP/crossplane-provider-hana/internal/utils"
 
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/role"
 
 	"errors"
@@ -351,12 +352,29 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 // - RoleName/Schema: HANA uses double-quoted identifiers which preserve case
 // - Privileges: May contain schema/object names that are case-sensitive
 // - LdapGroups: LDAP Distinguished Names are case-sensitive
+//
+// Roles are the one exception: they are normalized to the same canonical,
+// quoted form the catalog read emits (via privilege.FormatRoleStrings). A user
+// writes a role unquoted in the spec (MY_ROLE), but QueryRoles always reads it
+// back quoted ("MY_ROLE"); without aligning them here the two never compare
+// equal and the controller re-grants the role every reconcile (grant thrash).
+// Privileges need no such treatment — a system privilege round-trips unchanged
+// (CREATE ANY), and object/schema privileges are already written in the same
+// quoted form the catalog returns. If a role string cannot be parsed it is
+// left as-is so the error surfaces downstream at grant time rather than here.
 func buildDesiredParameters(cr *v1alpha1.Role) *v1alpha1.RoleParameters {
+	roles := cr.Spec.ForProvider.Roles
+	if len(roles) > 0 {
+		if normalized, err := privilege.FormatRoleStrings(roles); err == nil {
+			roles = normalized
+		}
+	}
+
 	return &v1alpha1.RoleParameters{
 		RoleName:         cr.Spec.ForProvider.RoleName,
 		Schema:           cr.Spec.ForProvider.Schema,
 		Privileges:       cr.Spec.ForProvider.Privileges,
-		Roles:            cr.Spec.ForProvider.Roles,
+		Roles:            roles,
 		LdapGroups:       cr.Spec.ForProvider.LdapGroups,
 		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
 		Rolegroup:        cr.Spec.ForProvider.Rolegroup,

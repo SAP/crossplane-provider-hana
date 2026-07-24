@@ -576,6 +576,35 @@ func TestBuildDesiredParameters(t *testing.T) {
 				Rolegroup:        "MY_ROLEGROUP",
 			},
 		},
+		"RolesNormalizedToCanonicalQuotedForm": {
+			// Regression lock for the grant-thrash bug: roles read back from the
+			// catalog are always quoted ("MY_ROLE"), but a user writes the spec
+			// unquoted. buildDesiredParameters must canonicalize the desired roles
+			// to the same quoted form so upToDate / the Update diff compare equal
+			// and the controller stops re-granting every reconcile. Privileges are
+			// deliberately left verbatim (a system privilege round-trips unchanged).
+			reason: "Desired roles are normalized to the canonical quoted form; a schema-qualified role and its WITH ADMIN OPTION suffix are preserved",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName:   "DEMO_ROLE",
+						Privileges: []string{"CREATE ANY"},
+						Roles: []string{
+							"MY_ROLE",
+							`"CONTAINER"."ns::reader" WITH ADMIN OPTION`,
+						},
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName:   "DEMO_ROLE",
+				Privileges: []string{"CREATE ANY"},
+				Roles: []string{
+					`"MY_ROLE"`,
+					`"CONTAINER"."ns::reader" WITH ADMIN OPTION`,
+				},
+			},
+		},
 	}
 
 	for name, tc := range cases {
