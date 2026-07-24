@@ -20,6 +20,10 @@ type RoleClient interface {
 	UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error
 	UpdateRoles(ctx context.Context, parameters *v1alpha1.RoleParameters, rolesToGrant, rolesToRevoke []string) error
 	UpdateRolegroup(ctx context.Context, parameters *v1alpha1.RoleParameters) error
+	// GetDefaultSchema returns the schema used to qualify object privileges that
+	// omit one, so desired privilege strings can be normalized to the same
+	// canonical form the catalog read returns.
+	GetDefaultSchema() string
 }
 
 // Client struct holds the connection to the db
