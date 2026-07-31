@@ -2,10 +2,11 @@
 Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
-package auditpolicy
+package certificate
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
@@ -337,6 +338,31 @@ func buildDesiredParameters(cr *v1alpha1.AuditPolicy) *v1alpha1.AuditPolicyParam
 
 func needsRecreation(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {
 	return !utils.ArraysEqual(desired.AuditActions, observed.AuditActions) || (observed.AuditStatus != desired.AuditStatus) || (observed.AuditLevel != desired.AuditLevel)
+}
+
+func (c *external) getCertificatePEM(
+	ctx context.Context,
+	ref *xpv1.SecretKeySelector,
+) ([]byte, error) {
+
+	if ref == nil {
+		return nil, errors.New("certificateSecretRef is required")
+	}
+	secret := &corev1.Secret{}
+	if err := c.kube.Get(ctx, types.NamespacedName{
+		Namespace: ref.Namespace,
+		Name:      ref.Name,
+	}, secret); err != nil {
+		return nil, fmt.Errorf("cannot get certificate secret: %w", err)
+	}
+	certPEM, ok := secret.Data[ref.Key]
+	if !ok {
+		return nil, fmt.Errorf("secret %s/%s does not contain key %q",
+			ref.Namespace,
+			ref.Name,
+			ref.Key)
+	}
+	return certPEM, nil
 }
 
 func upToDate(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {

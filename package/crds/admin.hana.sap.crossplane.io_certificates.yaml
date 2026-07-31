@@ -77,7 +77,8 @@ spec:
                   a HANA Certificate.
                 properties:
                   certificateSecretRef:
-                    description: Reference to the Kubernetes Secret containing the PEM-encoded.
+                    description: Reference to the Kubernetes Secret containing the
+                      PEM encoded certificate.
                     properties:
                       key:
                         description: The key to select.
@@ -274,12 +275,15 @@ spec:
                 description: CertificateObservation represents the observed state
                   of a Certificate.
                 properties:
-                  id:
-                    description: Identifier assigned by HANA.
-                    type: integer
-                  name:
-                    description: Name of the certificate.
-                    type: string
+                  certificates:
+                    items:
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                      type: object
+                    type: array
                 type: object
               conditions:
                 description: Conditions of the resource.

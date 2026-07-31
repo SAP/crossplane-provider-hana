@@ -3,6 +3,7 @@ Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 */
 
 package v1alpha1
+
 import (
 	"reflect"
 
@@ -21,26 +22,26 @@ type CertificateParameters struct {
 	CertificateSecretRef *xpv1.SecretKeySelector `json:"certificateSecretRef"`
 }
 
+type ImportedCertificate struct {
+	ID   *int   `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
 // CertificateObservation represents the observed state of a Certificate.
 type CertificateObservation struct {
-	// Identifier assigned by HANA.
-	// +kubebuilder:validation:Optional
-	ID *int `json:"id,omitempty"`
-	// Name of the certificate.
-	// +kubebuilder:validation:Optional
-	Name string `json:"name,omitempty"`
+	Certificates []ImportedCertificate `json:"certificates,omitempty"`
 }
 
 // CertificateSpec defines the desired state of Certificate.
 type CertificateSpec struct {
 	xpv1.ResourceSpec `json:",inline"`
-	ForProvider CertificateParameters `json:"forProvider"`
+	ForProvider       CertificateParameters `json:"forProvider"`
 }
 
 // CertificateStatus represents the observed state of Certificate.
 type CertificateStatus struct {
 	xpv1.ResourceStatus `json:",inline"`
-	AtProvider CertificateObservation `json:"atProvider,omitempty"`
+	AtProvider          CertificateObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true
