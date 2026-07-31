@@ -25,7 +25,7 @@ func New(db xsql.DB) Client {
 func (c Client) Read(
 	ctx context.Context,
 	parameters *adminv1alpha1.CertificateParameters,
-) (*adminv1alpha1.CertificateObservation, error) {
+) (observed *adminv1alpha1.CertificateObservation, err error) {
 	query := `
 SELECT CERTIFICATE_ID,
        CERTIFICATE_NAME
@@ -41,8 +41,12 @@ ORDER BY CERTIFICATE_NAME
 	if err != nil {
 		return nil, fmt.Errorf("failed to query certificates: %w", err)
 	}
-	defer rows.Close()
-	observed := &adminv1alpha1.CertificateObservation{}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close certificate rows: %w", closeErr)
+		}
+	}()
+	observed = &adminv1alpha1.CertificateObservation{}
 	for rows.Next() {
 		var (
 			id   int

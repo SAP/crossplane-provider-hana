@@ -3,8 +3,8 @@ package certificate
 import (
 	"context"
 	"database/sql"
-	stderrors "errors"
 	"encoding/pem"
+	stderrors "errors"
 	"fmt"
 	"testing"
 
@@ -57,8 +57,7 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: nil,
-				// client uses fmt.Errorf("%w") so match with a plain fmt.Errorf
-				err: fmt.Errorf("failed to query certificates: %w", errBoom),
+				err:      fmt.Errorf("failed to query certificates: %w", errBoom),
 			},
 		},
 		"NoCertificatesFound": {
@@ -191,7 +190,7 @@ func TestCreate(t *testing.T) {
 				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
 				certificatePEM: []byte("not valid pem"),
 			},
-			// helper uses stdlib errors.New, so match with stdlib
+			// splitPEMChain uses stdlib errors.New so we match with stdlib here
 			want: want{err: stderrors.New("failed to decode PEM certificate")},
 		},
 		"ErrExecSingleCert": {
