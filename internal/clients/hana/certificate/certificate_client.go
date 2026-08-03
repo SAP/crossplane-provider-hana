@@ -96,6 +96,11 @@ func (c Client) Create(
 
 	for i, cert := range certificates {
 		certName := fmt.Sprintf("%s-%d", parameters.Name, i+1)
+		// CREATE CERTIFICATE is a DDL statement; HANA does not support bind
+		// parameters for it. Both values are sanitized before interpolation:
+		// certName via EscapeDoubleQuotes (double-quoted identifier) and cert
+		// via EscapeSingleQuotes (single-quoted string literal).
+		//nolint:gosec // G201: SQL string formatting — values are sanitized above
 		query := fmt.Sprintf(
 			`CREATE CERTIFICATE "%s" FROM '%s'`,
 			utils.EscapeDoubleQuotes(certName),
