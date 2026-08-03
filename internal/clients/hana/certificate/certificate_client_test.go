@@ -157,6 +157,18 @@ func TestCreate(t *testing.T) {
 		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte("cert-two")})...,
 	)
 
+	// mockDBWithTx creates a fake.MockDB whose BeginTx returns a *sql.Tx backed
+	// by sqlmock, letting the caller set expectations on the transaction.
+	mockDBWithTx := func(setupMock func(mock sqlmock.Sqlmock)) fake.MockDB {
+		db, mock, _ := sqlmock.New()
+		setupMock(mock)
+		return fake.MockDB{
+			MockBeginTx: func(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+				return db.BeginTx(ctx, opts)
+			},
+		}
+	}
+
 	type fields struct {
 		db fake.MockDB
 	}
@@ -178,83 +190,92 @@ func TestCreate(t *testing.T) {
 		want   want
 	}{
 		"InvalidPEM": {
-			reason: "Non-PEM input should return an error before any SQL is executed",
-			fields: fields{
-				db: fake.MockDB{
-					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						return nil, errors.New("should not be called")
-					},
-				},
-			},
+			reason: "Non-PEM input should return an error before BeginTx is called",
+			fields: fields{db: fake.MockDB{}},
 			args: args{
 				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
 				certificatePEM: []byte("not valid pem"),
 			},
-			// splitPEMChain uses stdlib errors.New so we match with stdlib here
+			// splitPEMChain uses stdlib errors.New
 			want: want{err: stderrors.New("failed to decode PEM certificate")},
 		},
-		"ErrExecSingleCert": {
-			reason: "A SQL error while importing a single certificate should be returned",
+		"ErrBeginTx": {
+			reason: "An error opening the transaction should be returned immediately",
 			fields: fields{
 				db: fake.MockDB{
-					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+					MockBeginTx: func(_ context.Context, _ *sql.TxOptions) (*sql.Tx, error) {
 						return nil, errBoom
 					},
 				},
 			},
 			args: args{
+				ctx:            context.Background(),
 				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
 				certificatePEM: singlePEM,
 			},
-			want: want{err: errBoom},
+			want: want{err: fmt.Errorf("failed to begin transaction: %w", errBoom)},
 		},
-		"SuccessSingleCert": {
-			reason: "A single PEM certificate should execute exactly one CREATE CERTIFICATE statement",
+		"ErrExecSingleCert": {
+			reason: "A SQL error on the single CREATE CERTIFICATE should roll back and return an error",
 			fields: fields{
-				db: fake.MockDB{
-					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						return nil, nil
-					},
-				},
+				db: mockDBWithTx(func(mock sqlmock.Sqlmock) {
+					mock.ExpectBegin()
+					mock.ExpectExec("CREATE CERTIFICATE").WillReturnError(errBoom)
+					mock.ExpectRollback()
+				}),
 			},
 			args: args{
+				ctx:            context.Background(),
+				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				certificatePEM: singlePEM,
+			},
+			want: want{err: fmt.Errorf("failed to create certificate %q: %w", "my-ca-1", errBoom)},
+		},
+		"ErrExecSecondCertInChain": {
+			reason: "A SQL error on the second certificate should roll back and return an error",
+			fields: fields{
+				db: mockDBWithTx(func(mock sqlmock.Sqlmock) {
+					mock.ExpectBegin()
+					mock.ExpectExec("CREATE CERTIFICATE").WillReturnResult(sqlmock.NewResult(1, 1))
+					mock.ExpectExec("CREATE CERTIFICATE").WillReturnError(errBoom)
+					mock.ExpectRollback()
+				}),
+			},
+			args: args{
+				ctx:            context.Background(),
+				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				certificatePEM: chainPEM,
+			},
+			want: want{err: fmt.Errorf("failed to create certificate %q: %w", "my-ca-2", errBoom)},
+		},
+		"SuccessSingleCert": {
+			reason: "A single certificate should execute one CREATE CERTIFICATE and commit",
+			fields: fields{
+				db: mockDBWithTx(func(mock sqlmock.Sqlmock) {
+					mock.ExpectBegin()
+					mock.ExpectExec("CREATE CERTIFICATE").WillReturnResult(sqlmock.NewResult(1, 1))
+					mock.ExpectCommit()
+				}),
+			},
+			args: args{
+				ctx:            context.Background(),
 				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
 				certificatePEM: singlePEM,
 			},
 			want: want{err: nil},
 		},
-		"ErrExecSecondCertInChain": {
-			reason: "A SQL error on the second certificate of a chain should be returned",
-			fields: fields{
-				db: func() fake.MockDB {
-					call := 0
-					return fake.MockDB{
-						MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-							call++
-							if call == 2 {
-								return nil, errBoom
-							}
-							return nil, nil
-						},
-					}
-				}(),
-			},
-			args: args{
-				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
-				certificatePEM: chainPEM,
-			},
-			want: want{err: errBoom},
-		},
 		"SuccessChain": {
-			reason: "A two-certificate PEM chain should execute two CREATE CERTIFICATE statements without error",
+			reason: "A two-certificate chain should execute two CREATE CERTIFICATE statements and commit",
 			fields: fields{
-				db: fake.MockDB{
-					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						return nil, nil
-					},
-				},
+				db: mockDBWithTx(func(mock sqlmock.Sqlmock) {
+					mock.ExpectBegin()
+					mock.ExpectExec("CREATE CERTIFICATE").WillReturnResult(sqlmock.NewResult(1, 1))
+					mock.ExpectExec("CREATE CERTIFICATE").WillReturnResult(sqlmock.NewResult(1, 1))
+					mock.ExpectCommit()
+				}),
 			},
 			args: args{
+				ctx:            context.Background(),
 				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
 				certificatePEM: chainPEM,
 			},

@@ -6,6 +6,8 @@ package certificate
 
 import (
 	"context"
+	stderrors "errors"
+	"fmt"
 	"testing"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
@@ -20,53 +22,32 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
-	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/auditpolicy"
+	certclient "github.com/SAP/crossplane-provider-hana/internal/clients/hana/certificate"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
-// MockLogger is a mock implementation of logging.Logger
-type MockLogger struct{}
+type mockLogger struct{}
 
-// Debug logs debug messages.
-func (l *MockLogger) Debug(_ string, _ ...any) {}
+func (l *mockLogger) Debug(_ string, _ ...any)           {}
+func (l *mockLogger) Info(_ string, _ ...any)            {}
+func (l *mockLogger) WithValues(_ ...any) logging.Logger { return l }
 
-// Info logs info messages.
-func (l *MockLogger) Info(_ string, _ ...any) {}
-
-// WithValues returns a logger with the specified key-value pairs.
-func (l *MockLogger) WithValues(_ ...any) logging.Logger { return l }
-
-type mockAuditPolicyClient struct {
-	MockRead                func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) (observed *v1alpha1.AuditPolicyObservation, err error)
-	MockCreate              func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error
-	MockDelete              func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error
-	MockRecreatePolicy      func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error
-	MockUpdateRetentionDays func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error
-	MockUpdateEnablePolicy  func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error
+type mockCertificateClient struct {
+	MockRead   func(ctx context.Context, p *v1alpha1.CertificateParameters) (*v1alpha1.CertificateObservation, error)
+	MockCreate func(ctx context.Context, p *v1alpha1.CertificateParameters, pem []byte) error
+	MockDelete func(ctx context.Context, p *v1alpha1.CertificateParameters) error
 }
 
-func (m mockAuditPolicyClient) Read(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) (observed *v1alpha1.AuditPolicyObservation, err error) {
-	return m.MockRead(ctx, parameters)
+func (m mockCertificateClient) Read(ctx context.Context, p *v1alpha1.CertificateParameters) (*v1alpha1.CertificateObservation, error) {
+	return m.MockRead(ctx, p)
 }
 
-func (m mockAuditPolicyClient) Create(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
-	return m.MockCreate(ctx, parameters)
+func (m mockCertificateClient) Create(ctx context.Context, p *v1alpha1.CertificateParameters, pem []byte) error {
+	return m.MockCreate(ctx, p, pem)
 }
 
-func (m mockAuditPolicyClient) RecreatePolicy(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
-	return m.MockRecreatePolicy(ctx, parameters)
-}
-
-func (m mockAuditPolicyClient) UpdateRetentionDays(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
-	return m.MockUpdateRetentionDays(ctx, parameters)
-}
-
-func (m mockAuditPolicyClient) UpdateEnablePolicy(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
-	return m.MockUpdateEnablePolicy(ctx, parameters)
-}
-
-func (m mockAuditPolicyClient) Delete(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
-	return m.MockDelete(ctx, parameters)
+func (m mockCertificateClient) Delete(ctx context.Context, p *v1alpha1.CertificateParameters) error {
+	return m.MockDelete(ctx, p)
 }
 
 func TestConnect(t *testing.T) {
@@ -75,7 +56,7 @@ func TestConnect(t *testing.T) {
 	type fields struct {
 		kube      client.Client
 		usage     resource.Tracker
-		newClient func(db xsql.DB) auditpolicy.Client
+		newClient func(db xsql.DB) certclient.Client
 	}
 
 	type args struct {
@@ -89,99 +70,187 @@ func TestConnect(t *testing.T) {
 		args   args
 		want   error
 	}{
-		"ErrNotSchema": {
-			reason: "An error should be returned if the managed resource is not a *AuditPolicy",
-			args: args{
-				mg: nil,
-			},
-			want: errors.New(errNotAuditPolicy),
+		"ErrNotCertificate": {
+			reason: "An error should be returned if the managed resource is not a *Certificate",
+			args:   args{mg: nil},
+			want:   stderrors.New(errNotCertificate),
 		},
 		"ErrTrackProviderConfigUsage": {
-			reason: "An error should be returned if we can't track our ProviderConfig usage",
+			reason: "An error should be returned if ProviderConfig usage tracking fails",
 			fields: fields{
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return errBoom }),
+				usage: resource.TrackerFn(func(_ context.Context, _ resource.Managed) error { return errBoom }),
 			},
-			args: args{
-				mg: &v1alpha1.AuditPolicy{},
-			},
-			want: errors.Wrap(errBoom, errTrackPCUsage),
+			args: args{mg: &v1alpha1.Certificate{}},
+			want: fmt.Errorf("%s: %w", errTrackPCUsage, errBoom),
 		},
 		"ErrGetProviderConfig": {
-			reason: "An error should be returned if we can't get our ProviderConfig",
+			reason: "An error should be returned if the ProviderConfig cannot be fetched",
 			fields: fields{
-				kube: &test.MockClient{
-					MockGet: test.NewMockGetFn(errBoom),
-				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				kube:  &test.MockClient{MockGet: test.NewMockGetFn(errBoom)},
+				usage: resource.TrackerFn(func(_ context.Context, _ resource.Managed) error { return nil }),
 			},
 			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{
 						ResourceSpec: xpv1.ResourceSpec{
 							ProviderConfigReference: &xpv1.Reference{},
 						},
 					},
 				},
 			},
-			want: errors.Wrap(errBoom, errGetPC),
+			want: fmt.Errorf("%s: %w", errGetPC, errBoom),
 		},
 		"ErrMissingConnectionSecret": {
-			reason: "An error should be returned if our ProviderConfig doesn't specify a connection secret",
+			reason: "An error should be returned if the ProviderConfig has no connection secret reference",
 			fields: fields{
-				kube: &test.MockClient{
-					// We call get to populate the Database struct, then again
-					// to populate the (empty) ProviderConfig struct, resulting
-					// in a ProviderConfig with a nil connection secret.
-					MockGet: test.NewMockGetFn(nil),
-				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				kube:  &test.MockClient{MockGet: test.NewMockGetFn(nil)},
+				usage: resource.TrackerFn(func(_ context.Context, _ resource.Managed) error { return nil }),
 			},
 			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{
 						ResourceSpec: xpv1.ResourceSpec{
 							ProviderConfigReference: &xpv1.Reference{},
 						},
 					},
 				},
 			},
-			want: errors.New(errNoSecretRef),
+			want: stderrors.New(errNoSecretRef),
 		},
 		"ErrGetConnectionSecret": {
-			reason: "An error should be returned if we can't get our ProviderConfig's connection secret",
+			reason: "An error should be returned if the credentials Secret cannot be fetched",
 			fields: fields{
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
-						switch o := obj.(type) {
-						case *apisv1alpha1.ProviderConfig:
-							o.Spec.Credentials.ConnectionSecretRef = &xpv1.SecretReference{}
-						case *corev1.Secret:
+						if pc, ok := obj.(*apisv1alpha1.ProviderConfig); ok {
+							pc.Spec.Credentials.ConnectionSecretRef = &xpv1.SecretReference{}
+						}
+						if _, ok := obj.(*corev1.Secret); ok {
 							return errBoom
 						}
 						return nil
 					}),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.TrackerFn(func(_ context.Context, _ resource.Managed) error { return nil }),
 			},
 			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{
 						ResourceSpec: xpv1.ResourceSpec{
 							ProviderConfigReference: &xpv1.Reference{},
 						},
 					},
 				},
 			},
-			want: errors.Wrap(errBoom, errGetSecret),
+			want: fmt.Errorf("%s: %w", errGetSecret, errBoom),
 		},
 	}
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			e := &connector{kube: tc.fields.kube, usage: tc.fields.usage, newClient: tc.fields.newClient}
-			_, err := e.Connect(tc.args.ctx, tc.args.mg)
+			c := &connector{kube: tc.fields.kube, usage: tc.fields.usage, newClient: tc.fields.newClient}
+			_, err := c.Connect(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want, err, test.EquateErrors()); diff != "" {
-				t.Errorf("\n%s\ne.Connect(...): -want error, +got error:\n%s\n", tc.reason, diff)
+				t.Errorf("\n%s\nc.Connect(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+func TestObserve(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	type fields struct {
+		client certclient.CertificateClient
+		log    logging.Logger
+	}
+
+	type args struct {
+		ctx context.Context
+		mg  resource.Managed
+	}
+
+	type want struct {
+		ob  managed.ExternalObservation
+		err error
+	}
+
+	cases := map[string]struct {
+		reason string
+		fields fields
+		args   args
+		want   want
+	}{
+		"ErrNotCertificate": {
+			reason: "An error should be returned if the managed resource is not a *Certificate",
+			args:   args{mg: nil},
+			want:   want{err: stderrors.New(errNotCertificate)},
+		},
+		"ErrRead": {
+			reason: "An error from the certificate client Read should be returned",
+			fields: fields{
+				client: mockCertificateClient{
+					MockRead: func(_ context.Context, _ *v1alpha1.CertificateParameters) (*v1alpha1.CertificateObservation, error) {
+						return nil, errBoom
+					},
+				},
+				log: &mockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+				},
+			},
+			want: want{err: fmt.Errorf("%s: %w", errReadCert, errBoom)},
+		},
+		"NotFound": {
+			reason: "ResourceExists should be false when Read returns nil",
+			fields: fields{
+				client: mockCertificateClient{
+					MockRead: func(_ context.Context, _ *v1alpha1.CertificateParameters) (*v1alpha1.CertificateObservation, error) {
+						return nil, nil
+					},
+				},
+				log: &mockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+				},
+			},
+			want: want{ob: managed.ExternalObservation{ResourceExists: false}},
+		},
+		"Found": {
+			reason: "ResourceExists and ResourceUpToDate should both be true when certificates are found",
+			fields: fields{
+				client: mockCertificateClient{
+					MockRead: func(_ context.Context, _ *v1alpha1.CertificateParameters) (*v1alpha1.CertificateObservation, error) {
+						id := 1
+						return &v1alpha1.CertificateObservation{
+							Certificates: []v1alpha1.ImportedCertificate{{ID: &id, Name: "my-ca-1"}},
+						}, nil
+					},
+				},
+				log: &mockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+				},
+			},
+			want: want{ob: managed.ExternalObservation{ResourceExists: true, ResourceUpToDate: true}},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := &external{client: tc.fields.client, log: tc.fields.log}
+			got, err := e.Observe(tc.args.ctx, tc.args.mg)
+			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+				t.Errorf("\n%s\ne.Observe(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+			if diff := cmp.Diff(tc.want.ob, got); diff != "" {
+				t.Errorf("\n%s\ne.Observe(...): -want, +got:\n%s\n", tc.reason, diff)
 			}
 		})
 	}
@@ -190,8 +259,11 @@ func TestConnect(t *testing.T) {
 func TestCreate(t *testing.T) {
 	errBoom := errors.New("boom")
 
+	certPEM := []byte("-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n")
+
 	type fields struct {
-		client auditpolicy.AuditPolicyClient
+		client certclient.CertificateClient
+		kube   client.Client
 		log    logging.Logger
 	}
 
@@ -210,62 +282,94 @@ func TestCreate(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotAuditPolicy": {
-			reason: "An error should be returned if the managed resource is not an *AuditPolicy",
+		"ErrNotCertificate": {
+			reason: "An error should be returned if the managed resource is not a *Certificate",
+			args:   args{mg: nil},
+			want:   want{err: stderrors.New(errNotCertificate)},
+		},
+		"ErrGetCertSecret": {
+			reason: "An error should be returned if the certificate Secret cannot be fetched",
+			fields: fields{
+				kube: &test.MockClient{MockGet: test.NewMockGetFn(errBoom)},
+				log:  &mockLogger{},
+			},
 			args: args{
-				mg: nil,
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{
+						ForProvider: v1alpha1.CertificateParameters{
+							Name:                 "my-ca",
+							CertificateSecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+						},
+					},
+				},
 			},
-			want: want{
-				err: errors.New(errNotAuditPolicy),
-			},
+			want: want{err: fmt.Errorf("%s: %w", errGetCertSecret, fmt.Errorf("cannot get secret ns/secret: %w", errBoom))},
 		},
 		"ErrCreate": {
-			reason: "An error should be returned if the client Create method returns an error",
+			reason: "An error from the certificate client Create should be returned",
 			fields: fields{
-				client: mockAuditPolicyClient{
-					MockCreate: func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
+				kube: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						if s, ok := obj.(*corev1.Secret); ok {
+							s.Data = map[string][]byte{"ca.crt": certPEM}
+						}
+						return nil
+					}),
+				},
+				client: mockCertificateClient{
+					MockCreate: func(_ context.Context, _ *v1alpha1.CertificateParameters, _ []byte) error {
 						return errBoom
 					},
 				},
-				log: &MockLogger{},
+				log: &mockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
-						ForProvider: v1alpha1.AuditPolicyParameters{},
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{
+						ForProvider: v1alpha1.CertificateParameters{
+							Name:                 "my-ca",
+							CertificateSecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+						},
 					},
 				},
 			},
-			want: want{
-				err: errors.Wrap(errBoom, errCreatePolicy),
-			},
+			want: want{err: fmt.Errorf("%s: %w", errCreateCert, errBoom)},
 		},
 		"Successful": {
-			reason: "No error should be returned if the client Create method is successful",
+			reason: "No error should be returned on a successful create",
 			fields: fields{
-				client: mockAuditPolicyClient{
-					MockCreate: func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
+				kube: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						if s, ok := obj.(*corev1.Secret); ok {
+							s.Data = map[string][]byte{"ca.crt": certPEM}
+						}
+						return nil
+					}),
+				},
+				client: mockCertificateClient{
+					MockCreate: func(_ context.Context, _ *v1alpha1.CertificateParameters, _ []byte) error {
 						return nil
 					},
 				},
-				log: &MockLogger{},
+				log: &mockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
-						ForProvider: v1alpha1.AuditPolicyParameters{},
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{
+						ForProvider: v1alpha1.CertificateParameters{
+							Name:                 "my-ca",
+							CertificateSecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+						},
 					},
 				},
 			},
-			want: want{
-				err: nil,
-			},
+			want: want{err: nil},
 		},
 	}
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			e := external{client: tc.fields.client, log: tc.fields.log}
+			e := &external{client: tc.fields.client, kube: tc.fields.kube, log: tc.fields.log}
 			_, err := e.Create(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Create(...): -want error, +got error:\n%s\n", tc.reason, diff)
@@ -278,7 +382,7 @@ func TestDelete(t *testing.T) {
 	errBoom := errors.New("boom")
 
 	type fields struct {
-		client auditpolicy.AuditPolicyClient
+		client certclient.CertificateClient
 		log    logging.Logger
 	}
 
@@ -297,248 +401,53 @@ func TestDelete(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotAuditPolicy": {
-			reason: "An error should be returned if the managed resource is not an *AuditPolicy",
-			args: args{
-				mg: nil,
-			},
-			want: want{
-				err: errors.New(errNotAuditPolicy),
-			},
+		"ErrNotCertificate": {
+			reason: "An error should be returned if the managed resource is not a *Certificate",
+			args:   args{mg: nil},
+			want:   want{err: stderrors.New(errNotCertificate)},
 		},
 		"ErrDelete": {
-			reason: "An error should be returned if the client Delete method returns an error",
+			reason: "An error from the certificate client Delete should be returned",
 			fields: fields{
-				client: mockAuditPolicyClient{
-					MockDelete: func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
+				client: mockCertificateClient{
+					MockDelete: func(_ context.Context, _ *v1alpha1.CertificateParameters) error {
 						return errBoom
 					},
 				},
-				log: &MockLogger{},
+				log: &mockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
-						ForProvider: v1alpha1.AuditPolicyParameters{},
-					},
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
 				},
 			},
-			want: want{
-				err: errors.Wrap(errBoom, errDropPolicy),
-			},
+			want: want{err: fmt.Errorf("%s: %w", errDeleteCert, errBoom)},
 		},
 		"Successful": {
-			reason: "No error should be returned if the client Delete method is successful",
+			reason: "No error should be returned on a successful delete",
 			fields: fields{
-				client: mockAuditPolicyClient{
-					MockDelete: func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
+				client: mockCertificateClient{
+					MockDelete: func(_ context.Context, _ *v1alpha1.CertificateParameters) error {
 						return nil
 					},
 				},
-				log: &MockLogger{},
+				log: &mockLogger{},
 			},
 			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
-						ForProvider: v1alpha1.AuditPolicyParameters{},
-					},
+				mg: &v1alpha1.Certificate{
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
 				},
 			},
-			want: want{
-				err: nil,
-			},
+			want: want{err: nil},
 		},
 	}
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			e := external{client: tc.fields.client, log: tc.fields.log}
+			e := &external{client: tc.fields.client, log: tc.fields.log}
 			_, err := e.Delete(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Delete(...): -want error, +got error:\n%s\n", tc.reason, diff)
-			}
-		})
-	}
-}
-
-func TestRead(t *testing.T) {
-	errBoom := errors.New("boom")
-
-	type fields struct {
-		client auditpolicy.AuditPolicyClient
-		log    logging.Logger
-	}
-
-	type args struct {
-		ctx context.Context
-		mg  resource.Managed
-	}
-
-	type want struct {
-		err error
-		ob  managed.ExternalObservation
-	}
-
-	cases := map[string]struct {
-		reason string
-		fields fields
-		args   args
-		want   want
-	}{
-		"ErrNotAuditPolicy": {
-			reason: "An error should be returned if the managed resource is not an *AuditPolicy",
-			args: args{
-				mg: nil,
-			},
-			want: want{
-				err: errors.New(errNotAuditPolicy),
-			},
-		},
-		"ErrRead": {
-			reason: "An error should be returned if the client Read method returns an error",
-			fields: fields{
-				client: mockAuditPolicyClient{
-					MockRead: func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) (observed *v1alpha1.AuditPolicyObservation, err error) {
-						return nil, errBoom
-					},
-				},
-				log: &MockLogger{},
-			},
-			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
-						ForProvider: v1alpha1.AuditPolicyParameters{},
-					},
-				},
-			},
-			want: want{
-				err: errors.Wrap(errBoom, errSelectPolicy),
-			},
-		},
-		"Successful": {
-			reason: "No error should be returned if the client Read method is successful",
-			fields: fields{
-				client: mockAuditPolicyClient{
-					MockRead: func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) (observed *v1alpha1.AuditPolicyObservation, err error) {
-						return &v1alpha1.AuditPolicyObservation{}, nil
-					},
-				},
-				log: &MockLogger{},
-			},
-			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
-						ForProvider: v1alpha1.AuditPolicyParameters{},
-					},
-				},
-			},
-			want: want{
-				err: nil,
-				ob: managed.ExternalObservation{
-					ResourceExists:   true,
-					ResourceUpToDate: true,
-				},
-			},
-		},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			e := external{client: tc.fields.client, log: tc.fields.log}
-			_, err := e.Observe(tc.args.ctx, tc.args.mg)
-			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
-				t.Errorf("\n%s\ne.Read(...): -want error, +got error:\n%s\n", tc.reason, diff)
-			}
-		})
-	}
-}
-
-func TestRecreatePolicy(t *testing.T) {
-	errBoom := errors.New("boom")
-
-	type fields struct {
-		client auditpolicy.AuditPolicyClient
-		log    logging.Logger
-	}
-
-	type args struct {
-		ctx context.Context
-		mg  resource.Managed
-	}
-
-	type want struct {
-		err error
-	}
-
-	cases := map[string]struct {
-		reason string
-		fields fields
-		args   args
-		want   want
-	}{
-		"ErrNotAuditPolicy": {
-			reason: "An error should be returned if the managed resource is not an *AuditPolicy",
-			args: args{
-				mg: nil,
-			},
-			want: want{
-				err: errors.New(errNotAuditPolicy),
-			},
-		},
-		"ErrRecreatePolicy": {
-			reason: "An error should be returned if the client RecreatePolicy method returns an error",
-			fields: fields{
-				client: mockAuditPolicyClient{
-					MockRecreatePolicy: func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
-						return errBoom
-					},
-				},
-				log: &MockLogger{},
-			},
-			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
-						ForProvider: v1alpha1.AuditPolicyParameters{
-							AuditLevel: "INFO",
-						},
-					},
-				},
-			},
-			want: want{
-				err: errors.Wrap(errBoom, errUpdatePolicy),
-			},
-		},
-		"Successful": {
-			reason: "No error should be returned if the client RecreatePolicy method is successful",
-			fields: fields{
-				client: mockAuditPolicyClient{
-					MockRecreatePolicy: func(ctx context.Context, parameters *v1alpha1.AuditPolicyParameters) error {
-						return nil
-					},
-				},
-				log: &MockLogger{},
-			},
-			args: args{
-				mg: &v1alpha1.AuditPolicy{
-					Spec: v1alpha1.AuditPolicySpec{
-						ForProvider: v1alpha1.AuditPolicyParameters{
-							AuditLevel: "INFO",
-						},
-					},
-				},
-			},
-			want: want{
-				err: nil,
-			},
-		},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			e := external{client: tc.fields.client, log: tc.fields.log}
-			_, err := e.Update(tc.args.ctx, tc.args.mg)
-			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
-				t.Errorf("\n%s\ne.RecreatePolicy(...): -want error, +got error:\n%s\n", tc.reason, diff)
 			}
 		})
 	}

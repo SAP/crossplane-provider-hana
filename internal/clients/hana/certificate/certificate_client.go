@@ -6,6 +6,7 @@ import (
 
 	adminv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 type CertificateClient interface {
@@ -82,16 +83,31 @@ func (c Client) Create(
 	if err != nil {
 		return err
 	}
+
+	tx, err := c.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
 	for i, cert := range certificates {
 		certName := fmt.Sprintf("%s-%d", parameters.Name, i+1)
 		query := fmt.Sprintf(
-			"CREATE CERTIFICATE %s FROM '%s'",
-			certName,
-			string(cert),
+			`CREATE CERTIFICATE "%s" FROM '%s'`,
+			utils.EscapeDoubleQuotes(certName),
+			utils.EscapeSingleQuotes(string(cert)),
 		)
-		if _, err := c.ExecContext(ctx, query); err != nil {
-			return err
+		if _, err = tx.ExecContext(ctx, query); err != nil {
+			return fmt.Errorf("failed to create certificate %q: %w", certName, err)
 		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit certificate transaction: %w", err)
 	}
 	return nil
 }
