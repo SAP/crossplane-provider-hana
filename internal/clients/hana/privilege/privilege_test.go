@@ -1809,3 +1809,51 @@ func TestSchemaQualifiedRoleRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestFindPrivilegeRoleOverlap(t *testing.T) {
+	cases := map[string]struct {
+		desiredPrivileges []string
+		observedRoles     []string
+		want              []string
+	}{
+		"NoOverlap": {
+			desiredPrivileges: []string{`"CREATE ANY"`, `"SELECT"`},
+			observedRoles:     []string{`"PUBLIC"`},
+			want:              nil,
+		},
+		"OverlapBareNames": {
+			desiredPrivileges: []string{`"DUMMY_ROLE_A"`, `"CREATE ANY"`},
+			observedRoles:     []string{`"DUMMY_ROLE_A"`, `"PUBLIC"`},
+			want:              []string{`"DUMMY_ROLE_A"`},
+		},
+		"OverlapStripsAdminOption": {
+			desiredPrivileges: []string{`"DUMMY_ROLE_B" WITH ADMIN OPTION`},
+			observedRoles:     []string{`"DUMMY_ROLE_B"`},
+			want:              []string{`"DUMMY_ROLE_B" WITH ADMIN OPTION`},
+		},
+		// Schema-qualified roles (e.g. "CONTAINER"."ns::reader") cannot be placed
+		// under spec.forProvider.privileges in practice: FormatPrivilegeStrings
+		// rejects them as an unknown privilege type in normalizeDesired, so Observe
+		// returns an error before FindPrivilegeRoleOverlap is ever called. This
+		// case is therefore not tested here.
+		"EmptyPrivileges": {
+			desiredPrivileges: []string{},
+			observedRoles:     []string{`"PUBLIC"`},
+			want:              nil,
+		},
+		"EmptyRoles": {
+			desiredPrivileges: []string{`"SELECT"`},
+			observedRoles:     []string{},
+			want:              nil,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := FindPrivilegeRoleOverlap(tc.desiredPrivileges, tc.observedRoles)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("FindPrivilegeRoleOverlap(): -want, +got:\n%s", diff)
+			}
+		})
+	}
+}

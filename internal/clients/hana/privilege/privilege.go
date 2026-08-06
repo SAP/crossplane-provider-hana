@@ -778,3 +778,49 @@ func handlePrivilegeRows(privRows *sql.Rows) (Privilege, error) {
 		return createRegularObjectPrivilege(privilege, schemaName, objectName, isGrantable), nil
 	}
 }
+
+// FindPrivilegeRoleOverlap returns the entries in desiredPrivileges whose bare
+// name (without WITH ADMIN OPTION) also appears in observedRoles. Both slices
+// are expected to already be in the canonical quoted form produced by
+// FormatPrivilegeStrings / FormatRoleStrings / QueryRoles, so the comparison is
+// a direct string match after stripping the grant-option suffix.
+//
+// A non-empty return value means the operator has placed HANA role name(s) under
+// spec.forProvider.privileges instead of spec.forProvider.roles. Those entries
+// will never converge (HANA records them in GRANTED_ROLES, not
+// GRANTED_PRIVILEGES), causing an infinite reconcile loop.
+func FindPrivilegeRoleOverlap(desiredPrivileges, observedRoles []string) []string {
+	roleSet := make(map[string]struct{}, len(observedRoles))
+	for _, r := range observedRoles {
+		roleSet[bareIdentifier(r)] = struct{}{}
+	}
+
+	var overlap []string
+	for _, p := range desiredPrivileges {
+		if _, found := roleSet[bareIdentifier(p)]; found {
+			overlap = append(overlap, p)
+		}
+	}
+	return overlap
+}
+
+// bareIdentifier strips a trailing grant-option suffix and any surrounding
+// double quotes, giving a plain name suitable for cross-list comparison.
+// desiredPrivileges uses unquoted system-privilege names while observedRoles
+// uses quoted identifiers from the catalog, so both sides need this treatment.
+func bareIdentifier(s string) string {
+	s = stripGrantOption(s)
+	return cleanIdentifier(s)
+}
+
+// stripGrantOption removes a trailing " WITH ADMIN OPTION" or " WITH GRANT OPTION"
+// suffix (case-insensitive) so bare names can be compared across the two slices.
+func stripGrantOption(s string) string {
+	upper := strings.ToUpper(s)
+	for _, suffix := range []string{" WITH ADMIN OPTION", " WITH GRANT OPTION"} {
+		if strings.HasSuffix(upper, suffix) {
+			return s[:len(s)-len(suffix)]
+		}
+	}
+	return s
+}

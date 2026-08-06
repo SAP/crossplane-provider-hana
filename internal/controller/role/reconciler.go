@@ -179,6 +179,16 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.LdapGroups = observed.LdapGroups
 	cr.Status.AtProvider.Rolegroup = observed.Rolegroup
 
+	if overlap := privilege.FindPrivilegeRoleOverlap(parameters.Privileges, observed.Roles); len(overlap) > 0 {
+		msg := fmt.Sprintf("privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
+		c.log.Info("Misconfigured privileges detected", "name", cr.Name, "overlap", overlap)
+		cr.SetConditions(xpv1.ReconcileError(errors.New(msg)))
+		return managed.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: true,
+		}, nil
+	}
+
 	cr.SetConditions(xpv1.Available())
 
 	isUpToDate := upToDate(observed, parameters)

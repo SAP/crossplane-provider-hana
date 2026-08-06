@@ -342,6 +342,44 @@ func TestObserve(t *testing.T) {
 				},
 			},
 		},
+		"PrivilegeRoleOverlapSetsReconcileErrorAndSkipsUpdate": {
+			// When a user places a HANA role name under spec.forProvider.privileges,
+			// HANA records it in GRANTED_ROLES, not GRANTED_PRIVILEGES. The desired
+			// privileges entry can never match the observed (empty) privileges, causing
+			// an infinite Update loop. Observe must detect the overlap, set a
+			// ReconcileError condition, and return ResourceUpToDate:true to stop Updates.
+			reason: "Role name in privileges that appears in observed roles must set ReconcileError and skip Update",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
+						return &v1alpha1.RoleObservation{
+							RoleName:   "DEMO_ROLE",
+							Privileges: []string{},
+							Roles:      []string{`"DUMMY_SYSTEM_ROLE_A"`, `"DUMMY_SYSTEM_ROLE_B"`},
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.Role{
+					Spec: v1alpha1.RoleSpec{
+						ForProvider: v1alpha1.RoleParameters{
+							RoleName:   "DEMO_ROLE",
+							Privileges: []string{"DUMMY_SYSTEM_ROLE_A"},
+							Roles:      []string{"DUMMY_SYSTEM_ROLE_B"},
+						},
+					},
+				},
+			},
+			want: want{
+				err: nil,
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+			},
+		},
 		"UpToDateWhenSpecUnquotedMatchesQuotedObservation": {
 			// Regression lock for the grant-thrash bug: the catalog read returns
 			// canonical, quoted identifiers ("MY_ROLE"), but a user writes the spec
