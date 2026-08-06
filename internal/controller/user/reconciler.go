@@ -241,12 +241,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return obs, nil
 	}
 
-	// Set condition based on authentication errors or normal availability
-	if authError != nil {
-		cr.SetConditions(xpv1.Unavailable().WithMessage(authError.Error()))
-	} else {
-		cr.SetConditions(xpv1.Available())
-	}
+	setAvailabilityCondition(cr, authError)
 
 	isUpToDate := upToDate(observed, parameters)
 
@@ -259,6 +254,16 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		ResourceExists:   true,
 		ResourceUpToDate: isUpToDate,
 	}, nil
+}
+
+// setAvailabilityCondition sets Available or Unavailable condition depending on
+// whether an auth error was encountered during Read.
+func setAvailabilityCondition(cr *v1alpha1.User, authError error) {
+	if authError != nil {
+		cr.SetConditions(xpv1.Unavailable().WithMessage(authError.Error()))
+	} else {
+		cr.SetConditions(xpv1.Available())
+	}
 }
 
 // checkPrivilegeRoleOverlap detects role names mistakenly placed under
