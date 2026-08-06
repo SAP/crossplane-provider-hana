@@ -237,14 +237,8 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	cr.Status.AtProvider = *observed
 
-	if overlap := privilege.FindPrivilegeRoleOverlap(parameters.Privileges, observed.Roles); len(overlap) > 0 {
-		msg := fmt.Sprintf("privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
-		c.log.Info("Misconfigured privileges detected", "name", cr.Name, "overlap", overlap)
-		cr.SetConditions(xpv1.ReconcileError(errors.New(msg)))
-		return managed.ExternalObservation{
-			ResourceExists:   true,
-			ResourceUpToDate: true,
-		}, nil
+	if obs, stop := c.checkPrivilegeRoleOverlap(cr, parameters.Privileges, observed.Roles); stop {
+		return obs, nil
 	}
 
 	// Set condition based on authentication errors or normal availability
@@ -265,6 +259,23 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		ResourceExists:   true,
 		ResourceUpToDate: isUpToDate,
 	}, nil
+}
+
+// checkPrivilegeRoleOverlap detects role names mistakenly placed under
+// spec.forProvider.privileges. Returns (observation, true) when an overlap is
+// found (caller should return immediately); (zero, false) otherwise.
+func (c *external) checkPrivilegeRoleOverlap(cr *v1alpha1.User, desiredPrivileges, observedRoles []string) (managed.ExternalObservation, bool) {
+	overlap := privilege.FindPrivilegeRoleOverlap(desiredPrivileges, observedRoles)
+	if len(overlap) == 0 {
+		return managed.ExternalObservation{}, false
+	}
+	msg := fmt.Sprintf("privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
+	c.log.Info("Misconfigured privileges detected", "name", cr.Name, "overlap", overlap)
+	cr.SetConditions(xpv1.ReconcileError(errors.New(msg)))
+	return managed.ExternalObservation{
+		ResourceExists:   true,
+		ResourceUpToDate: true,
+	}, true
 }
 
 func upToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
