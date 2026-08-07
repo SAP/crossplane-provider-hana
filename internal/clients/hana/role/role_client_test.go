@@ -19,7 +19,7 @@ import (
 // TestBuildGranteeLiteral pins down that the grantee passed to the catalog-view
 // queries (GRANTED_PRIVILEGES / GRANTED_ROLES) is the UNQUOTED identifier value,
 // matching how those views store the GRANTEE column. This is the direct fix for
-// the read bug where a quoted grantee ("data::external_access_g") never matched
+// the read bug where a quoted grantee ("DUMMY_SCHEMA::dummy_role_g") never matched
 // the raw column value, so QueryPrivileges/QueryRoles always returned empty and
 // the controller re-granted every reconcile.
 func TestBuildGranteeLiteral(t *testing.T) {
@@ -28,10 +28,10 @@ func TestBuildGranteeLiteral(t *testing.T) {
 		roleName string
 		want     string
 	}{
-		"NoSchema":          {schema: "", roleName: "data::external_access_g", want: "data::external_access_g"},
+		"NoSchema":          {schema: "", roleName: "DUMMY_SCHEMA::dummy_role_g", want: "DUMMY_SCHEMA::dummy_role_g"},
 		"NoSchemaSimple":    {schema: "", roleName: "DEMO_ROLE", want: "DEMO_ROLE"},
 		"SchemaQualified":   {schema: "MY_CONTAINER", roleName: "ns::reader", want: "MY_CONTAINER.ns::reader"},
-		"NoQuotesEverAdded": {schema: "", roleName: `AFL__SYS_AFL_AFLPAL_EXECUTE_WITH_GRANT_OPTION`, want: `AFL__SYS_AFL_AFLPAL_EXECUTE_WITH_GRANT_OPTION`},
+		"NoQuotesEverAdded": {schema: "", roleName: `DUMMY_SYSTEM_PRIVILEGE_WITH_GRANT_OPTION`, want: `DUMMY_SYSTEM_PRIVILEGE_WITH_GRANT_OPTION`},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -173,7 +173,7 @@ func TestRead(t *testing.T) {
 // TestReadPassesUnquotedGrantee is the regression lock for the read bug: Read
 // must pass the UNQUOTED role name as the grantee to QueryPrivileges/QueryRoles,
 // because the GRANTED_PRIVILEGES / GRANTED_ROLES catalog views store GRANTEE as
-// the raw identifier value. A quoted grantee ("data::external_access_g") matches
+// the raw identifier value. A quoted grantee ("DUMMY_SCHEMA::dummy_role_g") matches
 // no rows, so both queries silently returned empty and the controller re-granted
 // the role every reconcile (grant thrash). The role name here contains "::",
 // which forces quoting in SQL identifiers — making the quoted-vs-unquoted
@@ -188,8 +188,8 @@ func TestReadPassesUnquotedGrantee(t *testing.T) {
 	}{
 		"TopLevelRole": {
 			schema:      "",
-			roleName:    "data::external_access_g",
-			wantGrantee: "data::external_access_g",
+			roleName:    "DUMMY_SCHEMA::dummy_role_g",
+			wantGrantee: "DUMMY_SCHEMA::dummy_role_g",
 		},
 		"SchemaQualifiedRole": {
 			schema:      "MY_CONTAINER",

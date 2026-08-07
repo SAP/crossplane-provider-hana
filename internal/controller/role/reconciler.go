@@ -179,14 +179,19 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.LdapGroups = observed.LdapGroups
 	cr.Status.AtProvider.Rolegroup = observed.Rolegroup
 
+	// A role name mistakenly placed under spec.forProvider.privileges can never
+	// reconcile: it is granted via GRANT ROLE and read back from GRANTED_ROLES,
+	// so it never appears in the observed privileges and the controller re-grants
+	// it every reconcile (grant thrash). Return an error rather than setting the
+	// condition inline and returning nil: crossplane-runtime overwrites the Synced
+	// condition with ReconcileSuccess on a nil-error, up-to-date Observe (and emits
+	// no event), so a manually-set ReconcileError would not survive. Returning the
+	// error makes the runtime record ReconcileError, emit a Warning event, and skip
+	// the Update, surfacing the misconfiguration to the operator.
 	if overlap := privilege.FindPrivilegeRoleOverlap(parameters.Privileges, observed.Roles); len(overlap) > 0 {
-		msg := fmt.Sprintf("privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
 		c.log.Info("Misconfigured privileges detected", "name", cr.Name, "overlap", overlap)
-		cr.SetConditions(xpv1.ReconcileError(errors.New(msg)))
-		return managed.ExternalObservation{
-			ResourceExists:   true,
-			ResourceUpToDate: true,
-		}, nil
+		return managed.ExternalObservation{}, fmt.Errorf(
+			"privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
 	}
 
 	cr.SetConditions(xpv1.Available())

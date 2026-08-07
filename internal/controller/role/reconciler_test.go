@@ -342,13 +342,16 @@ func TestObserve(t *testing.T) {
 				},
 			},
 		},
-		"PrivilegeRoleOverlapSetsReconcileErrorAndSkipsUpdate": {
+		"PrivilegeRoleOverlapReturnsErrorAndSkipsUpdate": {
 			// When a user places a HANA role name under spec.forProvider.privileges,
 			// HANA records it in GRANTED_ROLES, not GRANTED_PRIVILEGES. The desired
 			// privileges entry can never match the observed (empty) privileges, causing
-			// an infinite Update loop. Observe must detect the overlap, set a
-			// ReconcileError condition, and return ResourceUpToDate:true to stop Updates.
-			reason: "Role name in privileges that appears in observed roles must set ReconcileError and skip Update",
+			// an infinite Update loop. Observe must detect the overlap and return an
+			// error so crossplane-runtime records ReconcileError, emits a Warning
+			// event, and skips the Update. (Setting the condition inline and returning
+			// nil does not work: the runtime overwrites Synced with ReconcileSuccess on
+			// a nil-error, up-to-date Observe and emits no event.)
+			reason: "Role name in privileges that appears in observed roles must return an error and skip Update",
 			fields: fields{
 				client: mockClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
@@ -373,11 +376,8 @@ func TestObserve(t *testing.T) {
 				},
 			},
 			want: want{
-				err: nil,
-				c: managed.ExternalObservation{
-					ResourceExists:   true,
-					ResourceUpToDate: true,
-				},
+				err: errors.New("privileges contains role name(s) that must be moved to spec.forProvider.roles: [DUMMY_SYSTEM_ROLE_A]"),
+				c:   managed.ExternalObservation{},
 			},
 		},
 		"UpToDateWhenSpecUnquotedMatchesQuotedObservation": {

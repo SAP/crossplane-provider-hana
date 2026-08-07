@@ -252,7 +252,7 @@ func getRoleName(schemaName, roleName string) string {
 
 // buildGranteeLiteral builds the grantee value used to match the GRANTEE column
 // of the GRANTED_PRIVILEGES / GRANTED_ROLES catalog views. Those columns store
-// the raw, UNQUOTED identifier value (e.g. data::external_access_g), so the
+// the raw, UNQUOTED identifier value (e.g. DUMMY_SCHEMA::dummy_role_g), so the
 // grantee passed to QueryPrivileges/QueryRoles must be unquoted — unlike
 // getRoleName, which quotes for use as a SQL identifier. When a schema is set,
 // the two are joined by a bare dot (schema.name) so addGranteeQuery can split
