@@ -37,7 +37,7 @@ ORDER BY CERTIFICATE_NAME
 	rows, err := c.QueryContext(
 		ctx,
 		query,
-		parameters.Name+"-%",
+		sanitizeIdentifier(parameters.Name)+"_CRT_SRV_CERTIFICATE_%",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query certificates: %w", err)
@@ -94,20 +94,23 @@ func (c Client) Create(
 		}
 	}()
 
-	for i, cert := range certificates {
-		certName := fmt.Sprintf("%s-%d", parameters.Name, i+1)
+	for _, cert := range certificates {
+		name, err := certName(parameters.Name, cert)
+		if err != nil {
+			return fmt.Errorf("failed to derive certificate name: %w", err)
+		}
 		// CREATE CERTIFICATE is a DDL statement; HANA does not support bind
 		// parameters for it. Both values are sanitized before interpolation:
-		// certName via EscapeDoubleQuotes (double-quoted identifier) and cert
+		// name via EscapeDoubleQuotes (double-quoted identifier) and cert
 		// via EscapeSingleQuotes (single-quoted string literal).
 		//nolint:gosec // G201: SQL string formatting — values are sanitized above
 		query := fmt.Sprintf(
 			`CREATE CERTIFICATE "%s" FROM '%s'`,
-			utils.EscapeDoubleQuotes(certName),
+			utils.EscapeDoubleQuotes(name),
 			utils.EscapeSingleQuotes(string(cert)),
 		)
 		if _, err = tx.ExecContext(ctx, query); err != nil {
-			return fmt.Errorf("failed to create certificate %q: %w", certName, err)
+			return fmt.Errorf("failed to create certificate %q: %w", name, err)
 		}
 	}
 

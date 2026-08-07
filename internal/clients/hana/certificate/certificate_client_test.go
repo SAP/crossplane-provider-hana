@@ -3,10 +3,11 @@ package certificate
 import (
 	"context"
 	"database/sql"
-	"encoding/pem"
 	stderrors "errors"
 	"fmt"
+	"math/big"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/crossplane/crossplane-runtime/pkg/test"
@@ -151,10 +152,15 @@ func TestRead(t *testing.T) {
 func TestCreate(t *testing.T) {
 	errBoom := errors.New("boom")
 
-	singlePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte("cert-one")})
+	// Use real x509 PEMs so certName can parse serial and NotBefore.
+	serial1 := big.NewInt(1001)
+	serial2 := big.NewInt(1002)
+	notBefore := time.Date(2026, 7, 16, 7, 40, 32, 0, time.UTC)
+
+	singlePEM := selfSignedPEM(t, serial1, notBefore)
 	chainPEM := append(
-		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte("cert-one")}),
-		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte("cert-two")})...,
+		selfSignedPEM(t, serial1, notBefore),
+		selfSignedPEM(t, serial2, notBefore)...,
 	)
 
 	// mockDBWithTx creates a fake.MockDB whose BeginTx returns a *sql.Tx backed
@@ -229,7 +235,7 @@ func TestCreate(t *testing.T) {
 				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
 				certificatePEM: singlePEM,
 			},
-			want: want{err: fmt.Errorf("failed to create certificate %q: %w", "my-ca-1", errBoom)},
+			want: want{err: fmt.Errorf("failed to create certificate %q: %w", "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032", errBoom)},
 		},
 		"ErrExecSecondCertInChain": {
 			reason: "A SQL error on the second certificate should roll back and return an error",
@@ -246,7 +252,7 @@ func TestCreate(t *testing.T) {
 				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
 				certificatePEM: chainPEM,
 			},
-			want: want{err: fmt.Errorf("failed to create certificate %q: %w", "my-ca-2", errBoom)},
+			want: want{err: fmt.Errorf("failed to create certificate %q: %w", "MY_CA_CRT_SRV_CERTIFICATE_1002_16072026074032", errBoom)},
 		},
 		"SuccessSingleCert": {
 			reason: "A single certificate should execute one CREATE CERTIFICATE and commit",

@@ -9,7 +9,7 @@ SAP HANA Cloud supports TLS-based trust through certificates stored in the datab
 
 ## Context and Problem Statement
 
-Today, certificates must be imported into HANA manually or via ad hoc SQL scripts. This creates a gap between the declarative Crossplane lifecycle (provision, configure, decommission) and the manual steps needed to establish certificate trust. We want a Crossplane-native way to manage certificates so that the full HANA setup can be expressed declaratively.
+Today, certificates must be imported into HANA manually or via the imperative `mcp-create-hana-certificates` script. This creates a gap between the declarative Crossplane lifecycle (provision, configure, decommission) and the manual steps needed to establish certificate trust. We want a Crossplane-native way to manage certificates so that the full HANA setup can be expressed declaratively.
 
 ## Goals
 
@@ -17,7 +17,8 @@ Provide a new Kubernetes CRD (`Certificate`) to declaratively import PEM-encoded
 
 - Read the PEM certificate from a Kubernetes Secret.
 - Support certificate chains (multiple certificates in a single PEM file).
-- Name each imported certificate predictably, using a user-supplied base name plus a numeric suffix.
+- Name each imported certificate deterministically, derived from the x509 certificate's serial number and `NotBefore` timestamp, following the existing HANA naming convention.
+- Import all certificates in a chain atomically within a single database transaction.
 - Expose the IDs and names of all imported certificates in the resource status.
 - Integrate with the standard Crossplane managed-resource lifecycle (Observe / Create / Delete).
 
@@ -26,6 +27,8 @@ Provide a new Kubernetes CRD (`Certificate`) to declaratively import PEM-encoded
 - Certificates are a prerequisite for secure HANA connectivity and should be provisioned alongside the instance in the same declarative pipeline.
 - Storing the PEM content in a Kubernetes Secret keeps credentials out of the CRD spec and allows standard Kubernetes RBAC and secret-rotation workflows to apply.
 - HANA's `CREATE CERTIFICATE` SQL statement operates on one certificate at a time, so chain support must be handled by the provider by splitting the PEM chain before issuing SQL.
+- Certificate names must be deterministic and unique — derived from the certificate content itself — to match the convention already established by the existing tooling and to be referenceable in `PersonalSecurityEnvironment` `certificateRefs` without manual bookkeeping.
+- All certificates in a chain must be imported atomically so partial failures cannot leave HANA in an inconsistent state.
 
 ## Decision Outcome
 
@@ -48,8 +51,9 @@ Extend the existing `crossplane-provider-hana` with a new `Certificate` managed 
 
 ```go
 type CertificateParameters struct {
-    // Name is the base name used to identify the certificate(s) in HANA.
-    // Each certificate in a chain is stored as "<name>-1", "<name>-2", etc.
+    // Name is the base name used to derive the HANA certificate name.
+    // The final HANA name follows the pattern:
+    //   <SANITIZED_BASE>_CRT_SRV_CERTIFICATE_<SERIAL>_<DDMMYYYYHHMMSS>
     Name string `json:"name"`
 
     // CertificateSecretRef references the Kubernetes Secret containing the
@@ -68,6 +72,25 @@ type ImportedCertificate struct {
     Name string `json:"name,omitempty"`
 }
 ```
+
+#### Certificate Naming Convention
+
+Each certificate is named by combining the user-supplied base name with metadata extracted from the x509 certificate itself:
+
+```
+<SANITIZED_BASE>_CRT_SRV_CERTIFICATE_<SERIAL>_<DDMMYYYYHHMMSS>
+```
+
+- `SANITIZED_BASE` — the `name` field uppercased with non-alphanumeric characters replaced by `_`
+- `SERIAL` — the certificate's serial number (decimal)
+- `DDMMYYYYHHMMSS` — the certificate's `NotBefore` timestamp in UTC
+
+For example, a base name of `aws-cf-del101` produces:
+```
+AWS_CF_DEL101_CRT_SRV_CERTIFICATE_334204436771835260918629968473131177511_16072026074032
+```
+
+This matches the convention already used by the imperative `mcp-create-hana-certificates` tooling, making the two approaches interoperable.
 
 #### Example Resource Configuration
 
@@ -102,7 +125,7 @@ data:
 
 #### PEM Chain Handling
 
-If the Secret key contains a PEM chain (multiple `-----BEGIN CERTIFICATE-----` blocks), the provider splits it into individual certificates before importing. Each certificate is stored in HANA under a separate name: `<name>-1`, `<name>-2`, etc.
+If the Secret key contains a PEM chain (multiple `-----BEGIN CERTIFICATE-----` blocks), the provider splits it into individual certificates before importing. Each certificate gets its own HANA name derived from its own serial and `NotBefore` values.
 
 Validation rules for the PEM data:
 
@@ -116,29 +139,32 @@ Validation rules for the PEM data:
 ```sql
 SELECT CERTIFICATE_ID, CERTIFICATE_NAME
 FROM CERTIFICATES
-WHERE CERTIFICATE_NAME LIKE '<name>-%'
+WHERE CERTIFICATE_NAME LIKE '<SANITIZED_BASE>_CRT_SRV_CERTIFICATE_%'
 ORDER BY CERTIFICATE_NAME
 ```
 
-The `LIKE '<name>-%'` pattern matches all certificates belonging to this managed resource. If the query returns no rows the resource is considered absent and Crossplane will trigger a Create.
+The LIKE pattern matches all certificates belonging to this managed resource by their sanitized base name prefix. If the query returns no rows the resource is considered absent and Crossplane will trigger a Create.
 
 ##### Create
 
-One statement is executed per certificate in the chain:
+All statements are executed within a single database transaction. If any statement fails the entire transaction is rolled back, preventing partial imports:
 
 ```sql
-CREATE CERTIFICATE <name>-1 FROM '<PEM block>';
-CREATE CERTIFICATE <name>-2 FROM '<PEM block>';
+BEGIN;
+CREATE CERTIFICATE "<BASE>_CRT_SRV_CERTIFICATE_<SERIAL1>_<TIMESTAMP1>" FROM '<PEM block>';
+CREATE CERTIFICATE "<BASE>_CRT_SRV_CERTIFICATE_<SERIAL2>_<TIMESTAMP2>" FROM '<PEM block>';
 -- ... one per certificate in the chain
+COMMIT;
 ```
+
+Both the certificate name (double-quoted identifier) and the PEM content (single-quoted string literal) are sanitized before interpolation to prevent SQL injection.
 
 ##### Delete
 
 Currently a no-op (orphan semantics). A future iteration will issue:
 
 ```sql
-DROP CERTIFICATE <name>-1;
-DROP CERTIFICATE <name>-2;
+DROP CERTIFICATE "<BASE>_CRT_SRV_CERTIFICATE_<SERIAL>_<TIMESTAMP>";
 -- ... one per imported certificate
 ```
 
@@ -159,11 +185,20 @@ status:
       status: "True"
   atProvider:
     certificates:
-      - id: 42
-        name: my-ca-1
-      - id: 43
-        name: my-ca-2
+      - id: 171175
+        name: MY_CA_CRT_SRV_CERTIFICATE_334204436771835260918629968473131177511_16072026074032
+      - id: 171176
+        name: MY_CA_CRT_SRV_CERTIFICATE_334204436771835260918629968473131177512_16072026074032
+      - id: 171177
+        name: MY_CA_CRT_SRV_CERTIFICATE_334204436771835260918629968473131177513_16072026074032
 ```
+
+#### SQL Injection Prevention
+
+`CREATE CERTIFICATE` is a DDL statement — HANA does not support bind parameters (`?`) for it. Both interpolated values are sanitized before use:
+
+- **Certificate name** (identifier) — double-quoted and escaped via `EscapeDoubleQuotes` (any `"` inside the name becomes `""`)
+- **PEM content** (string literal) — single-quoted and escaped via `EscapeSingleQuotes` (any `'` inside the PEM becomes `''`)
 
 ## References
 
