@@ -1,0 +1,141 @@
+---
+sidebar_position: 3
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Role management
+
+In this chapter you will learn how to use **Crossplane** to manage roles in your instances of [HANA Cloud](https://www.sap.com/products/technology-platform/hana.html).
+We are using the provider to provision `Role`s in an existing service instance using the IaD approach.
+
+See [full CRD reference](https://github.com/SAP/crossplane-provider-hana/tree/main/apis)
+
+## 🚧 Prerequisites
+- You've created a control plane.
+- You've created a [HANA Cloud instance](/docs/crossplane-provider-hana/docs/end-user-guides/setup)
+- You've setup the [HANA Provider](/docs/crossplane-provider-hana/docs/end-user-guides/setup#install-provider)
+
+## Create a Role
+
+We begin by provisioning a `Role` resource.
+
+```yaml title="role.yaml"
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: Role
+metadata:
+  name: my-orchestrated-role
+spec:
+  forProvider:
+    roleName: MY_ROLE
+  providerConfigRef:
+    name: hana-providerconfig
+```
+
+We now apply the desired resource to our control plane so that the provider provisions it accordingly.
+
+```sh
+kubectl create -f role.yaml
+```
+
+After a few moments the role is created in your HANA Cloud instance.
+
+## Privileges vs. roles — two different fields
+
+A `Role` can be granted **privileges** (system/object privileges) and other **roles**. In HANA
+these are stored and managed differently, so the CRD exposes them as **two separate fields**:
+
+| Field | HANA catalog | Managed with | Example entry |
+| --- | --- | --- | --- |
+| `spec.forProvider.privileges` | `GRANTED_PRIVILEGES` | `GRANT`/`REVOKE` privilege | `CREATE ANY` |
+| `spec.forProvider.roles` | `GRANTED_ROLES` | `GRANT`/`REVOKE` role | `MY_OTHER_ROLE` |
+
+```yaml title="role.yaml"
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: Role
+metadata:
+  name: my-orchestrated-role
+spec:
+  forProvider:
+    roleName: MY_ROLE
+    privileges:
+      - CREATE ANY
+    roles:
+      - MY_OTHER_ROLE
+  providerConfigRef:
+    name: hana-providerconfig
+```
+
+Adding an item to a list has the effect of granting it; removing one has the effect of revoking it.
+To grant or revoke, patch the `Role` resource by updating the corresponding list.
+
+:::danger Put role names under `roles`, not `privileges`
+
+HANA's `GRANT <name> TO <grantee>` statement is **syntactically identical** for a system
+privilege and a role, so HANA will silently accept a **role** name placed under `privileges`.
+It records the grant in `GRANTED_ROLES` (never in `GRANTED_PRIVILEGES`), which means the desired
+`privileges` entry can never match the observed state and the resource would otherwise re-grant
+it on every reconcile.
+
+The provider detects this misconfiguration during `Observe` and refuses to proceed: the `Role`
+is marked `Synced=False` with a `ReconcileError` and emits a Warning event naming the offending
+entries. **Move those names into the `roles` field to resolve it.**
+
+```text
+Status:
+  Conditions:
+    Reason:   ReconcileError
+    Status:   False
+    Type:     Synced
+    Message:  observe failed: privileges contains role name(s) that must be moved to
+              spec.forProvider.roles: [MY_OTHER_ROLE]
+Events:
+  Type     Reason                         Message
+  ----     ------                         -------
+  Warning  CannotObserveExternalResource  privileges contains role name(s) that must be moved
+                                           to spec.forProvider.roles: [MY_OTHER_ROLE]
+```
+
+While a `Role` is in this state, crossplane requeues it with backoff and issues **no** further
+grants/revokes against HANA — it is safe to leave until you fix the manifest.
+:::
+
+## Grant a schema-qualified (HDI container) role
+
+Roles created by an HDI container are schema-qualified. Write them under `roles` in the canonical
+`"CONTAINER"."namespace::role"` form (schema and name each double-quoted, the dot outside the
+quotes). An optional `WITH ADMIN OPTION` suffix is honored.
+
+```yaml title="role.yaml"
+spec:
+  forProvider:
+    roleName: MY_ROLE
+    roles:
+      - '"MY_CONTAINER"."namespace::reader"'
+      - '"MY_CONTAINER"."namespace::writer" WITH ADMIN OPTION'
+```
+
+## Assign an LDAP group or a role group
+
+`Role` also supports mapping to LDAP groups and setting a role group.
+
+```yaml title="role.yaml"
+spec:
+  forProvider:
+    roleName: MY_ROLE
+    ldapGroups:
+      - "cn=my-group,ou=groups,dc=example,dc=com"
+    rolegroup: MY_ROLEGROUP
+```
+
+## ⁉ FAQs
+
+**Why is my `Role` stuck at `Synced=False` with `ReconcileError`?**
+The most common cause is a role name listed under `privileges`. Move it to `roles` (see the
+warning above). Another cause is referencing a role or privilege that does not exist in HANA — the
+event message will name the failing entry.
+
+For anything else, [open a GitHub issue](https://github.com/SAP/crossplane-provider-hana/issues/new/choose) and help us build this section.
+
+For more ways to reach us, see [👐 Support, Feedback](https://github.com/SAP/crossplane-provider-hana#-support-feedback).
