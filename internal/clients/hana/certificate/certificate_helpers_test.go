@@ -143,13 +143,13 @@ func TestSanitizeIdentifier(t *testing.T) {
 		input string
 		want  string
 	}{
-		"AlreadyClean":      {input: "EXAMPLE_CA", want: "EXAMPLE_CA"},
-		"Lowercase":         {input: "example-ca", want: "EXAMPLE_CA"},
-		"Dots":              {input: "my.ca.cert", want: "MY_CA_CERT"},
-		"Spaces":            {input: "my ca cert", want: "MY_CA_CERT"},
-		"Mixed":             {input: "AWS-CF-DEL101", want: "AWS_CF_DEL101"},
-		"LeadingTrailing":   {input: "-example-", want: "_EXAMPLE_"},
-		"Numbers":           {input: "cert2026", want: "CERT2026"},
+		"AlreadyClean":    {input: "EXAMPLE_CA", want: "EXAMPLE_CA"},
+		"Lowercase":       {input: "example-ca", want: "EXAMPLE_CA"},
+		"Dots":            {input: "my.ca.cert", want: "MY_CA_CERT"},
+		"Spaces":          {input: "my ca cert", want: "MY_CA_CERT"},
+		"Mixed":           {input: "AWS-CF-DEL101", want: "AWS_CF_DEL101"},
+		"LeadingTrailing": {input: "-example-", want: "_EXAMPLE_"},
+		"Numbers":         {input: "cert2026", want: "CERT2026"},
 	}
 
 	for name, tc := range cases {
