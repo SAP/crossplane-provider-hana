@@ -1,0 +1,29 @@
+# Secret holding the PEM-encoded CA certificate (or certificate chain).
+# Replace the value of ca.crt with your base64-encoded PEM content.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: example-ca-cert-secret
+  namespace: crossplane-system
+type: Opaque
+data:
+  # base64-encoded PEM certificate, e.g.:
+  #   kubectl create secret generic example-ca-cert-secret \
+  #     --from-file=ca.crt=./ca.crt -n crossplane-system
+  ca.crt: ""
+---
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: Certificate
+metadata:
+  name: example-certificate
+spec:
+  forProvider:
+    # Base name used in HANA. Each cert in a chain is stored as
+    # <name>-1, <name>-2, etc.
+    name: example-ca
+    certificateSecretRef:
+      namespace: crossplane-system
+      name: example-ca-cert-secret
+      key: ca.crt
+  providerConfigRef:
+    name: example
