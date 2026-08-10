@@ -47,7 +47,7 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.DbSchemaParamet
 	query := fmt.Sprintf(`CREATE SCHEMA "%s"`, utils.EscapeDoubleQuotes(parameters.SchemaName))
 
 	if parameters.Owner != "" {
-		query += fmt.Sprintf(" OWNED BY %s", parameters.Owner)
+		query += fmt.Sprintf(` OWNED BY "%s"`, utils.EscapeDoubleQuotes(parameters.Owner))
 	}
 
 	_, err := c.ExecContext(ctx, query)
