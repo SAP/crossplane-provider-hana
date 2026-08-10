@@ -380,7 +380,6 @@ func TestCreate(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	errBoom := errors.New("boom")
-
 	type fields struct {
 		client certclient.CertificateClient
 		log    logging.Logger

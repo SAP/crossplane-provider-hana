@@ -1,0 +1,14 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: Certificate
+metadata:
+  name: example-certificate
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    name: test-ca
+    certificateSecretRef:
+      namespace: crossplane-system
+      name: test-cert-secret
+      key: ca.crt
+  providerConfigRef:
+    name: example

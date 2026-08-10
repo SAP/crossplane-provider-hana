@@ -299,3 +299,141 @@ func TestCreate(t *testing.T) {
 		})
 	}
 }
+
+// nolint: contextcheck
+func TestDelete(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	id1, id2 := 1, 2
+
+	mockDBWithTxAndQuery := func(setupMock func(mock sqlmock.Sqlmock)) fake.MockDB {
+		db, mock, _ := sqlmock.New()
+		setupMock(mock)
+		return fake.MockDB{
+			MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+				return db.QueryContext(ctx, query, args...)
+			},
+			MockBeginTx: func(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+				return db.BeginTx(ctx, opts)
+			},
+		}
+	}
+
+	type fields struct {
+		db fake.MockDB
+	}
+
+	type args struct {
+		ctx        context.Context
+		parameters *adminv1alpha1.CertificateParameters
+	}
+
+	type want struct {
+		err error
+	}
+
+	cases := map[string]struct {
+		reason string
+		fields fields
+		args   args
+		want   want
+	}{
+		"NoCertificatesFound": {
+			reason: "If Read returns nil, Delete should be a no-op and return no error",
+			fields: fields{
+				db: fake.MockDB{
+					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+						return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"})), nil
+					},
+				},
+			},
+			args: args{
+				ctx:        context.Background(),
+				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+			},
+			want: want{err: nil},
+		},
+		"ErrRead": {
+			reason: "An error from Read should be returned before any DROP is attempted",
+			fields: fields{
+				db: fake.MockDB{
+					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+						return nil, errBoom
+					},
+				},
+			},
+			args: args{
+				ctx:        context.Background(),
+				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+			},
+			want: want{err: fmt.Errorf("failed to read certificates before delete: %w",
+				fmt.Errorf("failed to query certificates: %w", errBoom))},
+		},
+		"ErrDropSingleCert": {
+			reason: "A SQL error on DROP should roll back and return an error",
+			fields: fields{
+				db: mockDBWithTxAndQuery(func(mock sqlmock.Sqlmock) {
+					mock.ExpectQuery("SELECT").
+						WillReturnRows(sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"}).
+							AddRow(1, "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032"))
+					mock.ExpectBegin()
+					mock.ExpectExec("DROP CERTIFICATE").WillReturnError(errBoom)
+					mock.ExpectRollback()
+				}),
+			},
+			args: args{
+				ctx:        context.Background(),
+				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+			},
+			want: want{err: fmt.Errorf("failed to drop certificate %q: %w", "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032", errBoom)},
+		},
+		"SuccessSingleCert": {
+			reason: "A single certificate should be dropped and committed",
+			fields: fields{
+				db: mockDBWithTxAndQuery(func(mock sqlmock.Sqlmock) {
+					mock.ExpectQuery("SELECT").
+						WillReturnRows(sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"}).
+							AddRow(id1, "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032"))
+					mock.ExpectBegin()
+					mock.ExpectExec("DROP CERTIFICATE").WillReturnResult(sqlmock.NewResult(1, 1))
+					mock.ExpectCommit()
+				}),
+			},
+			args: args{
+				ctx:        context.Background(),
+				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+			},
+			want: want{err: nil},
+		},
+		"SuccessChain": {
+			reason: "A two-certificate chain should drop both and commit",
+			fields: fields{
+				db: mockDBWithTxAndQuery(func(mock sqlmock.Sqlmock) {
+					mock.ExpectQuery("SELECT").
+						WillReturnRows(sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"}).
+							AddRow(id1, "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032").
+							AddRow(id2, "MY_CA_CRT_SRV_CERTIFICATE_1002_16072026074032"))
+					mock.ExpectBegin()
+					mock.ExpectExec("DROP CERTIFICATE").WillReturnResult(sqlmock.NewResult(1, 1))
+					mock.ExpectExec("DROP CERTIFICATE").WillReturnResult(sqlmock.NewResult(1, 1))
+					mock.ExpectCommit()
+				}),
+			},
+			args: args{
+				ctx:        context.Background(),
+				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+			},
+			want: want{err: nil},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			c := Client{DB: tc.fields.db}
+			err := c.Delete(tc.args.ctx, tc.args.parameters)
+			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+				t.Errorf("\n%s\nc.Delete(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}

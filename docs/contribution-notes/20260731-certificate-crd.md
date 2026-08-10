@@ -161,12 +161,17 @@ Both the certificate name (double-quoted identifier) and the PEM content (single
 
 ##### Delete
 
-Currently a no-op (orphan semantics). A future iteration will issue:
+The provider reads the current certificate names from HANA first (since derived names are not stored in spec), then drops each one inside a single transaction:
 
 ```sql
-DROP CERTIFICATE "<BASE>_CRT_SRV_CERTIFICATE_<SERIAL>_<TIMESTAMP>";
+BEGIN;
+DROP CERTIFICATE "<BASE>_CRT_SRV_CERTIFICATE_<SERIAL1>_<TIMESTAMP1>";
+DROP CERTIFICATE "<BASE>_CRT_SRV_CERTIFICATE_<SERIAL2>_<TIMESTAMP2>";
 -- ... one per imported certificate
+COMMIT;
 ```
+
+If the certificate is still referenced by a `PersonalSecurityEnvironment`, HANA will reject the `DROP` statement, the transaction will be rolled back, and the reconcile will fail with an error. The PSE `certificateRefs` must be updated to remove the reference before deleting the `Certificate` CR.
 
 ##### Update
 

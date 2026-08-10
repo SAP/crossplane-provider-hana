@@ -124,5 +124,39 @@ func (c Client) Delete(
 	ctx context.Context,
 	parameters *adminv1alpha1.CertificateParameters,
 ) error {
+	// Read first to discover the derived HANA certificate names — they are not
+	// stored in spec, only the base name is.
+	observed, err := c.Read(ctx, parameters)
+	if err != nil {
+		return fmt.Errorf("failed to read certificates before delete: %w", err)
+	}
+	if observed == nil {
+		return nil
+	}
+
+	tx, err := c.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	for _, cert := range observed.Certificates {
+		//nolint:gosec // G201: SQL string formatting — name is sanitized via EscapeDoubleQuotes
+		query := fmt.Sprintf(
+			`DROP CERTIFICATE "%s"`,
+			utils.EscapeDoubleQuotes(cert.Name),
+		)
+		if _, err = tx.ExecContext(ctx, query); err != nil {
+			return fmt.Errorf("failed to drop certificate %q: %w", cert.Name, err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit certificate delete transaction: %w", err)
+	}
 	return nil
 }
