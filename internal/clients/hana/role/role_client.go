@@ -18,7 +18,9 @@ type RoleClient interface {
 	hana.QueryClient[v1alpha1.RoleParameters, v1alpha1.RoleObservation]
 	UpdateLdapGroups(ctx context.Context, parameters *v1alpha1.RoleParameters, groupsToAdd, groupsToRemove []string) error
 	UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error
+	UpdateRoles(ctx context.Context, parameters *v1alpha1.RoleParameters, rolesToGrant, rolesToRevoke []string) error
 	UpdateRolegroup(ctx context.Context, parameters *v1alpha1.RoleParameters) error
+	GetDefaultSchema() string
 }
 
 // Client struct holds the connection to the db
@@ -64,8 +66,15 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.RoleParameters) (
 		return observed, err
 	}
 
-	grantee := getRoleName(parameters.Schema, parameters.RoleName)
+	grantee := buildGranteeLiteral(parameters.Schema, parameters.RoleName)
 	observed.Privileges, err = c.QueryPrivileges(ctx, grantee, privilege.GranteeTypeRole)
+	if err != nil {
+		return observed, err
+	}
+
+	// Roles granted to this role (e.g. HDI container roles) are separate from
+	// direct privileges and live in the GRANTED_ROLES catalog view.
+	observed.Roles, err = c.QueryRoles(ctx, grantee, privilege.GranteeTypeRole)
 	if err != nil {
 		return observed, err
 	}
@@ -122,6 +131,12 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.RoleParameters)
 	if len(parameters.Privileges) > 0 {
 		if err := c.GrantPrivileges(ctx, c.username, grantee, parameters.Privileges); err != nil {
 			return fmt.Errorf("failed to grant privileges: %w", err)
+		}
+	}
+
+	if len(parameters.Roles) > 0 {
+		if err := c.GrantRoles(ctx, c.username, grantee, parameters.Roles); err != nil {
+			return fmt.Errorf("failed to grant roles: %w", err)
 		}
 	}
 
@@ -195,6 +210,27 @@ func (c Client) UpdatePrivileges(ctx context.Context, parameters *v1alpha1.RoleP
 	return nil
 }
 
+// UpdateRoles grants and/or revokes roles to/from this role. Mirrors
+// UpdatePrivileges but delegates to GrantRoles/RevokeRoles, which handle
+// schema-qualified role names (e.g. HDI container roles) correctly.
+func (c Client) UpdateRoles(ctx context.Context, parameters *v1alpha1.RoleParameters, toGrant, toRevoke []string) error {
+
+	grantee := getRoleName(parameters.Schema, parameters.RoleName)
+	if len(toGrant) > 0 {
+		if err := c.GrantRoles(ctx, c.username, grantee, toGrant); err != nil {
+			return fmt.Errorf("failed to grant roles: %w", err)
+		}
+	}
+
+	if len(toRevoke) > 0 {
+		if err := c.RevokeRoles(ctx, c.username, grantee, toRevoke); err != nil {
+			return fmt.Errorf("failed to revoke roles: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // Delete removes an existing role from the db
 func (c Client) Delete(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
 
@@ -207,11 +243,42 @@ func (c Client) Delete(ctx context.Context, parameters *v1alpha1.RoleParameters)
 	return nil
 }
 
+// getRoleName builds a quoted SQL identifier for use in DDL/DCL statements
+// (CREATE ROLE, GRANT ... TO <grantee>, etc.), where the role name must be a
+// quoted identifier: "NAME" or "SCHEMA"."NAME".
 func getRoleName(schemaName, roleName string) string {
-	roleNameEscaped := fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(roleName))
-	if schemaName != "" {
-		schemaNameEscaped := fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(schemaName))
-		return fmt.Sprintf("%s.%s", schemaNameEscaped, roleNameEscaped)
+	return joinRoleIdentifier(schemaName, roleName, true)
+}
+
+// buildGranteeLiteral builds the grantee value used to match the GRANTEE column
+// of the GRANTED_PRIVILEGES / GRANTED_ROLES catalog views. Those columns store
+// the raw, UNQUOTED identifier value (e.g. DUMMY_SCHEMA::dummy_role_g), so the
+// grantee passed to QueryPrivileges/QueryRoles must be unquoted — unlike
+// getRoleName, which quotes for use as a SQL identifier. When a schema is set,
+// the two are joined by a bare dot (schema.name) so addGranteeQuery can split
+// them into the GRANTEE and GRANTEE_SCHEMA_NAME predicates.
+func buildGranteeLiteral(schemaName, roleName string) string {
+	return joinRoleIdentifier(schemaName, roleName, false)
+}
+
+// joinRoleIdentifier joins an optional schema and a role name using HANA's
+// schema-qualification structure (schema and name are separate components joined
+// by a dot). When quoted is true each component is wrapped in double quotes for
+// use as a SQL identifier ("SCHEMA"."NAME"); when false the raw values are joined
+// (schema.name) to match a catalog column literal. The dot always sits between
+// the two components, never inside a quoted identifier — HANA treats "A.B" as a
+// single identifier but "A"."B" (or a.b) as schema-qualified.
+func joinRoleIdentifier(schemaName, roleName string, quoted bool) string {
+	name := roleName
+	if quoted {
+		name = fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(roleName))
 	}
-	return roleNameEscaped
+	if schemaName == "" {
+		return name
+	}
+	schema := schemaName
+	if quoted {
+		schema = fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(schemaName))
+	}
+	return fmt.Sprintf("%s.%s", schema, name)
 }
