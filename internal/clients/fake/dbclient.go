@@ -13,6 +13,7 @@ type MockDB struct {
 	MockExecContext     func(ctx context.Context, query string, args ...any) (sql.Result, error)
 	MockQueryRowContext func(ctx context.Context, query string, args ...any) *sql.Row
 	MockQueryContext    func(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	MockBeginTx         func(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
 
 func (m MockDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
@@ -27,6 +28,12 @@ func (m MockDB) QueryContext(ctx context.Context, query string, args ...any) (*s
 	}
 	// Return empty result set by default
 	return MockRowsToSQLRows(sqlmock.NewRows([]string{})), nil
+}
+func (m MockDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	if m.MockBeginTx != nil {
+		return m.MockBeginTx(ctx, opts)
+	}
+	return nil, nil
 }
 
 type MockConnector struct {

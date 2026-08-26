@@ -95,6 +95,17 @@ spec:
                       rule: self == oldSelf
                   rolegroup:
                     type: string
+                  roles:
+                    description: |-
+                      Roles are role names to grant to this role. Each entry follows the same
+                      syntax accepted by the User resource's roles field: a plain top-level
+                      role name (e.g. "GENERIC_ROLE"), or a schema-qualified HDI container
+                      role written as `"CONTAINER"."namespace::role"`. An optional
+                      `WITH ADMIN OPTION` suffix is honored.
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
                   schema:
                     type: string
                     x-kubernetes-validations:
@@ -286,6 +297,13 @@ spec:
                     type: string
                   rolegroup:
                     type: string
+                  roles:
+                    description: |-
+                      Roles observed on the role, in the canonical `"SCHEMA"."NAME"` form
+                      (top-level roles are emitted as `"NAME"`).
+                    items:
+                      type: string
+                    type: array
                   schema:
                     type: string
                 type: object
