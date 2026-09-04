@@ -4,7 +4,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: personalsecurityenvironments.admin.hana.sap.crossplane.io
+  name: jwtproviders.admin.hana.sap.crossplane.io
 spec:
   group: admin.hana.sap.crossplane.io
   names:
@@ -12,12 +12,10 @@ spec:
     - crossplane
     - managed
     - hana
-    kind: PersonalSecurityEnvironment
-    listKind: PersonalSecurityEnvironmentList
-    plural: personalsecurityenvironments
-    shortNames:
-    - pse
-    singular: personalsecurityenvironment
+    kind: JWTProvider
+    listKind: JWTProviderList
+    plural: jwtproviders
+    singular: jwtprovider
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -36,7 +34,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: A PersonalSecurityEnvironment is an example API type.
+        description: A JWTProvider models a HANA JWT PROVIDER configuration.
         properties:
           apiVersion:
             description: |-
@@ -56,8 +54,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: PersonalSecurityEnvironmentSpec defines the desired state
-              of PersonalSecurityEnvironment
+            description: A JWTProviderSpec defines the desired state of a JWTProvider.
             properties:
               deletionPolicy:
                 default: Delete
@@ -74,176 +71,72 @@ spec:
                 - Delete
                 type: string
               forProvider:
-                description: PersonalSecurityEnvironmentParameters defines the parameters
-                  for PSE
+                description: JWTProviderParameters are the configurable fields of
+                  a JWTProvider.
                 properties:
-                  certificateRefs:
+                  applicationUserClaim:
                     description: |-
-                      Certificate references to add to the PSE. Only meaningful when Purpose
-                      is X509.
-                    items:
-                      description: CertificateRef references certificates
-                      properties:
-                        id:
-                          description: |-
-                            Identifier for the certificate
-                            Mandatory if Name is not provided
-                          type: integer
-                        name:
-                          description: |-
-                            Name of the certificate
-                            Mandatory if ID is not provided
-                          type: string
-                      type: object
-                      x-kubernetes-validations:
-                      - rule: has(self.id) || has(self.name)
-                    type: array
-                  jwtProviderRef:
-                    description: Reference to JWTProvider. Only meaningful when Purpose
-                      is JWT.
-                    properties:
-                      name:
-                        default: ""
-                        type: string
-                      providerRef:
-                        description: A Reference to a named object.
-                        properties:
-                          name:
-                            description: Name of the referenced object.
-                            type: string
-                          policy:
-                            description: Policies for referencing.
-                            properties:
-                              resolution:
-                                default: Required
-                                description: |-
-                                  Resolution specifies whether resolution of this reference is required.
-                                  The default is 'Required', which means the reconcile will fail if the
-                                  reference cannot be resolved. 'Optional' means this reference will be
-                                  a no-op if it cannot be resolved.
-                                enum:
-                                - Required
-                                - Optional
-                                type: string
-                              resolve:
-                                description: |-
-                                  Resolve specifies when this reference should be resolved. The default
-                                  is 'IfNotPresent', which will attempt to resolve the reference only when
-                                  the corresponding field is not present. Use 'Always' to resolve the
-                                  reference on every reconcile.
-                                enum:
-                                - Always
-                                - IfNotPresent
-                                type: string
-                            type: object
-                        required:
-                        - name
-                        type: object
-                    type: object
-                  name:
-                    description: Name for the PSE
+                      ApplicationUserClaim is the claim mapped to XS_APPLICATIONUSER on the
+                      resulting session. Empty leaves the binding unset.
                     type: string
-                  publicKeyRefs:
+                  caseInsensitiveIdentity:
+                    default: true
                     description: |-
-                      PublicKeyRefs are public keys to add to the PSE via
-                      `ALTER PSE <name> ADD PUBLIC KEY <key>`. Only meaningful when Purpose
-                      is JWT.
+                      CaseInsensitiveIdentity controls whether the external identity is
+                      matched case-insensitively. Recommended for email-based identities.
+                    type: boolean
+                  claimFilters:
+                    description: |-
+                      ClaimFilters reject incoming tokens whose values for the named claim
+                      do not include the listed value.
                     items:
                       description: |-
-                        PublicKeyRef references a public key, either by HANA name or via a
-                        Crossplane reference to a PublicKey managed resource.
+                        JWTClaimFilter restricts incoming tokens by requiring that the named claim
+                        contains a specific value. Maps to
+                        `ALTER JWT PROVIDER <name> SET CLAIM '<claim>' HAS MEMBER '<value>'`.
                       properties:
-                        name:
-                          default: ""
+                        claim:
+                          description: Claim is the JWT claim to inspect (e.g. "groups").
+                          minLength: 1
                           type: string
-                        providerRef:
-                          description: A Reference to a named object.
-                          properties:
-                            name:
-                              description: Name of the referenced object.
-                              type: string
-                            policy:
-                              description: Policies for referencing.
-                              properties:
-                                resolution:
-                                  default: Required
-                                  description: |-
-                                    Resolution specifies whether resolution of this reference is required.
-                                    The default is 'Required', which means the reconcile will fail if the
-                                    reference cannot be resolved. 'Optional' means this reference will be
-                                    a no-op if it cannot be resolved.
-                                  enum:
-                                  - Required
-                                  - Optional
-                                  type: string
-                                resolve:
-                                  description: |-
-                                    Resolve specifies when this reference should be resolved. The default
-                                    is 'IfNotPresent', which will attempt to resolve the reference only when
-                                    the corresponding field is not present. Use 'Always' to resolve the
-                                    reference on every reconcile.
-                                  enum:
-                                  - Always
-                                  - IfNotPresent
-                                  type: string
-                              type: object
-                          required:
-                          - name
-                          type: object
+                        value:
+                          description: |-
+                            Value that must appear in the claim. For array-valued claims, HANA
+                            checks for membership; for scalar claims it checks equality.
+                          minLength: 1
+                          type: string
+                      required:
+                      - claim
+                      - value
                       type: object
                     type: array
-                  purpose:
-                    default: X509
+                  externalIdentityClaim:
+                    default: sub
                     description: |-
-                      Purpose selects whether this PSE binds to an X509Provider or a
-                      JWTProvider. Defaults to X509 to preserve existing behavior.
-                    enum:
-                    - X509
-                    - JWT
+                      ExternalIdentityClaim is the JWT claim HANA uses to look up the mapped
+                      database user via `ADD IDENTITY '<value>' FOR JWT PROVIDER <name>`.
+                      Defaults to "sub" if unset.
                     type: string
-                  x509ProviderRef:
-                    description: Reference to X509Provider. Only meaningful when Purpose
-                      is X509.
-                    properties:
-                      name:
-                        default: ""
-                        type: string
-                      providerRef:
-                        description: A Reference to a named object.
-                        properties:
-                          name:
-                            description: Name of the referenced object.
-                            type: string
-                          policy:
-                            description: Policies for referencing.
-                            properties:
-                              resolution:
-                                default: Required
-                                description: |-
-                                  Resolution specifies whether resolution of this reference is required.
-                                  The default is 'Required', which means the reconcile will fail if the
-                                  reference cannot be resolved. 'Optional' means this reference will be
-                                  a no-op if it cannot be resolved.
-                                enum:
-                                - Required
-                                - Optional
-                                type: string
-                              resolve:
-                                description: |-
-                                  Resolve specifies when this reference should be resolved. The default
-                                  is 'IfNotPresent', which will attempt to resolve the reference only when
-                                  the corresponding field is not present. Use 'Always' to resolve the
-                                  reference on every reconcile.
-                                enum:
-                                - Always
-                                - IfNotPresent
-                                type: string
-                            type: object
-                        required:
-                        - name
-                        type: object
-                    type: object
+                  issuer:
+                    description: Issuer URL exactly as it appears in the `iss` claim
+                      of accepted tokens.
+                    minLength: 1
+                    type: string
+                  name:
+                    description: Name of the JWT provider.
+                    maxLength: 127
+                    minLength: 1
+                    type: string
+                  priority:
+                    default: 100
+                    description: |-
+                      Priority for provider selection when multiple JWT providers match the
+                      same issuer. Lower numbers take precedence. HANA defaults new providers
+                      to 100 when omitted from CREATE JWT PROVIDER; we mirror that default so
+                      the reconciler can always drive the value authoritatively.
+                    type: integer
                 required:
+                - issuer
                 - name
                 type: object
               managementPolicies:
@@ -414,50 +307,46 @@ spec:
             - forProvider
             type: object
           status:
+            description: A JWTProviderStatus represents the observed state of a JWTProvider.
             properties:
               atProvider:
-                description: PersonalSecurityEnvironmentObservation defines the observed
-                  state of PersonalSecurityEnvironment
+                description: JWTProviderObservation are the observable fields of a
+                  JWTProvider.
                 properties:
-                  certificateRefs:
-                    description: Certificate references currently in the PSE.
+                  applicationUserClaim:
+                    type: string
+                  caseInsensitiveIdentity:
+                    type: boolean
+                  claimFilters:
                     items:
-                      description: CertificateRef references certificates
+                      description: |-
+                        JWTClaimFilter restricts incoming tokens by requiring that the named claim
+                        contains a specific value. Maps to
+                        `ALTER JWT PROVIDER <name> SET CLAIM '<claim>' HAS MEMBER '<value>'`.
                       properties:
-                        id:
-                          description: |-
-                            Identifier for the certificate
-                            Mandatory if Name is not provided
-                          type: integer
-                        name:
-                          description: |-
-                            Name of the certificate
-                            Mandatory if ID is not provided
+                        claim:
+                          description: Claim is the JWT claim to inspect (e.g. "groups").
+                          minLength: 1
                           type: string
+                        value:
+                          description: |-
+                            Value that must appear in the claim. For array-valued claims, HANA
+                            checks for membership; for scalar claims it checks equality.
+                          minLength: 1
+                          type: string
+                      required:
+                      - claim
+                      - value
                       type: object
-                      x-kubernetes-validations:
-                      - rule: has(self.id) || has(self.name)
                     type: array
-                  jwtProviderName:
-                    description: Name of the JWT provider associated with the PSE
+                  externalIdentityClaim:
+                    type: string
+                  issuer:
                     type: string
                   name:
-                    description: Name of the PSE
                     type: string
-                  publicKeys:
-                    description: Public key names currently in the PSE.
-                    items:
-                      type: string
-                    type: array
-                  purpose:
-                    description: Purpose currently set on the PSE.
-                    enum:
-                    - X509
-                    - JWT
-                    type: string
-                  x509ProviderName:
-                    description: Name of the X.509 provider associated with the PSE
-                    type: string
+                  priority:
+                    type: integer
                 type: object
               conditions:
                 description: Conditions of the resource.

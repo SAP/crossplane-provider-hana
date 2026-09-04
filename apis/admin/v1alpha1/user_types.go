@@ -17,6 +17,7 @@ import (
 type Authentication struct {
 	Password      *Password         `json:"password,omitempty"`
 	X509Providers []X509UserMapping `json:"x509Providers,omitempty"`
+	JWTProviders  []JWTUserMapping  `json:"jwtProviders,omitempty"`
 }
 
 // Password authentication type
@@ -56,6 +57,14 @@ type UserParameters struct {
 	// +kubebuilder:default:=true
 	// +kubebuilder:validation:Optional
 	IsPasswordLifetimeCheckEnabled bool `json:"isPasswordLifetimeCheckEnabled" default:"true"`
+
+	// EnableClientConnect controls whether the user is allowed to open
+	// external client connections. `CREATE RESTRICTED USER` creates the user
+	// without this privilege by default; without it, non-password auth flows
+	// fail with internal error U04 at connect time. Defaults to true.
+	// +kubebuilder:default:=true
+	// +kubebuilder:validation:Optional
+	EnableClientConnect bool `json:"enableClientConnect,omitempty" default:"true"`
 }
 
 // UserObservation are the observable fields of a User.
@@ -68,6 +77,9 @@ type UserObservation struct {
 
 	// +kubebuilder:validation:Optional
 	X509Providers []X509UserMapping `json:"x509Providers,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	JWTProviders []JWTUserMapping `json:"jwtProviders,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	LastPasswordChangeTime metav1.Time `json:"lastPasswordChangeTime,omitempty"`
@@ -95,6 +107,16 @@ type UserObservation struct {
 
 	// +kubebuilder:validation:Optional
 	IsPasswordEnabled *bool `json:"isPasswordEnabled,omitempty"`
+
+	// IsClientConnectEnabled reflects whether the user is permitted to open
+	// external client connections.
+	// +kubebuilder:validation:Optional
+	IsClientConnectEnabled *bool `json:"isClientConnectEnabled,omitempty"`
+
+	// IsJWTEnabled reflects whether `ALTER USER ... ENABLE JWT` has been
+	// applied to the user.
+	// +kubebuilder:validation:Optional
+	IsJWTEnabled *bool `json:"isJWTEnabled,omitempty"`
 }
 
 // A UserSpec defines the desired state of a User.

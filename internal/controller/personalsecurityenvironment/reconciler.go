@@ -159,7 +159,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		}, nil
 	}
 
-	providerName, err := c.getX509ProviderName(ctx, parameters.X509ProviderRef)
+	providerName, err := c.getProviderName(ctx, parameters)
 	if err != nil {
 		return managed.ExternalObservation{}, fmt.Errorf("failed to get provider for pse: %w", err)
 	}
@@ -184,7 +184,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	parameters := cr.Spec.ForProvider.DeepCopy()
 
-	providerName, err := c.getX509ProviderName(ctx, parameters.X509ProviderRef)
+	providerName, err := c.getProviderName(ctx, parameters)
 	if err != nil {
 		return managed.ExternalCreation{}, fmt.Errorf("failed to get provider for pse: %w", err)
 	}
@@ -203,20 +203,36 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating Personal Security Environment", "name", cr.Name)
 
-	toAdd := certListDifference(parameters.CertificateRefs, observed.CertificateRefs)
-	toRemove := certListDifference(observed.CertificateRefs, parameters.CertificateRefs)
+	purpose := effectivePurpose(parameters.Purpose)
+	var certsToAdd, certsToRemove []adminv1alpha1.CertificateRef
+	var keysToAdd, keysToRemove []string
 
-	providerName, err := c.getX509ProviderName(ctx, parameters.X509ProviderRef)
+	// purpose has been run through effectivePurpose, so it's X509 or JWT.
+	switch purpose {
+	case adminv1alpha1.PSEPurposeJWT:
+		desiredKeys := publicKeyNames(parameters.PublicKeyRefs)
+		keysToAdd = stringSliceDifference(desiredKeys, observed.PublicKeys)
+		keysToRemove = stringSliceDifference(observed.PublicKeys, desiredKeys)
+	case adminv1alpha1.PSEPurposeX509:
+		certsToAdd = certListDifference(parameters.CertificateRefs, observed.CertificateRefs)
+		certsToRemove = certListDifference(observed.CertificateRefs, parameters.CertificateRefs)
+	}
+
+	providerName, err := c.getProviderName(ctx, parameters)
 	if err != nil {
 		return managed.ExternalUpdate{}, fmt.Errorf("failed to get provider for pse: %w", err)
 	}
 
 	// Avoid setting the provider name if it hasn't changed
-	if providerName == cr.Status.AtProvider.X509ProviderName {
+	currentProvider := observed.X509ProviderName
+	if purpose == adminv1alpha1.PSEPurposeJWT {
+		currentProvider = observed.JWTProviderName
+	}
+	if providerName == currentProvider {
 		providerName = ""
 	}
 
-	if err := c.client.Update(ctx, parameters.Name, toAdd, toRemove, providerName); err != nil {
+	if err := c.client.Update(ctx, parameters.Name, purpose, certsToAdd, certsToRemove, keysToAdd, keysToRemove, providerName); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
 
@@ -243,10 +259,93 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func isUpToDate(p *adminv1alpha1.PersonalSecurityEnvironmentParameters, o adminv1alpha1.PersonalSecurityEnvironmentObservation, providerName string) bool {
-	return len(p.CertificateRefs) == len(o.CertificateRefs) &&
-		len(certListDifference(p.CertificateRefs, o.CertificateRefs)) == 0 &&
-		providerName == o.X509ProviderName &&
-		p.Name == o.Name
+	if p.Name != o.Name {
+		return false
+	}
+	purpose := effectivePurpose(p.Purpose)
+	// purpose has been run through effectivePurpose, so it's X509 or JWT.
+	switch purpose {
+	case adminv1alpha1.PSEPurposeJWT:
+		desired := publicKeyNames(p.PublicKeyRefs)
+		if len(desired) != len(o.PublicKeys) ||
+			len(stringSliceDifference(desired, o.PublicKeys)) != 0 ||
+			len(stringSliceDifference(o.PublicKeys, desired)) != 0 {
+			return false
+		}
+		return providerName == o.JWTProviderName
+	case adminv1alpha1.PSEPurposeX509:
+		return len(p.CertificateRefs) == len(o.CertificateRefs) &&
+			len(certListDifference(p.CertificateRefs, o.CertificateRefs)) == 0 &&
+			providerName == o.X509ProviderName
+	}
+	return false
+}
+
+func effectivePurpose(p adminv1alpha1.PSEPurpose) adminv1alpha1.PSEPurpose {
+	if p == "" {
+		return adminv1alpha1.PSEPurposeX509
+	}
+	return p
+}
+
+func publicKeyNames(refs []adminv1alpha1.PublicKeyRef) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if r.Name != "" {
+			out = append(out, r.Name)
+		}
+	}
+	return out
+}
+
+func stringSliceDifference(a, b []string) []string {
+	var diff []string
+	for _, x := range a {
+		found := false
+		for _, y := range b {
+			if x == y {
+				found = true
+				break
+			}
+		}
+		if !found {
+			diff = append(diff, x)
+		}
+	}
+	return diff
+}
+
+func (c *external) getProviderName(ctx context.Context, parameters *adminv1alpha1.PersonalSecurityEnvironmentParameters) (string, error) {
+	purpose := effectivePurpose(parameters.Purpose)
+	// purpose has been run through effectivePurpose, so it's X509 or JWT.
+	switch purpose {
+	case adminv1alpha1.PSEPurposeJWT:
+		return c.getJWTProviderName(ctx, parameters.JWTProviderRef)
+	case adminv1alpha1.PSEPurposeX509:
+		return c.getX509ProviderName(ctx, parameters.X509ProviderRef)
+	}
+	return "", nil
+}
+
+func (c *external) getJWTProviderName(ctx context.Context, ref *adminv1alpha1.JWTProviderRef) (string, error) {
+	if ref == nil {
+		return "", nil
+	}
+	switch {
+	case ref.ProviderRef != nil:
+		provider := adminv1alpha1.JWTProvider{}
+		if err := c.kube.Get(ctx, types.NamespacedName{Name: ref.ProviderRef.Name}, &provider); err != nil {
+			return "", err
+		}
+		return provider.Spec.ForProvider.Name, nil
+	case ref.Name != "":
+		return ref.Name, nil
+	default:
+		return "", errors.New("JWTProviderRef must have either ProviderRef or Name specified")
+	}
 }
 
 func (c *external) getX509ProviderName(ctx context.Context, ref *adminv1alpha1.X509ProviderRef) (string, error) {

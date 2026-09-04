@@ -99,22 +99,23 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 			t.Fatal(err)
 		}
 
-		var fn = func(u k8s.Object) bool {
-			return u.GetName() == user.GetName() && u.GetNamespace() == user.GetNamespace()
-		}
-
+		// Wait until Status.AtProvider.Privileges reflects the updated spec. A plain
+		// name/namespace match is a no-op that can fire before the update reconcile
+		// completes; matching on the observed privileges (order-insensitive) forces
+		// us to wait for the controller to actually apply and re-observe the change.
+		less := func(a, b string) bool { return a < b }
 		err = wait.For(
-			conditions.New(res).ResourceMatch(user, fn),
+			conditions.New(res).ResourceMatch(user, func(obj k8s.Object) bool {
+				u, ok := obj.(*v1alpha1.User)
+				if !ok {
+					return false
+				}
+				return cmp.Diff(privileges, u.Status.AtProvider.Privileges, cmpopts.SortSlices(less)) == ""
+			}),
+			wait.WithTimeout(2*time.Minute),
 		)
 		if err != nil {
-			t.Error(err)
-		}
-
-		less := func(a, b string) bool { return a < b }
-		equalIgnoreOrder := cmp.Diff(privileges, user.Status.AtProvider.Privileges, cmpopts.SortSlices(less)) == ""
-
-		if !equalIgnoreOrder {
-			t.Errorf("failed to update user privileges: Status does not match Spec. Name: %s, Namespace: %s", user.Name, user.Namespace)
+			t.Errorf("failed to update user privileges: Status does not match Spec. Name: %s, Namespace: %s: %v", user.Name, user.Namespace, err)
 
 			out, derr := exec.Command("kubectl", "describe", "user", user.Name, "-n", user.Namespace).CombinedOutput()
 			if derr != nil {
