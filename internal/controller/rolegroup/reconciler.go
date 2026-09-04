@@ -205,9 +205,8 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, fmt.Errorf(errCreateRolegroup, err)
 	}
 
-	cr.Status.AtProvider.RolegroupName = parameters.RolegroupName
-	cr.Status.AtProvider.DisableRoleAdmin = parameters.DisableRoleAdmin
-
+	// status.atProvider is intentionally NOT written here; Observe (which runs
+	// immediately after Create) re-derives every atProvider field from the DB.
 	c.log.Info("Successfully created rolegroup resource", "name", cr.Name, "rolegroupName", parameters.RolegroupName)
 
 	return managed.ExternalCreation{
@@ -238,7 +237,6 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 			c.log.Info("Error updating DisableRoleAdmin", "name", cr.Name, "error", err)
 			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRolegroup, err)
 		}
-		cr.Status.AtProvider.DisableRoleAdmin = parameters.DisableRoleAdmin
 		c.log.Info("Updated DisableRoleAdmin setting", "name", cr.Name, "value", parameters.DisableRoleAdmin)
 	}
 

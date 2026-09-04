@@ -76,7 +76,7 @@ spec:
                 properties:
                   auditActions:
                     items:
-                      pattern: ^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
+                      pattern: ^[^",\$'\+<>|\[\]\{\}\(\)!%,/:;=\?@\\^~\x60]+$
                       type: string
                     type: array
                     x-kubernetes-list-type: set

@@ -23,6 +23,7 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 	"github.com/crossplane/crossplane-runtime/pkg/test"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -45,6 +46,7 @@ type mockClient struct {
 	MockDelete           func(ctx context.Context, parameters *v1alpha1.RoleParameters) error
 	MockUpdateLdapGroups func(ctx context.Context, parameters *v1alpha1.RoleParameters, groupsToAdd, groupsToRemove []string) error
 	MockUpdatePrivileges func(ctx context.Context, parameters *v1alpha1.RoleParameters, privilegesToGrant, privilegesToRevoke []string) error
+	MockUpdateRoles      func(ctx context.Context, parameters *v1alpha1.RoleParameters, rolesToGrant, rolesToRevoke []string) error
 	MockUpdateRolegroup  func(ctx context.Context, parameters *v1alpha1.RoleParameters) error
 }
 
@@ -74,11 +76,22 @@ func (m mockClient) UpdatePrivileges(ctx context.Context, parameters *v1alpha1.R
 	return nil
 }
 
+func (m mockClient) UpdateRoles(ctx context.Context, parameters *v1alpha1.RoleParameters, rolesToGrant, rolesToRevoke []string) error {
+	if m.MockUpdateRoles != nil {
+		return m.MockUpdateRoles(ctx, parameters, rolesToGrant, rolesToRevoke)
+	}
+	return nil
+}
+
 func (m mockClient) UpdateRolegroup(ctx context.Context, parameters *v1alpha1.RoleParameters) error {
 	if m.MockUpdateRolegroup != nil {
 		return m.MockUpdateRolegroup(ctx, parameters)
 	}
 	return nil
+}
+
+func (m mockClient) GetDefaultSchema() string {
+	return "ADMIN"
 }
 
 func TestConnect(t *testing.T) {
@@ -215,6 +228,10 @@ func TestObserve(t *testing.T) {
 	type want struct {
 		c   managed.ExternalObservation
 		err error
+		// atProvider, when non-nil, is compared against cr.Status.AtProvider
+		// after Observe to verify status is populated from the observed (DB)
+		// state rather than from spec.
+		atProvider *v1alpha1.RoleObservation
 	}
 
 	cases := map[string]struct {
@@ -281,6 +298,129 @@ func TestObserve(t *testing.T) {
 				err: nil,
 			},
 		},
+		"SuccessPopulatesAtProviderFromObserved": {
+			reason: "status.atProvider must be populated from the observed (DB) state, not from spec",
+			fields: fields{
+				client: mockClient{
+					// Read returns the real observed state: the role exists,
+					// has one privilege, and one role granted to it. Note the
+					// spec (below) lists NO privileges/roles — this asserts that
+					// Observe writes observed values, never spec values.
+					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
+						return &v1alpha1.RoleObservation{
+							RoleName:   "DEMO_ROLE",
+							Schema:     "MY_SCHEMA",
+							Privileges: []string{"CREATE ANY"},
+							Roles:      []string{`"CONTAINER"."ns::reader"`},
+							Rolegroup:  "MY_ROLEGROUP",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.Role{
+					Spec: v1alpha1.RoleSpec{
+						ForProvider: v1alpha1.RoleParameters{
+							RoleName: "DEMO_ROLE",
+						},
+					},
+				},
+			},
+			want: want{
+				err: nil,
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: false,
+				},
+				atProvider: &v1alpha1.RoleObservation{
+					RoleName:   "DEMO_ROLE",
+					Schema:     "MY_SCHEMA",
+					Privileges: []string{"CREATE ANY"},
+					Roles:      []string{`"CONTAINER"."ns::reader"`},
+					Rolegroup:  "MY_ROLEGROUP",
+				},
+			},
+		},
+		"PrivilegeRoleOverlapReturnsErrorAndSkipsUpdate": {
+			// When a user places a HANA role name under spec.forProvider.privileges,
+			// HANA records it in GRANTED_ROLES, not GRANTED_PRIVILEGES. The desired
+			// privileges entry can never match the observed (empty) privileges, causing
+			// an infinite Update loop. Observe must detect the overlap and return an
+			// error so crossplane-runtime records ReconcileError, emits a Warning
+			// event, and skips the Update. (Setting the condition inline and returning
+			// nil does not work: the runtime overwrites Synced with ReconcileSuccess on
+			// a nil-error, up-to-date Observe and emits no event.)
+			reason: "Role name in privileges that appears in observed roles must return an error and skip Update",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
+						return &v1alpha1.RoleObservation{
+							RoleName:   "DEMO_ROLE",
+							Privileges: []string{},
+							Roles:      []string{`"DUMMY_SYSTEM_ROLE_A"`, `"DUMMY_SYSTEM_ROLE_B"`},
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.Role{
+					Spec: v1alpha1.RoleSpec{
+						ForProvider: v1alpha1.RoleParameters{
+							RoleName:   "DEMO_ROLE",
+							Privileges: []string{"DUMMY_SYSTEM_ROLE_A"},
+							Roles:      []string{"DUMMY_SYSTEM_ROLE_B"},
+						},
+					},
+				},
+			},
+			want: want{
+				err: errors.New("privileges contains role name(s) that must be moved to spec.forProvider.roles: [DUMMY_SYSTEM_ROLE_A]"),
+				c:   managed.ExternalObservation{},
+			},
+		},
+		"UpToDateWhenSpecUnquotedMatchesQuotedObservation": {
+			// Regression lock for the grant-thrash bug: the catalog read returns
+			// canonical, quoted identifiers ("MY_ROLE"), but a user writes the spec
+			// unquoted (MY_ROLE). Observe normalizes the desired side (as the user
+			// controller does) so the two compare equal and the resource reports
+			// up-to-date instead of re-granting every reconcile forever.
+			reason: "Unquoted spec privileges/roles must compare equal to the quoted observed values (no infinite reconcile)",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
+						return &v1alpha1.RoleObservation{
+							RoleName:   "DEMO_ROLE",
+							Schema:     "",
+							Privileges: []string{"CREATE ANY"},
+							// QueryRoles always emits the quoted canonical form.
+							Roles: []string{`"MY_ROLE"`, `"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.Role{
+					Spec: v1alpha1.RoleSpec{
+						ForProvider: v1alpha1.RoleParameters{
+							RoleName:   "DEMO_ROLE",
+							Privileges: []string{"CREATE ANY"},
+							// Spec is written unquoted, as a user naturally would.
+							Roles: []string{`MY_ROLE`, `"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
+						},
+					},
+				},
+			},
+			want: want{
+				err: nil,
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+			},
+		},
 	}
 
 	for name, tc := range cases {
@@ -292,6 +432,12 @@ func TestObserve(t *testing.T) {
 			}
 			if diff := cmp.Diff(tc.want.c, got); diff != "" {
 				t.Errorf("\n%s\ne.Read(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+			if tc.want.atProvider != nil {
+				cr, _ := tc.args.mg.(*v1alpha1.Role)
+				if diff := cmp.Diff(*tc.want.atProvider, cr.Status.AtProvider); diff != "" {
+					t.Errorf("\n%s\ne.Observe(...) status.atProvider: -want, +got:\n%s\n", tc.reason, diff)
+				}
 			}
 		})
 	}
@@ -513,6 +659,33 @@ func TestBuildDesiredParameters(t *testing.T) {
 				Rolegroup:        "MY_ROLEGROUP",
 			},
 		},
+		"RolesNormalizedToCanonicalQuotedForm": {
+			// buildDesiredParameters is a verbatim copy — normalization now happens
+			// in Observe/Update (mirroring the user controller), so this asserts the
+			// factory copies roles unchanged. The quoted-vs-unquoted comparison is
+			// locked by TestObserve's UpToDate case below.
+			reason: "buildDesiredParameters copies all fields verbatim, including roles",
+			cr: &v1alpha1.Role{
+				Spec: v1alpha1.RoleSpec{
+					ForProvider: v1alpha1.RoleParameters{
+						RoleName:   "DEMO_ROLE",
+						Privileges: []string{"CREATE ANY"},
+						Roles: []string{
+							"MY_ROLE",
+							`"CONTAINER"."ns::reader" WITH ADMIN OPTION`,
+						},
+					},
+				},
+			},
+			want: &v1alpha1.RoleParameters{
+				RoleName:   "DEMO_ROLE",
+				Privileges: []string{"CREATE ANY"},
+				Roles: []string{
+					"MY_ROLE",
+					`"CONTAINER"."ns::reader" WITH ADMIN OPTION`,
+				},
+			},
+		},
 	}
 
 	for name, tc := range cases {
@@ -522,5 +695,71 @@ func TestBuildDesiredParameters(t *testing.T) {
 				t.Errorf("\n%s\nbuildDesiredParameters(...): -want, +got:\n%s\n", tc.reason, diff)
 			}
 		})
+	}
+}
+
+// TestUpdate verifies that Update computes its grant/revoke diffs from the
+// observed state stored in cr.Status.AtProvider (which Observe populates from
+// the DB) versus the desired spec, and that Update does NOT overwrite
+// status.atProvider from spec. This pins the fix for the status-pollution bug:
+// previously Create/Update stamped spec values into atProvider, which made the
+// Update diff compare spec-against-spec and hid real drift.
+func TestUpdate(t *testing.T) {
+	sortStrings := cmpopts.SortSlices(func(a, b string) bool { return a < b })
+
+	// A role whose observed state (from the DB, via Observe) differs from the
+	// desired spec: observed has role "OLD_ROLE" and privilege "OLD_PRIV"; the
+	// spec wants role "NEW_ROLE" and privilege "NEW_PRIV". Update must therefore
+	// grant the NEW_* entries and revoke the OLD_* entries.
+	observed := v1alpha1.RoleObservation{
+		RoleName:   "DEMO_ROLE",
+		Privileges: []string{"OLD_PRIV"},
+		Roles:      []string{`"OLD_ROLE"`},
+	}
+	cr := &v1alpha1.Role{
+		Spec: v1alpha1.RoleSpec{
+			ForProvider: v1alpha1.RoleParameters{
+				RoleName:   "DEMO_ROLE",
+				Privileges: []string{"NEW_PRIV"},
+				Roles:      []string{`"NEW_ROLE"`},
+			},
+		},
+	}
+	cr.Status.AtProvider = observed
+
+	var gotPrivGrant, gotPrivRevoke, gotRoleGrant, gotRoleRevoke []string
+	mc := mockClient{
+		MockUpdatePrivileges: func(ctx context.Context, parameters *v1alpha1.RoleParameters, grant, revoke []string) error {
+			gotPrivGrant, gotPrivRevoke = grant, revoke
+			return nil
+		},
+		MockUpdateRoles: func(ctx context.Context, parameters *v1alpha1.RoleParameters, grant, revoke []string) error {
+			gotRoleGrant, gotRoleRevoke = grant, revoke
+			return nil
+		},
+	}
+
+	e := external{client: mc, log: &MockLogger{}}
+	if _, err := e.Update(context.Background(), cr); err != nil {
+		t.Fatalf("Update(...) unexpected error: %v", err)
+	}
+
+	if diff := cmp.Diff([]string{"NEW_PRIV"}, gotPrivGrant, sortStrings); diff != "" {
+		t.Errorf("privileges to grant: -want, +got:\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"OLD_PRIV"}, gotPrivRevoke, sortStrings); diff != "" {
+		t.Errorf("privileges to revoke: -want, +got:\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{`"NEW_ROLE"`}, gotRoleGrant, sortStrings); diff != "" {
+		t.Errorf("roles to grant: -want, +got:\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{`"OLD_ROLE"`}, gotRoleRevoke, sortStrings); diff != "" {
+		t.Errorf("roles to revoke: -want, +got:\n%s", diff)
+	}
+
+	// Update must NOT overwrite status.atProvider from spec — it stays as the
+	// observed state until the next Observe re-reads the DB.
+	if diff := cmp.Diff(observed, cr.Status.AtProvider); diff != "" {
+		t.Errorf("Update(...) must not mutate status.atProvider from spec: -want, +got:\n%s", diff)
 	}
 }

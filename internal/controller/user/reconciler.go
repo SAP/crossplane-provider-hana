@@ -237,12 +237,11 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	cr.Status.AtProvider = *observed
 
-	// Set condition based on authentication errors or normal availability
-	if authError != nil {
-		cr.SetConditions(xpv1.Unavailable().WithMessage(authError.Error()))
-	} else {
-		cr.SetConditions(xpv1.Available())
+	if err := c.checkPrivilegeRoleOverlap(cr, parameters.Privileges, observed.Roles); err != nil {
+		return managed.ExternalObservation{}, err
 	}
+
+	setAvailabilityCondition(cr, authError)
 
 	isUpToDate := upToDate(observed, parameters)
 
@@ -255,6 +254,34 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		ResourceExists:   true,
 		ResourceUpToDate: isUpToDate,
 	}, nil
+}
+
+// setAvailabilityCondition sets Available or Unavailable condition depending on
+// whether an auth error was encountered during Read.
+func setAvailabilityCondition(cr *v1alpha1.User, authError error) {
+	if authError != nil {
+		cr.SetConditions(xpv1.Unavailable().WithMessage(authError.Error()))
+	} else {
+		cr.SetConditions(xpv1.Available())
+	}
+}
+
+// checkPrivilegeRoleOverlap detects role names mistakenly placed under
+// spec.forProvider.privileges. Returns a non-nil error naming the offending
+// entries when an overlap is found; the caller returns it from Observe so
+// crossplane-runtime records ReconcileError, emits a Warning event, and skips
+// the Update. Setting the condition inline and returning a nil error does not
+// work: the runtime overwrites the Synced condition with ReconcileSuccess on a
+// nil-error, up-to-date Observe (and emits no event), so the manual condition
+// would not survive.
+func (c *external) checkPrivilegeRoleOverlap(cr *v1alpha1.User, desiredPrivileges, observedRoles []string) error {
+	overlap := privilege.FindPrivilegeRoleOverlap(desiredPrivileges, observedRoles)
+	if len(overlap) == 0 {
+		return nil
+	}
+	c.log.Info("Misconfigured privileges detected", "name", cr.Name, "overlap", overlap)
+	return fmt.Errorf(
+		"privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
 }
 
 func upToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {

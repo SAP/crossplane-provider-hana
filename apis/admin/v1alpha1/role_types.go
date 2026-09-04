@@ -29,6 +29,14 @@ type RoleParameters struct {
 	// +listType=set
 	Privileges []string `json:"privileges,omitempty"`
 
+	// Roles are role names to grant to this role. Each entry follows the same
+	// syntax accepted by the User resource's roles field: a plain top-level
+	// role name (e.g. "GENERIC_ROLE"), or a schema-qualified HDI container
+	// role written as `"CONTAINER"."namespace::role"`. An optional
+	// `WITH ADMIN OPTION` suffix is honored.
+	// +listType=set
+	Roles []string `json:"roles,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	Rolegroup string `json:"rolegroup,omitempty"`
 
@@ -48,6 +56,10 @@ type RoleObservation struct {
 	LdapGroups []string `json:"ldapGroups,omitempty"`
 
 	Privileges []string `json:"privileges,omitempty"`
+
+	// Roles observed on the role, in the canonical `"SCHEMA"."NAME"` form
+	// (top-level roles are emitted as `"NAME"`).
+	Roles []string `json:"roles,omitempty"`
 
 	Rolegroup string `json:"rolegroup,omitempty"`
 }

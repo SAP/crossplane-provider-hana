@@ -116,7 +116,8 @@ func TestCreate(t *testing.T) {
 	}
 
 	type want struct {
-		err error
+		query string
+		err   error
 	}
 
 	cases := map[string]struct {
@@ -143,8 +144,8 @@ func TestCreate(t *testing.T) {
 				err: errBoom,
 			},
 		},
-		"Success": {
-			reason: "No error should be returned when we successfully create a schema",
+		"SuccessWithoutOwner": {
+			reason: "No owner should produce a CREATE SCHEMA statement without an OWNED BY clause",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
@@ -158,16 +159,49 @@ func TestCreate(t *testing.T) {
 				},
 			},
 			want: want{
-				err: nil,
+				query: `CREATE SCHEMA "DEMO_SCHEMA"`,
+				err:   nil,
+			},
+		},
+		"SuccessWithHyphenatedOwner": {
+			reason: "Owner containing a hyphen must be double-quoted in the OWNED BY clause to be a valid HANA identifier",
+			fields: fields{
+				db: fake.MockDB{
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						return nil, nil
+					},
+				},
+			},
+			args: args{
+				parameters: &v1alpha1.DbSchemaParameters{
+					SchemaName: "DEMO_SCHEMA",
+					Owner:      "E2E-TEST_USER",
+				},
+			},
+			want: want{
+				query: `CREATE SCHEMA "DEMO_SCHEMA" OWNED BY "E2E-TEST_USER"`,
+				err:   nil,
 			},
 		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
+			var capturedQuery string
+			originalMock := tc.fields.db.MockExecContext
+			tc.fields.db.MockExecContext = func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+				capturedQuery = query
+				return originalMock(ctx, query, args...)
+			}
+
 			c := Client{DB: tc.fields.db}
 			err := c.Create(tc.args.ctx, tc.args.parameters)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
-				t.Errorf("\n%s\ne.Read(...): -want error, +got error:\n%s\n", tc.reason, diff)
+				t.Errorf("\n%s\ne.Create(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+			if tc.want.query != "" {
+				if diff := cmp.Diff(tc.want.query, capturedQuery); diff != "" {
+					t.Errorf("\n%s\ne.Create(...): -want query, +got query:\n%s\n", tc.reason, diff)
+				}
 			}
 		})
 	}
