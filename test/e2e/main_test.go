@@ -23,48 +23,27 @@ import (
 	schemav1alpha1 "github.com/SAP/crossplane-provider-hana/apis/schema/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 
-	"github.com/crossplane-contrib/xp-testing/pkg/vendored"
-
 	"sigs.k8s.io/e2e-framework/pkg/env"
 
-	"github.com/crossplane-contrib/xp-testing/pkg/images"
 	"github.com/crossplane-contrib/xp-testing/pkg/logging"
 	"github.com/crossplane-contrib/xp-testing/pkg/setup"
 )
 
 var testenv env.Environment
 
-var (
-	UUT_CONFIG_KEY     = "crossplane/provider-hana"
-	UUT_CONTROLLER_KEY = "crossplane/provider-hana-controller"
-)
-
 func TestMain(m *testing.M) {
 	var verbosity = 4
 	logging.EnableVerboseLogging(&verbosity)
 	testenv = env.NewParallel()
 
-	imgs := images.GetImagesFromEnvironmentOrPanic(UUT_CONFIG_KEY, &UUT_CONTROLLER_KEY)
-
 	secretData := getProviderConfigSecretData()
 
 	clusterSetup := setup.ClusterSetup{
-		ProviderName:       "hana-provider",
-		Images:             imgs,
+		ProviderName:       "provider-hana",
 		ProviderCredential: &setup.ProviderCredentials{SecretData: secretData},
 		CrossplaneSetup: setup.CrossplaneSetup{
-			Version:  "1.14.3",
+			Version:  "1.20.1",
 			Registry: setup.DockerRegistry,
-		},
-
-		ControllerConfig: &vendored.ControllerConfig{
-			Spec: vendored.ControllerConfigSpec{
-				Image: imgs.ControllerImage,
-				Args: []string{
-					"--sync=10s",
-					"--debug",
-				},
-			},
 		},
 		AddToSchemaFuncs: []func(s *runtime.Scheme) error{
 			apisv1alpha1.AddToScheme,
@@ -78,6 +57,9 @@ func TestMain(m *testing.M) {
 	// Install BTP operator CRDs for KymaInstanceMapping tests
 	clusterSetup.PostCreate(installBTPOperatorCRDs)
 
+	// E2E_REUSE_CLUSTER is always set; local-deploy (a prerequisite of test-e2e)
+	// creates the kind cluster and installs UXP before go test starts, so xp-testing
+	// always reuses the existing cluster and skips provider installation.
 	_ = clusterSetup.Configure(testenv, &kind.Cluster{})
 
 	os.Exit(testenv.Run(m))

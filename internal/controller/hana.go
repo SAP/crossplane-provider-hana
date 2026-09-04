@@ -10,6 +10,7 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/auditpolicy"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/certificate"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/dbschema"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/instancemapping"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/jwtprovider"
@@ -38,6 +39,7 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 		jwtprovider.Setup,
 		publickey.Setup,
 		personalsecurityenvironment.Setup,
+		certificate.Setup,
 	} {
 		if err := setup(mgr, o, db); err != nil {
 			return err

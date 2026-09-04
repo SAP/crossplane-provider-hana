@@ -607,6 +607,42 @@ func TestObserve(t *testing.T) {
 				err: nil,
 			},
 		},
+		"PrivilegeRoleOverlapReturnsErrorAndSkipsUpdate": {
+			reason: "Role name in privileges that appears in observed roles must return an error and skip Update",
+			fields: fields{
+				client: mockUserClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
+						return &v1alpha1.UserObservation{
+							Username:                       new(demoUser),
+							Privileges:                     []string{},
+							Roles:                          []string{`"PUBLIC"`, `"DUMMY_SYSTEM_ROLE"`},
+							Usergroup:                      new("DEFAULT"),
+							IsPasswordLifetimeCheckEnabled: new(true),
+							Parameters:                     make(map[string]string),
+							X509Providers:                  []v1alpha1.X509UserMapping{},
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.User{
+					Spec: v1alpha1.UserSpec{
+						ForProvider: v1alpha1.UserParameters{
+							Username:                       demoUser,
+							Privileges:                     []string{"DUMMY_SYSTEM_ROLE"},
+							Usergroup:                      "DEFAULT",
+							IsPasswordLifetimeCheckEnabled: true,
+						},
+						PrivilegeManagementPolicy: "strict",
+					},
+				},
+			},
+			want: want{
+				c:   managed.ExternalObservation{},
+				err: errors.New("privileges contains role name(s) that must be moved to spec.forProvider.roles: [DUMMY_SYSTEM_ROLE]"),
+			},
+		},
 	}
 
 	for name, tc := range cases {

@@ -61,7 +61,7 @@ spec:
     # Set as default mapping for the namespace
     isDefault: false
 
----
+#---
 # Resources expected on the local cluster:
 
 # 1. HANA Cloud ServiceInstance
@@ -123,7 +123,7 @@ spec:
 # data:
 #   CLUSTER_ID: "shoot--prod--cluster-abc123"  # ← Extracted by controller
 
----
+#---
 # Expected status after successful reconciliation:
 #
 # status:

@@ -19,7 +19,7 @@ type DbSchemaParameters struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	SchemaName string `json:"schemaName"`
 
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
+	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
 	Owner string `json:"owner,omitempty"`
 }
 

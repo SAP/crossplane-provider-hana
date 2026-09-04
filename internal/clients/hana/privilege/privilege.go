@@ -87,7 +87,12 @@ func (c *PrivilegeClient) GrantRoles(ctx context.Context, _ DefaultSchema, grant
 		if err != nil {
 			return err
 		}
-		normalized := Role{Name: cleanIdentifier(role.Name), IsGrantable: role.IsGrantable}
+
+		normalized := Role{
+			Schema:      cleanIdentifier(role.Schema),
+			Name:        cleanIdentifier(role.Name),
+			IsGrantable: role.IsGrantable,
+		}
 		if normalized.IsGrantable {
 			adminRoles = append(adminRoles, normalized.quotedName())
 		} else {
@@ -137,7 +142,10 @@ func (c *PrivilegeClient) RevokeRoles(ctx context.Context, _ DefaultSchema, gran
 		if err != nil {
 			return err
 		}
-		normalized := Role{Name: cleanIdentifier(role.Name)}
+		normalized := Role{
+			Schema: cleanIdentifier(role.Schema),
+			Name:   cleanIdentifier(role.Name),
+		}
 		namesToRevoke = append(namesToRevoke, normalized.quotedName())
 	}
 
@@ -199,11 +207,11 @@ func (c *PrivilegeClient) QueryRoles(ctx context.Context, grantee Grantee, grant
 		if err := roleRows.Scan(&roleSchemaName, &roleName, &isGrantable); err != nil {
 			return observed, err
 		}
-		fullName := roleName
-		if roleSchemaName.Valid {
-			fullName = fmt.Sprintf("%s.%s", roleSchemaName.String, roleName)
-		}
-		r := Role{Name: fullName, IsGrantable: isGrantable}
+		// Populate Schema and Name as separate fields so quotedName() can
+		// emit "SCHEMA"."NAME" (HANA's only valid schema-qualified form).
+		// roleSchemaName.String is empty when the column is NULL (top-level
+		// role), which quotedName() treats as no schema.
+		r := Role{Schema: roleSchemaName.String, Name: roleName, IsGrantable: isGrantable}
 		observed = append(observed, r.String())
 	}
 	if err := roleRows.Err(); err != nil {
@@ -221,6 +229,10 @@ type Privilege struct {
 }
 
 type Role struct {
+	// Schema is the optional schema (container) that owns the role. Empty means
+	// the role is top-level (no schema qualification). HDI containers register
+	// roles under their container schema, e.g. "RCSHAREDCONTENTHDICONTAINERA1B2C".
+	Schema      string
 	Name        string
 	IsGrantable bool
 }
@@ -233,12 +245,20 @@ func (r Role) String() string {
 	return name
 }
 
-// quotedName wraps the role name in double quotes unconditionally.
-// In HANA SQL, quoting is always safe for identifiers and ensures correct handling
-// of special characters. The result is used both in Role.String() for canonical
-// comparison and in GrantRoles/RevokeRoles for SQL generation.
+// quotedName wraps the role identifier in double quotes. In HANA SQL, quoting
+// is always safe for identifiers and ensures correct handling of special
+// characters (e.g. "::" from HDI role names). When Schema is set, schema and
+// name are quoted independently and joined by a bare dot: "SCHEMA"."NAME".
+// The dot MUST be outside the quotes — HANA treats "A.B" as a single identifier
+// (the whole string is one role name) and "A"."B" as schema-qualified.
+// The result is used both in Role.String() for canonical comparison and in
+// GrantRoles/RevokeRoles for SQL generation.
 func (r Role) quotedName() string {
-	return fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(r.Name))
+	name := fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(r.Name))
+	if r.Schema == "" {
+		return name
+	}
+	return fmt.Sprintf(`"%s".%s`, utils.EscapeDoubleQuotes(r.Schema), name)
 }
 
 // PrivilegeGroup holds aggregated names to build optimized SQL: GRANT Name1, Name2 ON ...
@@ -254,9 +274,17 @@ const (
 	grantOptionRegex = `(?i)(\s+WITH\s+GRANT\s+OPTION)?`
 )
 
-// Role regex supports: "ROLE_NAME", ROLE_NAME, SCHEMA.ROLE_NAME, and optional WITH ADMIN OPTION
-// Updated to handle special identifiers with embedded quotes like "SCHE""M'A"
-var roleRegex = regexp.MustCompile(`(?i)^\s*(` + identifierPattern + `(?:\.` + identifierPattern + `)?)` + adminOptionRegex + `\s*$`)
+// Role regex supports: "ROLE_NAME", ROLE_NAME, "SCHEMA"."ROLE_NAME",
+// SCHEMA.ROLE_NAME, and optional WITH ADMIN OPTION.
+// The schema part is captured independently from the name so they can be
+// quoted separately when generating SQL. HANA requires schema-qualified roles
+// to be written as "SCHEMA"."NAME" — the dot must sit BETWEEN the two quoted
+// identifiers, not inside a single pair of quotes. See parseRoleString for
+// the two-group extraction. Handles special identifiers with embedded quotes
+// (e.g. "SCHE""M'A"). A single dot anywhere in the raw input is treated as
+// the schema/name separator; this is the only valid interpretation in HANA,
+// where dots are never part of an identifier.
+var roleRegex = regexp.MustCompile(`(?i)^\s*(?:(` + identifierPattern + `)\.)?(` + identifierPattern + `)` + adminOptionRegex + `\s*$`)
 
 type PrivilegeType int
 
@@ -366,6 +394,7 @@ func FormatRoleStrings(roleStrings []string) ([]string, error) {
 			return nil, err
 		}
 		normalized := Role{
+			Schema:      cleanIdentifier(role.Schema),
 			Name:        cleanIdentifier(role.Name),
 			IsGrantable: role.IsGrantable,
 		}
@@ -427,9 +456,14 @@ func parsePrivilegeStrings(privilegeStrings []string, defaultSchema DefaultSchem
 func parseRoleString(roleStr string) (Role, error) {
 	m := roleRegex.FindStringSubmatch(roleStr)
 	if m != nil {
+		// m[1] = optional schema (empty when the role is top-level),
+		// m[2] = name, m[3] = WITH ADMIN OPTION suffix.
+		// Each identifier is cleaned independently so outer quotes and
+		// escaped inner quotes are stripped only from their own component.
 		return Role{
-			Name:        m[1],
-			IsGrantable: m[2] != "",
+			Schema:      cleanIdentifier(m[1]),
+			Name:        cleanIdentifier(m[2]),
+			IsGrantable: m[3] != "",
 		}, nil
 	}
 	// Check for invalid grant option usage
@@ -743,4 +777,50 @@ func handlePrivilegeRows(privRows *sql.Rows) (Privilege, error) {
 	default:
 		return createRegularObjectPrivilege(privilege, schemaName, objectName, isGrantable), nil
 	}
+}
+
+// FindPrivilegeRoleOverlap returns the entries in desiredPrivileges whose bare
+// name (without WITH ADMIN OPTION) also appears in observedRoles. Both slices
+// are expected to already be in the canonical quoted form produced by
+// FormatPrivilegeStrings / FormatRoleStrings / QueryRoles, so the comparison is
+// a direct string match after stripping the grant-option suffix.
+//
+// A non-empty return value means the operator has placed HANA role name(s) under
+// spec.forProvider.privileges instead of spec.forProvider.roles. Those entries
+// will never converge (HANA records them in GRANTED_ROLES, not
+// GRANTED_PRIVILEGES), causing an infinite reconcile loop.
+func FindPrivilegeRoleOverlap(desiredPrivileges, observedRoles []string) []string {
+	roleSet := make(map[string]struct{}, len(observedRoles))
+	for _, r := range observedRoles {
+		roleSet[bareIdentifier(r)] = struct{}{}
+	}
+
+	var overlap []string
+	for _, p := range desiredPrivileges {
+		if _, found := roleSet[bareIdentifier(p)]; found {
+			overlap = append(overlap, p)
+		}
+	}
+	return overlap
+}
+
+// bareIdentifier strips a trailing grant-option suffix and any surrounding
+// double quotes, giving a plain name suitable for cross-list comparison.
+// desiredPrivileges uses unquoted system-privilege names while observedRoles
+// uses quoted identifiers from the catalog, so both sides need this treatment.
+func bareIdentifier(s string) string {
+	s = stripGrantOption(s)
+	return cleanIdentifier(s)
+}
+
+// stripGrantOption removes a trailing " WITH ADMIN OPTION" or " WITH GRANT OPTION"
+// suffix (case-insensitive) so bare names can be compared across the two slices.
+func stripGrantOption(s string) string {
+	upper := strings.ToUpper(s)
+	for _, suffix := range []string{" WITH ADMIN OPTION", " WITH GRANT OPTION"} {
+		if strings.HasSuffix(upper, suffix) {
+			return s[:len(s)-len(suffix)]
+		}
+	}
+	return s
 }

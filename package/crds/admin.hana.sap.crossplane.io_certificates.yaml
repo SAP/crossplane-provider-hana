@@ -4,18 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: dbschemas.schema.hana.sap.crossplane.io
+  name: certificates.admin.hana.sap.crossplane.io
 spec:
-  group: schema.hana.sap.crossplane.io
+  group: admin.hana.sap.crossplane.io
   names:
     categories:
     - crossplane
     - managed
     - hana
-    kind: DbSchema
-    listKind: DbSchemaList
-    plural: dbschemas
-    singular: dbschema
+    kind: Certificate
+    listKind: CertificateList
+    plural: certificates
+    shortNames:
+    - cert
+    singular: certificate
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -34,7 +36,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: A Dbschema is an example API type.
+        description: Certificate is a managed HANA certificate.
         properties:
           apiVersion:
             description: |-
@@ -54,7 +56,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: A DbschemaSpec defines the desired state of a Dbschema.
+            description: CertificateSpec defines the desired state of Certificate.
             properties:
               deletionPolicy:
                 default: Delete
@@ -71,16 +73,33 @@ spec:
                 - Delete
                 type: string
               forProvider:
-                description: DbSchemaParameters are the configurable fields of a Dbschema.
+                description: CertificateParameters are the configurable fields of
+                  a HANA Certificate.
                 properties:
-                  owner:
-                    pattern: ^[^",\$\.'\+<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
+                  certificateSecretRef:
+                    description: Reference to the Kubernetes Secret containing the
+                      PEM encoded certificate.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                  name:
+                    description: Name of the certificate in HANA.
                     type: string
-                  schemaName:
-                    type: string
-                    x-kubernetes-validations:
-                    - message: Value is immutable
-                      rule: self == oldSelf
+                required:
+                - certificateSecretRef
+                - name
                 type: object
               managementPolicies:
                 default:
@@ -250,15 +269,21 @@ spec:
             - forProvider
             type: object
           status:
-            description: A DbschemaStatus represents the observed state of a Dbschema.
+            description: CertificateStatus represents the observed state of Certificate.
             properties:
               atProvider:
-                description: DbschemaObservation are the observable fields of a Dbschema.
+                description: CertificateObservation represents the observed state
+                  of a Certificate.
                 properties:
-                  owner:
-                    type: string
-                  schemaName:
-                    type: string
+                  certificates:
+                    items:
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                      type: object
+                    type: array
                 type: object
               conditions:
                 description: Conditions of the resource.
