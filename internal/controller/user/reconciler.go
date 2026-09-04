@@ -161,6 +161,8 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	c.log.Info("Connecting to user resource", "name", cr.Name)
 
 	username := string(secret.Data[xpv1.ResourceCredentialsSecretUserKey])
+	endpoint := string(secret.Data[xpv1.ResourceCredentialsSecretEndpointKey])
+	port := string(secret.Data[xpv1.ResourceCredentialsSecretPortKey])
 
 	conn, err := c.db.Connect(ctx, secret.Data)
 	if err != nil {
@@ -168,18 +170,22 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	return &external{
-		client: c.newClient(conn, username),
-		kube:   c.kube,
-		log:    c.log,
+		client:   c.newClient(conn, username),
+		kube:     c.kube,
+		log:      c.log,
+		endpoint: endpoint,
+		port:     port,
 	}, nil
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
-	client user.UserClient
-	kube   client.Client
-	log    logging.Logger
+	client   user.UserClient
+	kube     client.Client
+	log      logging.Logger
+	endpoint string
+	port     string
 }
 
 func (c *external) Disconnect(ctx context.Context) error {
@@ -350,6 +356,8 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	return managed.ExternalCreation{
 		ConnectionDetails: managed.ConnectionDetails{
+			"host":     []byte(c.endpoint),
+			"port":     []byte(c.port),
 			"user":     []byte(parameters.Username),
 			"password": []byte(password),
 		},
@@ -369,36 +377,29 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, err
 	}
 
-	if err := c.updatePrivileges(ctx, cr, desired, observed); err != nil {
+	if err := c.updateUserAttributes(ctx, cr, desired, observed); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
 
-	if err := c.updateRoles(ctx, cr, desired, observed); err != nil {
+	// Read the currently configured password once so we can both apply a change
+	// (if any) and always republish the latest credential.
+	password, err := c.getPassword(ctx, cr)
+	if err != nil {
 		return managed.ExternalUpdate{}, err
 	}
-
-	if err := c.updateParameters(ctx, cr, desired, observed); err != nil {
-		return managed.ExternalUpdate{}, err
-	}
-
-	if err := c.updateUsergroup(ctx, cr, desired, observed); err != nil {
-		return managed.ExternalUpdate{}, err
-	}
-
-	if err := c.updateX509Providers(ctx, cr, desired, observed); err != nil {
-		return managed.ExternalUpdate{}, err
-	}
-
-	if err := c.updatePasswordLifetimeCheck(ctx, cr, desired, observed); err != nil {
-		return managed.ExternalUpdate{}, err
-	}
-
-	if err := c.updatePassword(ctx, cr, desired); err != nil {
+	if err := c.updatePassword(ctx, cr, desired, password); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
 
 	c.log.Info("Successfully updated user resource", "name", cr.Name, "username", desired.Username)
-	return managed.ExternalUpdate{}, nil
+	return managed.ExternalUpdate{
+		ConnectionDetails: managed.ConnectionDetails{
+			"host":     []byte(c.endpoint),
+			"port":     []byte(c.port),
+			"user":     []byte(desired.Username),
+			"password": []byte(password),
+		},
+	}, nil
 }
 
 // buildUpdateInputs assembles the desired and observed states needed by every
@@ -417,6 +418,29 @@ func (c *external) buildUpdateInputs(cr *v1alpha1.User) (*v1alpha1.UserParameter
 		return nil, nil, fmt.Errorf(errFilterPrivileges, err)
 	}
 	return desired, observed, nil
+}
+
+// updateUserAttributes runs each user-facet update in order, stopping on the first error.
+func (c *external) updateUserAttributes(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
+	if err := c.updatePrivileges(ctx, cr, desired, observed); err != nil {
+		return err
+	}
+	if err := c.updateRoles(ctx, cr, desired, observed); err != nil {
+		return err
+	}
+	if err := c.updateParameters(ctx, cr, desired, observed); err != nil {
+		return err
+	}
+	if err := c.updateUsergroup(ctx, cr, desired, observed); err != nil {
+		return err
+	}
+	if err := c.updateX509Providers(ctx, cr, desired, observed); err != nil {
+		return err
+	}
+	if err := c.updatePasswordLifetimeCheck(ctx, cr, desired, observed); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *external) updatePrivileges(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
@@ -555,7 +579,7 @@ func (c *external) updatePasswordLifetimeCheck(ctx context.Context, cr *v1alpha1
 	return nil
 }
 
-func (c *external) updatePassword(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters) error {
+func (c *external) updatePassword(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, password string) error {
 	if cr.Status.AtProvider.PasswordUpToDate != nil && !*cr.Status.AtProvider.PasswordUpToDate {
 		if cr.Spec.ForProvider.Authentication.Password == nil || (cr.Status.AtProvider.IsPasswordEnabled != nil && !*cr.Status.AtProvider.IsPasswordEnabled) {
 			if err := c.client.TogglePasswordAuthentication(ctx, desired.Username, *cr.Status.AtProvider.IsPasswordEnabled); err != nil {
@@ -564,11 +588,7 @@ func (c *external) updatePassword(ctx context.Context, cr *v1alpha1.User, desire
 			}
 		} else {
 			c.log.Info("Updating user password", "name", cr.Name, "username", desired.Username)
-			password, err := c.getPassword(ctx, cr)
-			if err != nil {
-				return fmt.Errorf(errUpdateUser, err)
-			}
-			err = c.client.UpdatePassword(ctx, desired.Username, password, desired.Authentication.Password.ForceFirstPasswordChange)
+			err := c.client.UpdatePassword(ctx, desired.Username, password, desired.Authentication.Password.ForceFirstPasswordChange)
 			if err != nil {
 				c.log.Info("Error updating user password", "name", cr.Name, "error", err)
 				return fmt.Errorf(errUpdateUser, err)

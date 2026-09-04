@@ -30,7 +30,12 @@ import (
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 )
 
-const demoUser = "DEMO_USER"
+const (
+	demoUser     = "DEMO_USER"
+	demoEndpoint = "hana.example.com"
+	demoPort     = "443"
+	demoPassword = "s3cret"
+)
 
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct {
@@ -58,6 +63,7 @@ type mockUserClient struct {
 	MockRead                   func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error)
 	MockCreate                 func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping) error
 	MockDelete                 func(ctx context.Context, parameters *v1alpha1.UserParameters) error
+	MockUpdateUsergroup        func(ctx context.Context, username, usergroup string) error
 	MockFormatPrivilegeStrings func(privilegeStrings []string) ([]string, error)
 }
 
@@ -92,6 +98,9 @@ func (m mockUserClient) UpdateParameters(ctx context.Context, username string, p
 }
 
 func (m mockUserClient) UpdateUsergroup(ctx context.Context, username, usergroup string) error {
+	if m.MockUpdateUsergroup != nil {
+		return m.MockUpdateUsergroup(ctx, username, usergroup)
+	}
 	return nil
 }
 
@@ -725,6 +734,8 @@ func TestCreate(t *testing.T) {
 			want: want{
 				err: nil,
 				c: managed.ExternalCreation{ConnectionDetails: managed.ConnectionDetails{
+					"host":     []byte(demoEndpoint),
+					"port":     []byte(demoPort),
 					"password": {},
 					"user":     []byte(demoUser),
 				}},
@@ -734,13 +745,133 @@ func TestCreate(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			e := external{client: tc.fields.client, log: tc.fields.log}
+			e := external{client: tc.fields.client, log: tc.fields.log, endpoint: demoEndpoint, port: demoPort}
 			got, err := e.Create(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Create(...): -want error, +got error:\n%s\n", tc.reason, diff)
 			}
 			if diff := cmp.Diff(tc.want.c, got); diff != "" {
 				t.Errorf("\n%s\ne.Create(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	type fields struct {
+		client user.UserClient
+		kube   client.Client
+		log    logging.Logger
+	}
+
+	type args struct {
+		ctx context.Context
+		mg  resource.Managed
+	}
+
+	type want struct {
+		u   managed.ExternalUpdate
+		err error
+	}
+
+	pwdSecretRef := &xpv1.SecretKeySelector{
+		SecretReference: xpv1.SecretReference{Name: "pwd-secret", Namespace: "default"},
+		Key:             "password",
+	}
+
+	cases := map[string]struct {
+		reason string
+		fields fields
+		args   args
+		want   want
+	}{
+		"ErrNotUser": {
+			reason: "An error should be returned if the managed resource is not a *User",
+			fields: fields{
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: nil,
+			},
+			want: want{
+				err: errors.New(errNotUser),
+			},
+		},
+		"ErrUpdate": {
+			reason: "Any errors encountered while updating the User should be returned",
+			fields: fields{
+				client: mockUserClient{
+					MockUpdateUsergroup: func(ctx context.Context, username, usergroup string) error {
+						return errBoom
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.User{
+					Spec: v1alpha1.UserSpec{
+						ForProvider: v1alpha1.UserParameters{
+							Username:  demoUser,
+							Usergroup: "DEFAULT",
+						},
+						PrivilegeManagementPolicy: "strict",
+					},
+				},
+			},
+			want: want{
+				err: fmt.Errorf(errUpdateUser, errBoom),
+			},
+		},
+		"Success": {
+			reason: "Update should return the full connection bundle including the current password",
+			fields: fields{
+				client: mockUserClient{},
+				kube: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						if s, ok := obj.(*corev1.Secret); ok {
+							s.Data = map[string][]byte{"password": []byte(demoPassword)}
+						}
+						return nil
+					}),
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.User{
+					Spec: v1alpha1.UserSpec{
+						ForProvider: v1alpha1.UserParameters{
+							Username:  demoUser,
+							Usergroup: "DEFAULT",
+							Authentication: v1alpha1.Authentication{
+								Password: &v1alpha1.Password{PasswordSecretRef: pwdSecretRef},
+							},
+						},
+						PrivilegeManagementPolicy: "strict",
+					},
+				},
+			},
+			want: want{
+				u: managed.ExternalUpdate{ConnectionDetails: managed.ConnectionDetails{
+					"host":     []byte(demoEndpoint),
+					"port":     []byte(demoPort),
+					"user":     []byte(demoUser),
+					"password": []byte(demoPassword),
+				}},
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := external{client: tc.fields.client, kube: tc.fields.kube, log: tc.fields.log, endpoint: demoEndpoint, port: demoPort}
+			got, err := e.Update(tc.args.ctx, tc.args.mg)
+			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+				t.Errorf("\n%s\ne.Update(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+			if diff := cmp.Diff(tc.want.u, got); diff != "" {
+				t.Errorf("\n%s\ne.Update(...): -want, +got:\n%s\n", tc.reason, diff)
 			}
 		})
 	}
