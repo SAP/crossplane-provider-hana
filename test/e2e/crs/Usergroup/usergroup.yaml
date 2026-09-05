@@ -1,0 +1,9 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: Usergroup
+metadata:
+  name: example-usergroup
+spec:
+  forProvider:
+    usergroupName: E2E_EXAMPLE_USERGROUP
+  providerConfigRef:
+    name: example
