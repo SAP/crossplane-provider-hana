@@ -6,5 +6,12 @@
   "postUpdateOptions": [
     "gomodTidy"
   ],
-  "labels": ["release-notes/dependencies"]
+  "labels": ["release-notes/dependencies"],
+  "packageRules": [
+    {
+      "description": "Pin crossplane-tools: digests after 2025-10-17 hardcode crossplane-runtime/v2 import paths in angryjet, which silently produces no output for this v1-based project. Do not upgrade without also migrating to crossplane-runtime v2. See commit 11444c0 and the re-upgrade regression in cfdbd13.",
+      "matchPackageNames": ["github.com/crossplane/crossplane-tools"],
+      "enabled": false
+    }
+  ]
 }
