@@ -75,7 +75,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 			log,
 		)),
 		managed.WithLogger(log),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
 	)
 
 	return ctrl.NewControllerManagedBy(mgr).

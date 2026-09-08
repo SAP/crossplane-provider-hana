@@ -78,7 +78,7 @@ func TestConnect(t *testing.T) {
 		"ErrTrackProviderConfigUsage": {
 			reason: "An error should be returned if ProviderConfig usage tracking fails",
 			fields: fields{
-				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return errBoom }),
+				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return errBoom }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{mg: &v1alpha1.Certificate{}},
 			want: fmt.Errorf("%s: %w", errTrackPCUsage, errBoom),
@@ -87,7 +87,7 @@ func TestConnect(t *testing.T) {
 			reason: "An error should be returned if the ProviderConfig cannot be fetched",
 			fields: fields{
 				kube:  &test.MockClient{MockGet: test.NewMockGetFn(errBoom)},
-				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
@@ -104,7 +104,7 @@ func TestConnect(t *testing.T) {
 			reason: "An error should be returned if the ProviderConfig has no connection secret reference",
 			fields: fields{
 				kube:  &test.MockClient{MockGet: test.NewMockGetFn(nil)},
-				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
@@ -131,7 +131,7 @@ func TestConnect(t *testing.T) {
 						return nil
 					}),
 				},
-				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{

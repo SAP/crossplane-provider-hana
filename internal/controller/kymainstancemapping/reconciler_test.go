@@ -199,7 +199,7 @@ func TestConnector_Connect(t *testing.T) {
 // mockTracker is a mock implementation of resource.LegacyTracker.
 type mockTracker struct{}
 
-func (m *mockTracker) Track(_ context.Context, _ resource.LegacyManaged) error {
+func (m *mockTracker) Track(_ context.Context, _ resource.LegacyManaged) error { //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 	return nil
 }
 
