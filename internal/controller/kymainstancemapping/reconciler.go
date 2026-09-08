@@ -11,13 +11,12 @@ import (
 	"fmt"
 
 	servicescloudsapv1 "github.com/SAP/sap-btp-service-operator/api/v1"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/connection"
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,7 +29,6 @@ import (
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/remotecluster"
-	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
 
 const (
@@ -68,22 +66,17 @@ const (
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	name := managed.ControllerName(v1alpha1.KymaInstanceMappingGroupKind)
 
-	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
-	if o.Features.Enabled(features.EnableAlphaExternalSecretStores) {
-		cps = append(cps, connection.NewDetailsManager(mgr.GetClient(), apisv1alpha1.StoreConfigGroupVersionKind))
-	}
-
 	log := o.Logger.WithValues("controller", name)
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.KymaInstanceMappingGroupVersionKind),
-		managed.WithExternalConnecter(NewConnector(
+		managed.WithExternalConnector(NewConnector(
 			mgr.GetClient(),
-			resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
+			resource.NewLegacyProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
 			log,
 		)),
 		managed.WithLogger(log),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
-		managed.WithConnectionPublishers(cps...))
+	)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
@@ -96,12 +89,12 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 // Connector is exported for testing.
 type Connector struct {
 	kube  client.Client
-	usage resource.Tracker
+	usage resource.LegacyTracker
 	log   logging.Logger
 }
 
 // NewConnector creates a Connector for testing.
-func NewConnector(kube client.Client, usage resource.Tracker, log logging.Logger) *Connector {
+func NewConnector(kube client.Client, usage resource.LegacyTracker, log logging.Logger) *Connector {
 	return &Connector{
 		kube:  kube,
 		usage: usage,
@@ -127,7 +120,7 @@ func (c *Connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotKymaInstanceMapping)
 	}
 
-	if err := c.usage.Track(ctx, mg); err != nil {
+	if err := c.usage.Track(ctx, cr); err != nil {
 		return nil, fmt.Errorf(errTrackPCUsage, err)
 	}
 

@@ -10,8 +10,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,7 +30,7 @@ import (
 // mockTracker implements resource.Tracker for testing.
 type mockTracker struct{}
 
-func (m *mockTracker) Track(_ context.Context, _ resource.Managed) error {
+func (m *mockTracker) Track(_ context.Context, _ resource.LegacyManaged) error {
 	return nil
 }
 
