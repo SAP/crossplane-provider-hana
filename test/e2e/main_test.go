@@ -42,8 +42,7 @@ func TestMain(m *testing.M) {
 		ProviderName:       "provider-hana",
 		ProviderCredential: &setup.ProviderCredentials{SecretData: secretData},
 		CrossplaneSetup: setup.CrossplaneSetup{
-			Version:  "2.2.3",
-			Registry: setup.DockerRegistry,
+			Version: "2.2.3",
 		},
 		AddToSchemaFuncs: []func(s *runtime.Scheme) error{
 			apisv1alpha1.AddToScheme,
