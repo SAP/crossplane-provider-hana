@@ -31,6 +31,8 @@ import (
 
 var testenv env.Environment
 
+const crossplaneVersionEnv = "CROSSPLANE_VERSION"
+
 func TestMain(m *testing.M) {
 	var verbosity = 4
 	logging.EnableVerboseLogging(&verbosity)
@@ -42,7 +44,7 @@ func TestMain(m *testing.M) {
 		ProviderName:       "provider-hana",
 		ProviderCredential: &setup.ProviderCredentials{SecretData: secretData},
 		CrossplaneSetup: setup.CrossplaneSetup{
-			Version: "2.2.3",
+			Version: os.Getenv(crossplaneVersionEnv),
 		},
 		AddToSchemaFuncs: []func(s *runtime.Scheme) error{
 			apisv1alpha1.AddToScheme,
@@ -56,9 +58,10 @@ func TestMain(m *testing.M) {
 	// Install BTP operator CRDs for KymaInstanceMapping tests
 	clusterSetup.PostCreate(installBTPOperatorCRDs)
 
-	// E2E_REUSE_CLUSTER is always set; local-deploy (a prerequisite of test-e2e)
-	// creates the kind cluster and installs UXP before go test starts, so xp-testing
-	// always reuses the existing cluster and skips provider installation.
+	// E2E_REUSE_CLUSTER is always set by the Makefile; local-deploy creates the
+	// kind cluster, installs the Crossplane version from CROSSPLANE_VERSION, and
+	// deploys the provider before go test starts. xp-testing then reuses that
+	// cluster and only uses CrossplaneSetup.Version for v2 setup validation.
 	_ = clusterSetup.Configure(testenv, &kind.Cluster{})
 
 	os.Exit(testenv.Run(m))
