@@ -11,8 +11,8 @@ import (
 
 	// Blank import as specified by the driver
 	_ "github.com/SAP/go-hdb/driver"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"golang.org/x/crypto/argon2"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"

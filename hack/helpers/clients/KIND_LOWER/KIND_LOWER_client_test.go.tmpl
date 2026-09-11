@@ -10,7 +10,7 @@ import (
 	"github.com/SAP/crossplane-provider-{{ .Env.PROVIDER | strings.ToLower }}/internal/clients/xsql"
 	"github.com/SAP/crossplane-provider-{{ .Env.PROVIDER | strings.ToLower }}/apis/{{ .Env.GROUP | strings.ToLower }}/v1alpha1"
 
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
 )
 
 // Unlike many Kubernetes projects Crossplane does not use third party testing

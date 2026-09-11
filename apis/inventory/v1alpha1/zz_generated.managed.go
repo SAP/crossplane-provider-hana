@@ -5,7 +5,7 @@ Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 
 package v1alpha1
 
-import xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+import xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
 
 // GetCondition of this InstanceMapping.
 func (mg *InstanceMapping) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
@@ -25,11 +25,6 @@ func (mg *InstanceMapping) GetManagementPolicies() xpv1.ManagementPolicies {
 // GetProviderConfigReference of this InstanceMapping.
 func (mg *InstanceMapping) GetProviderConfigReference() *xpv1.Reference {
 	return mg.Spec.ProviderConfigReference
-}
-
-// GetPublishConnectionDetailsTo of this InstanceMapping.
-func (mg *InstanceMapping) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
 }
 
 // GetWriteConnectionSecretToReference of this InstanceMapping.
@@ -57,11 +52,6 @@ func (mg *InstanceMapping) SetProviderConfigReference(r *xpv1.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this InstanceMapping.
-func (mg *InstanceMapping) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this InstanceMapping.
 func (mg *InstanceMapping) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
@@ -87,11 +77,6 @@ func (mg *KymaInstanceMapping) GetProviderConfigReference() *xpv1.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this KymaInstanceMapping.
 func (mg *KymaInstanceMapping) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
@@ -115,11 +100,6 @@ func (mg *KymaInstanceMapping) SetManagementPolicies(r xpv1.ManagementPolicies) 
 // SetProviderConfigReference of this KymaInstanceMapping.
 func (mg *KymaInstanceMapping) SetProviderConfigReference(r *xpv1.Reference) {
 	mg.Spec.ProviderConfigReference = r
-}
-
-// SetPublishConnectionDetailsTo of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
 }
 
 // SetWriteConnectionSecretToReference of this KymaInstanceMapping.

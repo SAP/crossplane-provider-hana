@@ -31,16 +31,19 @@ GO111MODULE = on
 KIND_VERSION ?= v0.30.0
 KIND_NODE_IMAGE_TAG ?= v1.34.0
 
-# up (UXP installer) versions — required by controlplane.mk at build submodule a0925d3
-UP_VERSION = v0.31.0
-UP_CHANNEL = stable
+# Crossplane v2 e2e setup. Keep this below 2.2.0 until the local package
+# sideload path is validated against Crossplane's newer package cache lookup.
+export CROSSPLANE_VERSION ?= 2.1.8
+USE_HELM = true
+USE_HELM3 = true
+CROSSPLANE_CLI_VERSION ?= v2.0.2
 
 # Setup Kubernetes tools
 -include build/makelib/k8s_tools.mk
 
-# NOTE(hasheddan): we ensure up is installed prior to running platform-specific
-# build steps in parallel to avoid encountering an installation race condition.
-build.init: $(UP)
+# NOTE(hasheddan): ensure the package CLI is installed before platform-specific
+# build steps run in parallel to avoid installation races.
+build.init: $(CROSSPLANE_CLI)
 
 # Setup Images
 #
@@ -59,7 +62,7 @@ IMAGES = provider-hana
 # set so xp-testing's InstallCrossplaneProvider is never called and these values
 # are never consumed. Note: UUT_CONFIG is a runtime OCI image, not an xpkg
 # artifact — if the full xp-testing install path is ever re-enabled, this would
-# need to point at the output of `up xpkg build` instead.
+# need to point at the xpkg output instead.
 export UUT_CONFIG = $(BUILD_REGISTRY)/provider-hana-$(ARCH):latest
 export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_CONFIG)"}
 
@@ -77,19 +80,19 @@ xpkg.build.provider-hana: do.build.images
 # ====================================================================================
 # Local e2e setup (mirrors SAP/crossplane-provider-cloudfoundry)
 #
-# Uses UXP (Universal Crossplane) installed via `up uxp install`, same as the
-# CloudFoundry provider. The build submodule at a0925d3 provides controlplane.mk
-# (UXP install) and local.xpkg.mk (sidecar xpkg cache) for this pattern.
+# Uses the upstream Crossplane Helm chart, pinned by CROSSPLANE_VERSION.
 # E2E_REUSE_CLUSTER / E2E_CLUSTER_NAME tell xp-testing to reuse the pre-deployed
-# cluster so it skips provider installation entirely.
+# cluster so it skips provider installation entirely; the Go e2e setup reads the
+# same CROSSPLANE_VERSION only for xp-testing's v2 setup validation.
 
-CROSSPLANE_NAMESPACE = upbound-system
+CROSSPLANE_NAMESPACE = crossplane-system
 KIND_CLUSTER_NAME ?= local-dev
 # E2E_REUSE_CLUSTER is unconditionally exported so CI always reuses the cluster
 # that local-deploy just created, skipping redundant provider installation.
 # If local-deploy fails mid-way locally, reset with: make controlplane.down && make local-deploy
 export E2E_REUSE_CLUSTER = $(KIND_CLUSTER_NAME)
 export E2E_CLUSTER_NAME = $(KIND_CLUSTER_NAME)
+XPKG_SKIP_DEP_RESOLUTION ?= false
 -include build/makelib/local.xpkg.mk
 -include build/makelib/controlplane.mk
 
@@ -99,8 +102,6 @@ local-deploy: build xpkg.build.provider-hana controlplane.up local.xpkg.deploy.p
 	@$(foreach x,$(XPKGS),$(KUBECTL) wait provider.pkg $(x) --for condition=Healthy --timeout=5m;)
 	@$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) wait --for=condition=Available deployment --all --timeout=5m
 	@$(OK) provider-hana is healthy
-	@# xp-testing puts the provider secret in crossplane-system; UXP installs into upbound-system so the namespace isn't created upstream.
-	@$(KUBECTL) get namespace crossplane-system >/dev/null 2>&1 || $(KUBECTL) create namespace crossplane-system
 
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .

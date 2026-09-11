@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	servicescloudsapv1 "github.com/SAP/sap-btp-service-operator/api/v1"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -196,10 +196,10 @@ func TestConnector_Connect(t *testing.T) {
 	}
 }
 
-// mockTracker is a mock implementation of resource.Tracker
+// mockTracker is a mock implementation of resource.LegacyTracker.
 type mockTracker struct{}
 
-func (m *mockTracker) Track(_ context.Context, _ resource.Managed) error {
+func (m *mockTracker) Track(_ context.Context, _ resource.LegacyManaged) error { //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 	return nil
 }
 
