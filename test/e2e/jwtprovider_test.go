@@ -2,11 +2,11 @@
 
 package e2e
 
-// TestJWTProviderFlow drives the full JWT-SSO chain (PublicKey → PSE →
-// JWTProvider → User with JWT identity) through the controllers against a live
-// HANA Cloud instance. Exercises the same "SQL is accepted by HANA and SYS
-// views parse back into observations" signal through the controller stack the
-// same way every other resource proves it.
+// TestJWTProviderFlow drives the full JWT-SSO chain (PublicKey → JWTProvider
+// → PSE → User with JWT identity) through the controllers against a live HANA
+// Cloud instance. Exercises the same "SQL is accepted by HANA and SYS views
+// parse back into observations" signal through the controller stack the same
+// way every other resource proves it.
 //
 // The public key is generated at Setup time so the fixture stays checked in
 // while every run gets a fresh key; HANA verifies key shape at import time,
@@ -32,6 +32,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/crossplane-contrib/xp-testing/pkg/resources"
+	"github.com/crossplane-contrib/xp-testing/pkg/xpconditions"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 
 	"sigs.k8s.io/e2e-framework/klient/decoder"
@@ -117,14 +118,12 @@ func renderFixture(t *testing.T) string {
 }
 
 func (c *JWTFlowTestConfig) SetupJWTFlow(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-	t.Log("Apply JWT-SSO chain")
+	t.Log("Prepare JWT-SSO chain")
 	c.connectDB(ctx, t)
 
 	// Redirect the ResourceTestConfig at our per-run tempdir with the
-	// rendered fixture, so AssessCreate/AssessDelete pick up the same file.
+	// rendered fixture, so later assess steps pick up the same file.
 	c.TestConfig.ResourceDirectory = renderFixture(t)
-
-	resources.ImportResources(ctx, t, cfg, c.TestConfig.ResourceDirectory)
 
 	objects := make([]k8s.Object, 0)
 	err := decoder.DecodeEachFile(
@@ -158,23 +157,35 @@ func (c *JWTFlowTestConfig) SetupJWTFlow(ctx context.Context, t *testing.T, cfg 
 			c.UserName = v.Spec.ForProvider.Username
 		}
 	}
+	c.cleanupJWTFlowResources(ctx, t)
 	return ctx
 }
 
 func (c *JWTFlowTestConfig) TeardownJWTFlow(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 	t.Log("Teardown: fall-back JWT-SSO chain cleanup via SQL")
-	// AssessDelete already deletes via the controllers. This is a safety net
-	// in case reconcile got stuck: same dependency order as creation,
-	// best-effort ignore-errors.
+	c.cleanupJWTFlowResources(ctx, t)
+	if err := c.db.Disconnect(); err != nil {
+		t.Errorf("failed to disconnect from database: %v", err)
+	}
+	return ctx
+}
+
+func (c *JWTFlowTestConfig) cleanupJWTFlowResources(ctx context.Context, t *testing.T) {
+	// Ordered delete normally removes the CRs through controllers. This SQL
+	// fallback makes repeated local runs recover from a failed create that left
+	// HANA-side objects behind.
 	stmts := []string{}
 	if c.UserName != "" {
 		stmts = append(stmts, fmt.Sprintf("DROP USER %s CASCADE", c.UserName))
+	}
+	if c.PSEName != "" && c.PublicKeyName != "" {
+		stmts = append(stmts, fmt.Sprintf("ALTER PSE %s DROP PUBLIC KEY %s", c.PSEName, c.PublicKeyName))
 	}
 	if c.PSEName != "" {
 		stmts = append(stmts, fmt.Sprintf("DROP PSE %s", c.PSEName))
 	}
 	if c.JWTProviderName != "" {
-		stmts = append(stmts, fmt.Sprintf("DROP JWT PROVIDER %s", c.JWTProviderName))
+		stmts = append(stmts, fmt.Sprintf("DROP JWT PROVIDER %s CASCADE", c.JWTProviderName))
 	}
 	if c.PublicKeyName != "" {
 		stmts = append(stmts, fmt.Sprintf("DROP PUBLIC KEY %s", c.PublicKeyName))
@@ -184,10 +195,6 @@ func (c *JWTFlowTestConfig) TeardownJWTFlow(ctx context.Context, t *testing.T, c
 			t.Logf("cleanup (ok if absent): %s -- %v", s, err)
 		}
 	}
-	if err := c.db.Disconnect(); err != nil {
-		t.Errorf("failed to disconnect from database: %v", err)
-	}
-	return ctx
 }
 
 // TestJWTProviderFlow is the end-to-end coverage for the JWT-SSO chain. It
@@ -207,12 +214,10 @@ func TestJWTProviderFlow(t *testing.T) {
 	fB.WithLabel("kind", "JWTProvider")
 	fB.Setup(c.SetupJWTFlow)
 
-	// AssessCreate waits for every CR in ResourceDirectory to reach Ready,
-	// which for this chain means the full DDL sequence (CREATE PUBLIC KEY →
-	// CREATE PSE PURPOSE JWT → CREATE JWT PROVIDER → SET PSE ... FOR PROVIDER
-	// → CREATE RESTRICTED USER + ENABLE JWT + ADD IDENTITY + ENABLE CLIENT
-	// CONNECT) succeeded against real HANA.
-	fB.Assess("create-chain", testConfig.AssessCreate)
+	// Create in dependency order. Concurrent creation can let the PSE
+	// reconcile before its JWTProvider exists in HANA, leaving a partial PSE
+	// behind that makes retries fail with "PSE with same name already exists".
+	fB.Assess("create-chain", c.assessOrderedCreate)
 
 	fB.Assess("observation-shape", c.assessObservationShape)
 	fB.Assess("drift-claim-filter", c.assessClaimFilterDrift)
@@ -234,6 +239,56 @@ func TestJWTProviderFlow(t *testing.T) {
 	fB.Teardown(c.TeardownJWTFlow)
 
 	testenv.Test(t, fB.Feature())
+}
+
+func (c *JWTFlowTestConfig) assessOrderedCreate(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+	res := cfg.Client().Resources()
+
+	for _, obj := range c.orderedCreateObjects(t) {
+		if err := res.Create(ctx, obj); err != nil {
+			t.Fatalf("failed to create %s %q: %v", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName(), err)
+		}
+		c.waitForReady(ctx, t, cfg, obj)
+	}
+	return ctx
+}
+
+func (c *JWTFlowTestConfig) orderedCreateObjects(t *testing.T) []k8s.Object {
+	var publicKey, jwtProvider, pse, user k8s.Object
+	for _, obj := range c.Objects {
+		switch obj.(type) {
+		case *v1alpha1.PublicKey:
+			publicKey = obj
+		case *v1alpha1.JWTProvider:
+			jwtProvider = obj
+		case *v1alpha1.PersonalSecurityEnvironment:
+			pse = obj
+		case *v1alpha1.User:
+			user = obj
+		}
+	}
+
+	ordered := []k8s.Object{publicKey, jwtProvider, pse, user}
+	for _, obj := range ordered {
+		if obj == nil {
+			t.Fatalf("JWT flow fixture did not decode all expected resources")
+		}
+	}
+	return ordered
+}
+
+func (c *JWTFlowTestConfig) waitForReady(ctx context.Context, t *testing.T, cfg *envconf.Config, obj k8s.Object) {
+	res := cfg.Client().Resources()
+	xpc := xpconditions.New(res)
+	if err := wait.For(
+		conditions.New(res).ResourceMatch(obj, xpc.IsManagedResourceReadyAndReady),
+		wait.WithTimeout(5*time.Minute),
+	); err != nil {
+		out, _ := exec.Command("kubectl", "describe",
+			obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName()).CombinedOutput()
+		t.Fatalf("%s %q did not become ready: %v\nkubectl describe:\n%s",
+			obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName(), err, string(out))
+	}
 }
 
 // assessObservationShape re-fetches every CR after AssessCreate and asserts
