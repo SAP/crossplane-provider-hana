@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: ${{ (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'MEMBER' || github.event.pull_request.author_association == 'COLLABORATOR') && 'pr-e2e-no-approval' || 'pr-e2e-approval' }}
+      deployment: false
     steps:
       - run: echo "Approved"
 
@@ -53,6 +54,5 @@ jobs:
     uses: ./.github/workflows/e2e_test.yaml
     with:
       checkout-ref: ${{ github.event.pull_request.head.sha }}
-      environment: pr-e2e-no-approval  # approve job already handled the gate
     secrets:
       HANA_BINDINGS: ${{ secrets.HANA_BINDINGS }}
