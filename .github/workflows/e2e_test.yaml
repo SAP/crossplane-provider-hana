@@ -12,6 +12,11 @@ on:
         default: ''
         required: false
         type: string
+      skip:
+        description: 'skip all jobs (e.g. for doc-only changes); workflow still runs to satisfy branch protection'
+        default: false
+        required: false
+        type: boolean
     secrets:
       HANA_BINDINGS:
         required: true
@@ -22,6 +27,7 @@ permissions:
 
 jobs:
   e2e-tests:
+    if: ${{ !inputs.skip }}
     runs-on: ubuntu-latest
     environment:
       name: pr-e2e-no-approval
