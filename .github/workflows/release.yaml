@@ -21,14 +21,14 @@ permissions:
 
 jobs:
   run-pre-checks:
-    uses: SAP/crossplane-provider-btp/.github/workflows/check-all-pre-checks.lib.yaml@main
+    uses: SAP/crossplane-shared-workflows/.github/workflows/check-all-pre-checks.lib.yaml@main
     permissions:
       contents: read
 
   build-and-publish:
     needs:
     - run-pre-checks
-    uses: SAP/crossplane-provider-btp/.github/workflows/release-build-publish.lib.yaml@main
+    uses: SAP/crossplane-shared-workflows/.github/workflows/release-build-publish.lib.yaml@main
     with:
       version: ${{ github.event.inputs.nextVersion }}
       release_type: release

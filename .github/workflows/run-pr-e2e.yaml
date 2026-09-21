@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   detect-only-doc-changes:
-    uses: SAP/crossplane-provider-btp/.github/workflows/detect-only-doc-changes.lib.yaml@main
+    uses: SAP/crossplane-shared-workflows/.github/workflows/detect-only-doc-changes.lib.yaml@main
 
   # Approval job detects user's author association and bypasses the manual approval step for certain users.
   approve:

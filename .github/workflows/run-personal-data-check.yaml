@@ -12,6 +12,6 @@ permissions:
 
 jobs:
   run-pii-check:
-    uses: SAP/crossplane-provider-btp/.github/workflows/check-personal-data.lib.yaml@main
+    uses: SAP/crossplane-shared-workflows/.github/workflows/check-personal-data.lib.yaml@main
     permissions:
       contents: read
