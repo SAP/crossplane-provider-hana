@@ -16,8 +16,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/utils"
 	"github.com/crossplane-contrib/xp-testing/pkg/resources"
 	"github.com/crossplane-contrib/xp-testing/pkg/xpenvfuncs"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 
@@ -132,7 +132,7 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 			return ctx
 		}
 
-		user.Spec.ManagementPolicies = []xpv1.ManagementAction{xpv1.ManagementActionObserve}
+		user.Spec.ManagementPolicies = []xpv2.ManagementAction{xpv2.ManagementActionObserve}
 		if err := res.Update(ctx, user); err != nil {
 			t.Errorf("failed to update user managementPolicies: %v", err)
 			return ctx
@@ -176,7 +176,7 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 			t.Errorf("failed to get user: %v", err)
 			return ctx
 		}
-		user.Spec.ManagementPolicies = []xpv1.ManagementAction{xpv1.ManagementActionAll}
+		user.Spec.ManagementPolicies = []xpv2.ManagementAction{xpv2.ManagementActionAll}
 		if err := res.Update(ctx, user); err != nil {
 			t.Errorf("failed to restore managementPolicies: %v", err)
 			return ctx

@@ -7,7 +7,7 @@ package v1alpha1
 import (
 	"reflect"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -19,7 +19,7 @@ type CertificateParameters struct {
 	Name string `json:"name"`
 	// Reference to the Kubernetes Secret containing the PEM encoded certificate.
 	// +kubebuilder:validation:Required
-	CertificateSecretRef *xpv1.SecretKeySelector `json:"certificateSecretRef"`
+	CertificateSecretRef *xpv2.SecretKeySelector `json:"certificateSecretRef"`
 }
 
 type ImportedCertificate struct {
@@ -34,14 +34,14 @@ type CertificateObservation struct {
 
 // CertificateSpec defines the desired state of Certificate.
 type CertificateSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       CertificateParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     CertificateParameters `json:"forProvider"`
 }
 
 // CertificateStatus represents the observed state of Certificate.
 type CertificateStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          CertificateObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 CertificateObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

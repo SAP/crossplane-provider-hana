@@ -67,8 +67,8 @@ type X509ProviderParameters struct {
 }
 
 type X509ProviderSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       X509ProviderParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     X509ProviderParameters `json:"forProvider"`
 }
 ```
 
@@ -84,7 +84,7 @@ type CertificateRef struct {
 // X509ProviderRef - can reference by direct name or Crossplane resource
 type X509ProviderRef struct {
 	Name        string          `json:"name,omitempty"`
-	ProviderRef *xpv1.Reference `json:"providerRef,omitempty"`
+	ProviderRef *xpv2.Reference `json:"providerRef,omitempty"`
 }
 
 type PersonalSecurityEnvironmentParameters struct {
@@ -94,8 +94,8 @@ type PersonalSecurityEnvironmentParameters struct {
 }
 
 type PersonalSecurityEnvironmentSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       PersonalSecurityEnvironmentParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     PersonalSecurityEnvironmentParameters `json:"forProvider"`
 }
 ```
 

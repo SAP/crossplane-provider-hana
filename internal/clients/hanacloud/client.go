@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"golang.org/x/oauth2/clientcredentials"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud/instancemapping"

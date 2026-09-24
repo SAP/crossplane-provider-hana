@@ -11,8 +11,8 @@ import (
 
 	// Blank import as specified by the driver
 	_ "github.com/SAP/go-hdb/driver"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"golang.org/x/crypto/argon2"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
@@ -36,10 +36,10 @@ func New(logger logging.Logger) xsql.Connector {
 }
 
 func (h *hanaDB) Connect(ctx context.Context, creds map[string][]byte) (xsql.DB, error) {
-	endpoint := string(creds[xpv1.ResourceCredentialsSecretEndpointKey])
-	port := string(creds[xpv1.ResourceCredentialsSecretPortKey])
-	username := string(creds[xpv1.ResourceCredentialsSecretUserKey])
-	password := string(creds[xpv1.ResourceCredentialsSecretPasswordKey])
+	endpoint := string(creds[xpv2.CredentialsSecretEndpointKey])
+	port := string(creds[xpv2.CredentialsSecretPortKey])
+	username := string(creds[xpv2.CredentialsSecretUserKey])
+	password := string(creds[xpv2.CredentialsSecretPasswordKey])
 	dsn := DSN(username, password, endpoint, port)
 
 	hashBytes := argon2.IDKey([]byte(dsn), h.salt, 1, 64*1024, 4, 32)

@@ -9,12 +9,12 @@ import (
 	"errors"
 	"fmt"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -58,9 +58,9 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	log := o.Logger.WithValues("controller", name)
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.InstanceMappingGroupVersionKind),
-		managed.WithExternalConnecter(NewConnector(mgr.GetClient(), log, nil)),
+		managed.WithExternalConnector(NewConnector(mgr.GetClient(), log, nil)),
 		managed.WithLogger(log),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
 		features.ConfigureBetaManagementPolicies(o),
 	)
 
@@ -168,7 +168,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		if mapping.PrimaryID == params.PrimaryID && stringPtrEqual(mapping.SecondaryID, params.SecondaryID) {
 			cr.Status.AtProvider.MappingExists = true
 			cr.Status.AtProvider.LastSyncTime = &metav1.Time{Time: metav1.Now().Time}
-			cr.SetConditions(xpv1.Available())
+			cr.SetConditions(xpv2.Available())
 
 			e.log.Debug("Instance mapping found",
 				"serviceInstanceID", params.ServiceInstanceID,
@@ -218,7 +218,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, fmt.Errorf(errCreateMapping, err)
 	}
 
-	cr.SetConditions(xpv1.Creating())
+	cr.SetConditions(xpv2.Creating())
 	return managed.ExternalCreation{}, nil
 }
 
@@ -249,7 +249,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalDelete{}, fmt.Errorf(errDeleteMapping, err)
 	}
 
-	cr.SetConditions(xpv1.Deleting())
+	cr.SetConditions(xpv2.Deleting())
 	return managed.ExternalDelete{}, nil
 }
 

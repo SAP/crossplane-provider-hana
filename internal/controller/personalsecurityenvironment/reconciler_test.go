@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"testing"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -163,7 +163,7 @@ func TestObserve(t *testing.T) {
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
 							Name: "test-pse",
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "test-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -214,7 +214,7 @@ func TestObserve(t *testing.T) {
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
 							Name: "test-pse",
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "new-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "new-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -257,7 +257,7 @@ func TestObserve(t *testing.T) {
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
 							Name: "test-pse",
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "test-provider-ref"},
 							},
 						},
 					},
@@ -297,7 +297,7 @@ func TestObserve(t *testing.T) {
 							Name:    "test-pse",
 							Purpose: v1alpha1.PSEPurposeJWT,
 							JWTProviderRef: &v1alpha1.JWTProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+								ProviderRef: &xpv2.Reference{Name: "ias-jwt"},
 							},
 							PublicKeyRefs: []v1alpha1.PublicKeyRef{{Name: "ias-signing-key"}},
 						},
@@ -345,7 +345,7 @@ func TestObserve(t *testing.T) {
 							Name:    "test-pse",
 							Purpose: v1alpha1.PSEPurposeJWT,
 							JWTProviderRef: &v1alpha1.JWTProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+								ProviderRef: &xpv2.Reference{Name: "ias-jwt"},
 							},
 						},
 					},
@@ -430,7 +430,7 @@ func TestCreate(t *testing.T) {
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
 							Name: "test-pse",
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "test-provider-ref"},
 							},
 						},
 					},
@@ -468,7 +468,7 @@ func TestCreate(t *testing.T) {
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
 							Name: "test-pse",
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "test-provider-ref"},
 							},
 						},
 					},
@@ -506,7 +506,7 @@ func TestCreate(t *testing.T) {
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
 							Name: "test-pse",
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "test-provider-ref"},
 							},
 						},
 					},
@@ -542,7 +542,7 @@ func TestCreate(t *testing.T) {
 							Name:    "test-pse",
 							Purpose: v1alpha1.PSEPurposeJWT,
 							JWTProviderRef: &v1alpha1.JWTProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+								ProviderRef: &xpv2.Reference{Name: "ias-jwt"},
 							},
 						},
 					},
@@ -633,7 +633,7 @@ func TestUpdate(t *testing.T) {
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
 							Name: "test-pse",
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "test-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -683,7 +683,7 @@ func TestUpdate(t *testing.T) {
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
 							Name: "test-pse",
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "test-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -733,7 +733,7 @@ func TestUpdate(t *testing.T) {
 							Name:    "test-pse",
 							Purpose: v1alpha1.PSEPurposeJWT,
 							JWTProviderRef: &v1alpha1.JWTProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+								ProviderRef: &xpv2.Reference{Name: "ias-jwt"},
 							},
 							PublicKeyRefs: []v1alpha1.PublicKeyRef{{Name: "new-key"}},
 						},

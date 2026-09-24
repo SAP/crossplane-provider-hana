@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -147,7 +147,7 @@ func TestRead(t *testing.T) {
 					Username: "TEST_USER",
 					Authentication: v1alpha1.Authentication{
 						Password: &v1alpha1.Password{
-							PasswordSecretRef: &xpv1.SecretKeySelector{},
+							PasswordSecretRef: &xpv2.SecretKeySelector{},
 						},
 					},
 				},
@@ -198,7 +198,7 @@ func TestRead(t *testing.T) {
 					Username: "POWER_USER",
 					Authentication: v1alpha1.Authentication{
 						Password: &v1alpha1.Password{
-							PasswordSecretRef: &xpv1.SecretKeySelector{},
+							PasswordSecretRef: &xpv2.SecretKeySelector{},
 						},
 					},
 				},
@@ -248,7 +248,7 @@ func TestRead(t *testing.T) {
 					Username: "RESTRICTED_USER",
 					Authentication: v1alpha1.Authentication{
 						Password: &v1alpha1.Password{
-							PasswordSecretRef: &xpv1.SecretKeySelector{},
+							PasswordSecretRef: &xpv2.SecretKeySelector{},
 						},
 					},
 				},
@@ -377,7 +377,7 @@ func TestRead(t *testing.T) {
 					Username: "HYBRID_USER",
 					Authentication: v1alpha1.Authentication{
 						Password: &v1alpha1.Password{
-							PasswordSecretRef: &xpv1.SecretKeySelector{},
+							PasswordSecretRef: &xpv2.SecretKeySelector{},
 						},
 						X509Providers: []v1alpha1.X509UserMapping{
 							{

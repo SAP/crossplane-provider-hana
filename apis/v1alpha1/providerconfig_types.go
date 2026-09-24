@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // A ProviderConfigSpec defines the desired state of a ProviderConfig.
@@ -21,21 +21,21 @@ type ProviderConfigSpec struct {
 
 const (
 	// CredentialsSourceHanaConnectionSecret specifies the name of the CredentialsSource
-	CredentialsSourceHanaConnectionSecret xpv1.CredentialsSource = "HanaConnectionSecret"
+	CredentialsSourceHanaConnectionSecret xpv2.CredentialsSource = "HanaConnectionSecret"
 )
 
 // ProviderCredentials required to authenticate.
 type ProviderCredentials struct {
 	// Source of the provider credentials.
 	// +kubebuilder:validation:Enum=None;Secret;InjectedIdentity;Environment;Filesystem
-	Source xpv1.CredentialsSource `json:"source"`
+	Source xpv2.CredentialsSource `json:"source"`
 
-	ConnectionSecretRef *xpv1.SecretReference `json:"connectionSecretRef,omitempty"`
+	ConnectionSecretRef *xpv2.SecretReference `json:"connectionSecretRef,omitempty"`
 }
 
 // A ProviderConfigStatus reflects the observed state of a ProviderConfig.
 type ProviderConfigStatus struct {
-	xpv1.ProviderConfigStatus `json:",inline"`
+	xpv2.ProviderConfigStatus `json:",inline"`
 }
 
 // +kubebuilder:object:root=true

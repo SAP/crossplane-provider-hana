@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	servicescloudsapv1 "github.com/SAP/sap-btp-service-operator/api/v1"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -67,8 +67,8 @@ func TestConnector_Connect(t *testing.T) {
 					Name: "test-mapping",
 				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
-					ResourceSpec: xpv1.ResourceSpec{
-						ProviderConfigReference: &xpv1.Reference{Name: "default"},
+					ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+						ProviderConfigReference: &xpv2.Reference{Name: "default"},
 					},
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
 						KymaConnectionRef: &v1alpha1.KymaConnectionReference{
@@ -95,8 +95,8 @@ func TestConnector_Connect(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "default"},
 					Spec: apisv1alpha1.ProviderConfigSpec{
 						Credentials: apisv1alpha1.ProviderCredentials{
-							Source: xpv1.CredentialsSourceSecret,
-							ConnectionSecretRef: &xpv1.SecretReference{
+							Source: xpv2.CredentialsSourceSecret,
+							ConnectionSecretRef: &xpv2.SecretReference{
 								Name:      "provider-creds",
 								Namespace: "default",
 							},
@@ -125,8 +125,8 @@ func TestConnector_Connect(t *testing.T) {
 					Name: "test-mapping",
 				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
-					ResourceSpec: xpv1.ResourceSpec{
-						ProviderConfigReference: &xpv1.Reference{Name: "default"},
+					ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+						ProviderConfigReference: &xpv2.Reference{Name: "default"},
 					},
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
 						KymaConnectionRef: &v1alpha1.KymaConnectionReference{
@@ -196,10 +196,10 @@ func TestConnector_Connect(t *testing.T) {
 	}
 }
 
-// mockTracker is a mock implementation of resource.Tracker
+// mockTracker is a mock implementation of resource.LegacyTracker.
 type mockTracker struct{}
 
-func (m *mockTracker) Track(_ context.Context, _ resource.Managed) error {
+func (m *mockTracker) Track(_ context.Context, _ resource.LegacyManaged) error { //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 	return nil
 }
 
@@ -237,11 +237,11 @@ func TestExternal_Observe(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.InstanceMappingStatus{
-					ResourceStatus: xpv1.ResourceStatus{
-						ConditionedStatus: xpv1.ConditionedStatus{
-							Conditions: []xpv1.Condition{
-								{Type: xpv1.TypeReady, Status: corev1.ConditionTrue},
-								{Type: xpv1.TypeSynced, Status: corev1.ConditionTrue},
+					ManagedResourceStatus: xpv2.ManagedResourceStatus{
+						ConditionedStatus: xpv2.ConditionedStatus{
+							Conditions: []xpv2.Condition{
+								{Type: xpv2.TypeReady, Status: corev1.ConditionTrue},
+								{Type: xpv2.TypeSynced, Status: corev1.ConditionTrue},
 							},
 						},
 					},

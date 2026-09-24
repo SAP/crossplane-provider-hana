@@ -15,8 +15,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/crossplane-contrib/xp-testing/pkg/resources"
 	"github.com/crossplane-contrib/xp-testing/pkg/xpconditions"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/e2e-framework/klient/decoder"
@@ -153,9 +153,9 @@ func (c *RolegroupTestConfig) createRolegroupCR(ctx context.Context, t *testing.
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: v1alpha1.RolegroupSpec{
-			ResourceSpec: xpv1.ResourceSpec{
-				DeletionPolicy:          xpv1.DeletionDelete,
-				ProviderConfigReference: &xpv1.Reference{Name: "example"},
+			ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+				DeletionPolicy:          xpv2.DeletionDelete,
+				ProviderConfigReference: &xpv2.Reference{Name: "example"},
 			},
 			ForProvider: spec,
 		},
@@ -175,9 +175,9 @@ func (c *RolegroupTestConfig) createRoleCR(ctx context.Context, t *testing.T, cf
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: v1alpha1.RoleSpec{
-			ResourceSpec: xpv1.ResourceSpec{
-				DeletionPolicy:          xpv1.DeletionDelete,
-				ProviderConfigReference: &xpv1.Reference{Name: "example"},
+			ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+				DeletionPolicy:          xpv2.DeletionDelete,
+				ProviderConfigReference: &xpv2.Reference{Name: "example"},
 			},
 			ForProvider: spec,
 		},

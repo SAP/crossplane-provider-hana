@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // PublicKeyParameters are the configurable fields of a PublicKey.
@@ -61,14 +61,14 @@ type PublicKeyObservation struct {
 
 // A PublicKeySpec defines the desired state of a PublicKey.
 type PublicKeySpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       PublicKeyParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     PublicKeyParameters `json:"forProvider"`
 }
 
 // A PublicKeyStatus represents the observed state of a PublicKey.
 type PublicKeyStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          PublicKeyObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 PublicKeyObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -107,7 +107,7 @@ type PublicKeyRef struct {
 	Name string `json:"name,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	ProviderRef *xpv1.Reference `json:"providerRef,omitempty"`
+	ProviderRef *xpv2.Reference `json:"providerRef,omitempty"`
 }
 
 // PublicKey type metadata.

@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // Authentication includes different authentication methods
@@ -22,7 +22,7 @@ type Authentication struct {
 
 // Password authentication type
 type Password struct {
-	PasswordSecretRef        *xpv1.SecretKeySelector `json:"passwordSecretRef,omitempty"`
+	PasswordSecretRef        *xpv2.SecretKeySelector `json:"passwordSecretRef,omitempty"`
 	ForceFirstPasswordChange bool                    `json:"forceFirstPasswordChange,omitempty"`
 }
 
@@ -121,8 +121,8 @@ type UserObservation struct {
 
 // A UserSpec defines the desired state of a User.
 type UserSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       UserParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     UserParameters `json:"forProvider"`
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Enum=strict;lax
@@ -135,8 +135,8 @@ type UserSpec struct {
 
 // A UserStatus represents the observed state of a User.
 type UserStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          UserObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 UserObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

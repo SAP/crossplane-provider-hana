@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // AdminCredentialsSecretRef references a Secret containing admin API credentials
@@ -74,14 +74,14 @@ type InstanceMappingObservation struct {
 
 // InstanceMappingSpec defines the desired state of an InstanceMapping.
 type InstanceMappingSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       InstanceMappingParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     InstanceMappingParameters `json:"forProvider"`
 }
 
 // InstanceMappingStatus represents the observed state of an InstanceMapping.
 type InstanceMappingStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          InstanceMappingObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 InstanceMappingObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true
