@@ -6,6 +6,7 @@ package auditpolicy
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
@@ -173,14 +174,22 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.AuditTrailRetention = observed.AuditTrailRetention
 	cr.Status.AtProvider.Enabled = observed.Enabled
 	cr.Status.AtProvider.AuditActions = observed.AuditActions
+	cr.Status.AtProvider.AuditPrincipals = observed.AuditPrincipals
+	cr.Status.AtProvider.ExceptPrincipals = observed.ExceptPrincipals
 
 	cr.SetConditions(xpv2.Available())
 
-	isUpToDate := upToDate(observed, parameters)
+	isUpToDate, reason := upToDateWithReason(observed, parameters)
 	c.log.Info("Observed auditpolicy resource",
 		"name", cr.Name,
 		"auditPolicy", parameters.PolicyName,
 		"upToDate", isUpToDate)
+	if !isUpToDate {
+		c.log.Info("AuditPolicy is not up to date",
+			"name", cr.Name,
+			"auditPolicy", parameters.PolicyName,
+			"reason", reason)
+	}
 
 	return managed.ExternalObservation{
 		ResourceExists:   true,
@@ -229,17 +238,12 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	observed := buildObservedParameters(cr)
 	desired := buildDesiredParameters(cr)
 
-	// if audit actions, status or level differ, we need to drop and recreate the policy
+	// Audit actions, status, level and principals cannot be altered in place, so
+	// any drift in them requires dropping and recreating the policy. Observe
+	// already logs the specific field that differs (see "AuditPolicy is not up
+	// to date"), so we only log the intent here.
 	if needsRecreation(observed, desired) {
-		c.log.Debug("Audit policy differ and will be recreated",
-			"name", cr.Name,
-			"policyName", desired.PolicyName,
-			"observedActions", observed.AuditActions,
-			"desiredActions", desired.AuditActions,
-			"observedStatus", observed.AuditStatus,
-			"desiredStatus", desired.AuditStatus,
-			"observedLevel", observed.AuditLevel,
-			"desiredLevel", desired.AuditLevel)
+		c.log.Debug("Audit policy differs and will be recreated", "name", cr.Name, "policyName", desired.PolicyName)
 		err := c.client.RecreatePolicy(ctx, desired)
 		if err != nil {
 			c.log.Info("Error updating audit policy", "name", cr.Name, "error", err)
@@ -248,7 +252,9 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		cr.Status.AtProvider.AuditActions = desired.AuditActions
 		cr.Status.AtProvider.AuditStatus = desired.AuditStatus
 		cr.Status.AtProvider.AuditLevel = desired.AuditLevel
-		c.log.Info("Recreated audit policy to update actions/status/level", "name", cr.Name, "policyName", desired.PolicyName)
+		cr.Status.AtProvider.AuditPrincipals = desired.AuditPrincipals
+		cr.Status.AtProvider.ExceptPrincipals = desired.ExceptPrincipals
+		c.log.Info("Recreated audit policy to update actions/status/level/principals", "name", cr.Name, "policyName", desired.PolicyName)
 	} else {
 		// if only retention or enabled differ, we can update those without recreating the policy
 		// if the policy was just recreated, we don't need to update those again
@@ -323,27 +329,104 @@ func buildDesiredParameters(cr *v1alpha1.AuditPolicy) *v1alpha1.AuditPolicyParam
 		AuditStatus:         strings.ToUpper(cr.Spec.ForProvider.AuditStatus),
 		AuditActions:        utils.ArrayToUpper(cr.Spec.ForProvider.AuditActions),
 		AuditLevel:          strings.ToUpper(cr.Spec.ForProvider.AuditLevel),
+		AuditPrincipals:     principalsToUpper(cr.Spec.ForProvider.AuditPrincipals),
+		ExceptPrincipals:    cr.Spec.ForProvider.ExceptPrincipals,
 		AuditTrailRetention: cr.Spec.ForProvider.AuditTrailRetention,
 		Enabled:             cr.Spec.ForProvider.Enabled,
 	}
 }
 
-func needsRecreation(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {
-	return !utils.ArraysEqual(desired.AuditActions, observed.AuditActions) || (observed.AuditStatus != desired.AuditStatus) || (observed.AuditLevel != desired.AuditLevel)
+// principalsToUpper upper-cases the type and name of each principal, keeping the
+// original ordering. It returns nil when no principals are configured.
+func principalsToUpper(principals []v1alpha1.AuditPrincipal) []v1alpha1.AuditPrincipal {
+	if len(principals) == 0 {
+		return nil
+	}
+	upper := make([]v1alpha1.AuditPrincipal, len(principals))
+	for i, p := range principals {
+		upper[i] = v1alpha1.AuditPrincipal{
+			Type: strings.ToUpper(p.Type),
+			Name: strings.ToUpper(p.Name),
+		}
+	}
+	return upper
 }
 
-func upToDate(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {
-	if observed.PolicyName != desired.PolicyName || observed.AuditStatus != desired.AuditStatus || observed.AuditLevel != desired.AuditLevel {
-		return false
+func needsRecreation(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {
+	return !utils.ArraysEqual(desired.AuditActions, observed.AuditActions) ||
+		(observed.AuditStatus != desired.AuditStatus) ||
+		(observed.AuditLevel != desired.AuditLevel) ||
+		principalsDiffer(observed, desired)
+}
+
+// principalsDiffer reports whether the observed principal configuration differs
+// from the desired one. The principal clause cannot be altered in place, so any
+// difference requires a drop-and-recreate of the audit policy. ExceptPrincipals
+// is only meaningful when principals are configured.
+func principalsDiffer(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) bool {
+	if !utils.ArraysEqual(observed.AuditPrincipals, desired.AuditPrincipals) {
+		return true
 	}
-	if *observed.AuditTrailRetention != *desired.AuditTrailRetention {
-		return false
+	if len(desired.AuditPrincipals) > 0 && observed.ExceptPrincipals != desired.ExceptPrincipals {
+		return true
 	}
-	if *observed.Enabled != *desired.Enabled {
-		return false
+	return false
+}
+
+// upToDateWithReason reports whether the observed state matches the desired
+// state and, when it does not, a human-readable reason describing the first
+// field that differs. The reason is intended for logging so drift is easy to
+// diagnose.
+func upToDateWithReason(observed *v1alpha1.AuditPolicyObservation, desired *v1alpha1.AuditPolicyParameters) (bool, string) {
+	if observed.PolicyName != desired.PolicyName {
+		return false, fmt.Sprintf("policyName differs: observed=%q desired=%q", observed.PolicyName, desired.PolicyName)
+	}
+	if observed.AuditStatus != desired.AuditStatus {
+		return false, fmt.Sprintf("auditStatus differs: observed=%q desired=%q", observed.AuditStatus, desired.AuditStatus)
+	}
+	if observed.AuditLevel != desired.AuditLevel {
+		return false, fmt.Sprintf("auditLevel differs: observed=%q desired=%q", observed.AuditLevel, desired.AuditLevel)
+	}
+	if !equalIntPtr(observed.AuditTrailRetention, desired.AuditTrailRetention) {
+		return false, fmt.Sprintf("auditTrailRetention differs: observed=%v desired=%v", derefInt(observed.AuditTrailRetention), derefInt(desired.AuditTrailRetention))
+	}
+	if !equalBoolPtr(observed.Enabled, desired.Enabled) {
+		return false, fmt.Sprintf("enabled differs: observed=%v desired=%v", derefBool(observed.Enabled), derefBool(desired.Enabled))
 	}
 	if !utils.ArraysEqual(observed.AuditActions, desired.AuditActions) {
-		return false
+		return false, fmt.Sprintf("auditActions differ: observed=%v desired=%v", observed.AuditActions, desired.AuditActions)
 	}
-	return true
+	if principalsDiffer(observed, desired) {
+		return false, fmt.Sprintf("principals differ: observed=%v exceptObserved=%v desired=%v exceptDesired=%v",
+			observed.AuditPrincipals, observed.ExceptPrincipals, desired.AuditPrincipals, desired.ExceptPrincipals)
+	}
+	return true, ""
+}
+
+func equalIntPtr(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func equalBoolPtr(a, b *bool) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func derefInt(p *int) any {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+func derefBool(p *bool) any {
+	if p == nil {
+		return nil
+	}
+	return *p
 }

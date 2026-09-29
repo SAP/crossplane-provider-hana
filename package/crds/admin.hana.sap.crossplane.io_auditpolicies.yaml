@@ -89,6 +89,47 @@ spec:
                     - WARNING
                     - INFO
                     type: string
+                  auditPrincipals:
+                    description: |-
+                      AuditPrincipals is an optional, ordered list of principals (users and/or
+                      user groups) the audit policy applies to. It maps to the principal list of
+                      the "[EXCEPT] FOR PRINCIPALS ..." clause of the CREATE AUDIT POLICY
+                      statement and can mix users and user groups in any order, for example:
+                      "FOR PRINCIPALS USER user1, USERGROUP usergroup1, USER user2".
+                      Combine it with ExceptPrincipals to render "EXCEPT FOR PRINCIPALS ..."
+                      instead. Principals can be combined with any audit action; note that the
+                      ACTIONS audit action in turn requires a principal list.
+                    items:
+                      description: |-
+                        AuditPrincipal identifies a single principal an audit policy applies to. It
+                        maps to one "USER <name>" or "USERGROUP <name>" entry of the principal list
+                        in a CREATE AUDIT POLICY statement.
+                      properties:
+                        name:
+                          description: |-
+                            Name is the name of the user or user group. It must be a valid HANA
+                            identifier; the pattern matches the Username rule from the User resource.
+                            USERGROUP names are additionally not allowed to contain '-' (see the
+                            object-level validation), matching the Usergroup rule.
+                          maxLength: 127
+                          pattern: ^[^",\$\.'\+<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
+                          type: string
+                        type:
+                          description: Type selects whether the principal is a single
+                            user or a user group.
+                          enum:
+                          - USER
+                          - USERGROUP
+                          type: string
+                      required:
+                      - name
+                      - type
+                      type: object
+                      x-kubernetes-validations:
+                      - message: a USERGROUP name must not contain '-'
+                        rule: self.type != 'USERGROUP' || !self.name.contains('-')
+                    maxItems: 256
+                    type: array
                   auditStatus:
                     default: ALL
                     enum:
@@ -101,6 +142,14 @@ spec:
                     type: integer
                   enabled:
                     default: false
+                    type: boolean
+                  exceptPrincipals:
+                    default: false
+                    description: |-
+                      ExceptPrincipals, when set to true, renders the principal clause as
+                      "EXCEPT FOR PRINCIPALS ..." instead of "FOR PRINCIPALS ...", meaning the
+                      audit policy applies to everyone except the configured principals. It has
+                      no effect when no principals are configured.
                     type: boolean
                   policyName:
                     type: string
@@ -207,11 +256,54 @@ spec:
                     type: array
                   auditLevel:
                     type: string
+                  auditPrincipals:
+                    description: |-
+                      AuditPrincipals is the list of principals observed from HANA that the
+                      audit policy applies to. It is derived from the principal columns of the
+                      AUDIT_POLICIES system view and is used to detect drift against the
+                      desired AuditPrincipals.
+                    items:
+                      description: |-
+                        AuditPrincipal identifies a single principal an audit policy applies to. It
+                        maps to one "USER <name>" or "USERGROUP <name>" entry of the principal list
+                        in a CREATE AUDIT POLICY statement.
+                      properties:
+                        name:
+                          description: |-
+                            Name is the name of the user or user group. It must be a valid HANA
+                            identifier; the pattern matches the Username rule from the User resource.
+                            USERGROUP names are additionally not allowed to contain '-' (see the
+                            object-level validation), matching the Usergroup rule.
+                          maxLength: 127
+                          pattern: ^[^",\$\.'\+<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$
+                          type: string
+                        type:
+                          description: Type selects whether the principal is a single
+                            user or a user group.
+                          enum:
+                          - USER
+                          - USERGROUP
+                          type: string
+                      required:
+                      - name
+                      - type
+                      type: object
+                      x-kubernetes-validations:
+                      - message: a USERGROUP name must not contain '-'
+                        rule: self.type != 'USERGROUP' || !self.name.contains('-')
+                    maxItems: 256
+                    type: array
                   auditStatus:
                     type: string
                   auditTrailRetention:
                     type: integer
                   enabled:
+                    type: boolean
+                  exceptPrincipals:
+                    description: |-
+                      ExceptPrincipals reflects whether the observed principal clause is an
+                      "EXCEPT FOR PRINCIPALS ..." clause rather than a "FOR PRINCIPALS ..."
+                      clause.
                     type: boolean
                   policyName:
                     type: string

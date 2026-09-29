@@ -543,3 +543,181 @@ func TestRecreatePolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildDesiredParameters(t *testing.T) {
+	cases := map[string]struct {
+		reason string
+		cr     *v1alpha1.AuditPolicy
+		want   *v1alpha1.AuditPolicyParameters
+	}{
+		"UserGroupPrincipals": {
+			reason: "The desired parameters should carry and upper-case a single user group principal",
+			cr: &v1alpha1.AuditPolicy{
+				Spec: v1alpha1.AuditPolicySpec{
+					ForProvider: v1alpha1.AuditPolicyParameters{
+						PolicyName:   "signavio_technical_user_connect",
+						AuditStatus:  "successful",
+						AuditActions: []string{"connect"},
+						AuditPrincipals: []v1alpha1.AuditPrincipal{
+							{Type: "usergroup", Name: "technical_user_group"},
+						},
+						AuditLevel: "info",
+					},
+				},
+			},
+			want: &v1alpha1.AuditPolicyParameters{
+				PolicyName:   "SIGNAVIO_TECHNICAL_USER_CONNECT",
+				AuditStatus:  "SUCCESSFUL",
+				AuditActions: []string{"CONNECT"},
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+				},
+				AuditLevel: "INFO",
+			},
+		},
+		"NoPrincipals": {
+			reason: "The desired parameters should carry a nil principal list when none are configured",
+			cr: &v1alpha1.AuditPolicy{
+				Spec: v1alpha1.AuditPolicySpec{
+					ForProvider: v1alpha1.AuditPolicyParameters{
+						PolicyName:   "demo_audit_policy",
+						AuditStatus:  "successful",
+						AuditActions: []string{"connect"},
+						AuditLevel:   "info",
+					},
+				},
+			},
+			want: &v1alpha1.AuditPolicyParameters{
+				PolicyName:      "DEMO_AUDIT_POLICY",
+				AuditStatus:     "SUCCESSFUL",
+				AuditActions:    []string{"CONNECT"},
+				AuditPrincipals: nil,
+				AuditLevel:      "INFO",
+			},
+		},
+		"ExceptMixedPrincipals": {
+			reason: "The desired parameters should carry and upper-case an ordered, mixed principal list with the EXCEPT flag",
+			cr: &v1alpha1.AuditPolicy{
+				Spec: v1alpha1.AuditPolicySpec{
+					ForProvider: v1alpha1.AuditPolicyParameters{
+						PolicyName:   "except_principals_audit_policy1",
+						AuditStatus:  "successful",
+						AuditActions: []string{"actions"},
+						AuditPrincipals: []v1alpha1.AuditPrincipal{
+							{Type: "user", Name: "user1"},
+							{Type: "usergroup", Name: "usergroup1"},
+							{Type: "user", Name: "user2"},
+							{Type: "usergroup", Name: "usergroup2"},
+						},
+						ExceptPrincipals: true,
+						AuditLevel:       "critical",
+					},
+				},
+			},
+			want: &v1alpha1.AuditPolicyParameters{
+				PolicyName:   "EXCEPT_PRINCIPALS_AUDIT_POLICY1",
+				AuditStatus:  "SUCCESSFUL",
+				AuditActions: []string{"ACTIONS"},
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: "USER", Name: "USER1"},
+					{Type: "USERGROUP", Name: "USERGROUP1"},
+					{Type: "USER", Name: "USER2"},
+					{Type: "USERGROUP", Name: "USERGROUP2"},
+				},
+				ExceptPrincipals: true,
+				AuditLevel:       "CRITICAL",
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := buildDesiredParameters(tc.cr)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("\n%s\nbuildDesiredParameters(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+func TestPrincipalsDiffer(t *testing.T) {
+	cases := map[string]struct {
+		reason   string
+		observed *v1alpha1.AuditPolicyObservation
+		desired  *v1alpha1.AuditPolicyParameters
+		want     bool
+	}{
+		"NoPrincipalsEqual": {
+			reason:   "No principals on either side is not a difference",
+			observed: &v1alpha1.AuditPolicyObservation{},
+			desired:  &v1alpha1.AuditPolicyParameters{},
+			want:     false,
+		},
+		"SamePrincipalsDifferentOrder": {
+			reason: "Principal comparison is order-independent",
+			observed: &v1alpha1.AuditPolicyObservation{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+					{Type: "USER", Name: "MONITORING_ADMIN"},
+				},
+			},
+			desired: &v1alpha1.AuditPolicyParameters{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: "USER", Name: "MONITORING_ADMIN"},
+					{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+				},
+			},
+			want: false,
+		},
+		"AddedPrincipal": {
+			reason: "Adding a principal is a difference",
+			observed: &v1alpha1.AuditPolicyObservation{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: "USER", Name: "MONITORING_ADMIN"},
+				},
+			},
+			desired: &v1alpha1.AuditPolicyParameters{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: "USER", Name: "MONITORING_ADMIN"},
+					{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+				},
+			},
+			want: true,
+		},
+		"FlippedExceptPrincipals": {
+			reason: "Flipping ExceptPrincipals with principals configured is a difference",
+			observed: &v1alpha1.AuditPolicyObservation{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: "USER", Name: "MONITORING_ADMIN"},
+				},
+				ExceptPrincipals: false,
+			},
+			desired: &v1alpha1.AuditPolicyParameters{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: "USER", Name: "MONITORING_ADMIN"},
+				},
+				ExceptPrincipals: true,
+			},
+			want: true,
+		},
+		"ExceptPrincipalsIgnoredWhenNoPrincipals": {
+			reason: "ExceptPrincipals is irrelevant when no principals are configured",
+			observed: &v1alpha1.AuditPolicyObservation{
+				ExceptPrincipals: false,
+			},
+			desired: &v1alpha1.AuditPolicyParameters{
+				ExceptPrincipals: true,
+			},
+			want: false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := principalsDiffer(tc.observed, tc.desired)
+			if got != tc.want {
+				t.Errorf("\n%s\nprincipalsDiffer(...): want %v, got %v", tc.reason, tc.want, got)
+			}
+		})
+	}
+}
