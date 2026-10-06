@@ -19,6 +19,11 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/x509provider"
 )
 
+const (
+	testProviderName = "test-provider"
+	testIssuer       = "CN=Test CA"
+)
+
 // Unlike many Kubernetes projects Crossplane does not use third party testing
 // libraries, per the common Go test review comments. Crossplane encourages the
 // use of table driven unit tests. The tests of the crossplane-runtime project
@@ -77,8 +82,8 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:   "test-provider",
-							Issuer: "CN=Test CA",
+							Name:   testProviderName,
+							Issuer: testIssuer,
 						},
 					},
 				},
@@ -102,7 +107,7 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
 							Name:   "nonexistent-provider",
-							Issuer: "CN=Test CA",
+							Issuer: testIssuer,
 						},
 					},
 				},
@@ -119,8 +124,8 @@ func TestObserve(t *testing.T) {
 				client: &mockX509ProviderClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.X509ProviderParameters) (*v1alpha1.X509ProviderObservation, error) {
 						return &v1alpha1.X509ProviderObservation{
-							Name:          new("test-provider"),
-							Issuer:        new("CN=Test CA"),
+							Name:          new(testProviderName),
+							Issuer:        new(testIssuer),
 							MatchingRules: []string{"rule1", "rule2"},
 						}, nil
 					},
@@ -131,8 +136,8 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:          "test-provider",
-							Issuer:        "CN=Test CA",
+							Name:          testProviderName,
+							Issuer:        testIssuer,
 							MatchingRules: []string{"rule1", "rule2"},
 						},
 					},
@@ -151,7 +156,7 @@ func TestObserve(t *testing.T) {
 				client: &mockX509ProviderClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.X509ProviderParameters) (*v1alpha1.X509ProviderObservation, error) {
 						return &v1alpha1.X509ProviderObservation{
-							Name:          new("test-provider"),
+							Name:          new(testProviderName),
 							Issuer:        new("CN=Old CA"),
 							MatchingRules: []string{"old-rule"},
 						}, nil
@@ -163,7 +168,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:          "test-provider",
+							Name:          testProviderName,
 							Issuer:        "CN=New CA",
 							MatchingRules: []string{"new-rule"},
 						},
@@ -243,8 +248,8 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:   "test-provider",
-							Issuer: "CN=Test CA",
+							Name:   testProviderName,
+							Issuer: testIssuer,
 						},
 					},
 				},
@@ -267,8 +272,8 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:   "test-provider",
-							Issuer: "CN=Test CA",
+							Name:   testProviderName,
+							Issuer: testIssuer,
 						},
 					},
 				},
@@ -345,13 +350,13 @@ func TestUpdate(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:   "test-provider",
+							Name:   testProviderName,
 							Issuer: "CN=New CA",
 						},
 					},
 					Status: v1alpha1.X509ProviderStatus{
 						AtProvider: v1alpha1.X509ProviderObservation{
-							Name:   new("test-provider"),
+							Name:   new(testProviderName),
 							Issuer: new("CN=Old CA"),
 						},
 					},
@@ -375,13 +380,13 @@ func TestUpdate(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:   "test-provider",
+							Name:   testProviderName,
 							Issuer: "CN=New CA",
 						},
 					},
 					Status: v1alpha1.X509ProviderStatus{
 						AtProvider: v1alpha1.X509ProviderObservation{
-							Name:   new("test-provider"),
+							Name:   new(testProviderName),
 							Issuer: new("CN=Old CA"),
 						},
 					},
@@ -458,8 +463,8 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:   "test-provider",
-							Issuer: "CN=Test CA",
+							Name:   testProviderName,
+							Issuer: testIssuer,
 						},
 					},
 				},
@@ -482,8 +487,8 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.X509Provider{
 					Spec: v1alpha1.X509ProviderSpec{
 						ForProvider: v1alpha1.X509ProviderParameters{
-							Name:   "test-provider",
-							Issuer: "CN=Test CA",
+							Name:   testProviderName,
+							Issuer: testIssuer,
 						},
 					},
 				},

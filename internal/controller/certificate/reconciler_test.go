@@ -26,6 +26,11 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
+const (
+	testCertificateName = "my-ca"
+	testCertificateKey  = "ca.crt"
+)
+
 type mockLogger struct{}
 
 func (l *mockLogger) Debug(_ string, _ ...any)           {}
@@ -198,7 +203,7 @@ func TestObserve(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{err: fmt.Errorf("%s: %w", errReadCert, errBoom)},
@@ -215,7 +220,7 @@ func TestObserve(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{ob: managed.ExternalObservation{ResourceExists: false}},
@@ -235,7 +240,7 @@ func TestObserve(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{ob: managed.ExternalObservation{ResourceExists: true, ResourceUpToDate: true}},
@@ -297,8 +302,8 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
 						ForProvider: v1alpha1.CertificateParameters{
-							Name:                 "my-ca",
-							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+							Name:                 testCertificateName,
+							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: testCertificateKey},
 						},
 					},
 				},
@@ -311,7 +316,7 @@ func TestCreate(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						if s, ok := obj.(*corev1.Secret); ok {
-							s.Data = map[string][]byte{"ca.crt": certPEM}
+							s.Data = map[string][]byte{testCertificateKey: certPEM}
 						}
 						return nil
 					}),
@@ -327,8 +332,8 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
 						ForProvider: v1alpha1.CertificateParameters{
-							Name:                 "my-ca",
-							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+							Name:                 testCertificateName,
+							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: testCertificateKey},
 						},
 					},
 				},
@@ -341,7 +346,7 @@ func TestCreate(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						if s, ok := obj.(*corev1.Secret); ok {
-							s.Data = map[string][]byte{"ca.crt": certPEM}
+							s.Data = map[string][]byte{testCertificateKey: certPEM}
 						}
 						return nil
 					}),
@@ -357,8 +362,8 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
 						ForProvider: v1alpha1.CertificateParameters{
-							Name:                 "my-ca",
-							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+							Name:                 testCertificateName,
+							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: testCertificateKey},
 						},
 					},
 				},
@@ -417,7 +422,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{err: fmt.Errorf("%s: %w", errDeleteCert, errBoom)},
@@ -434,7 +439,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{err: nil},

@@ -19,6 +19,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/publickey"
 )
 
+const testPublicKeyPEM = "dummy"
+
 func TestObserve(t *testing.T) {
 	errBoom := errors.New("boom")
 
@@ -62,7 +64,7 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM},
 					},
 				},
 			},
@@ -81,7 +83,7 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM},
 					},
 				},
 			},
@@ -104,7 +106,7 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy", Comment: "my key"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM, Comment: "my key"},
 					},
 				},
 			},
@@ -127,7 +129,7 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy", Comment: "new comment"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM, Comment: "new comment"},
 					},
 				},
 			},
@@ -190,7 +192,7 @@ func TestCreate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM},
 					},
 				},
 			},
@@ -207,7 +209,7 @@ func TestCreate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM},
 					},
 				},
 			},
@@ -272,7 +274,7 @@ func TestUpdate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy", Comment: "new"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM, Comment: "new"},
 					},
 					Status: v1alpha1.PublicKeyStatus{
 						AtProvider: v1alpha1.PublicKeyObservation{Comment: new("old")},
@@ -294,7 +296,7 @@ func TestUpdate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy", Comment: "new"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM, Comment: "new"},
 					},
 					Status: v1alpha1.PublicKeyStatus{
 						AtProvider: v1alpha1.PublicKeyObservation{Comment: new("old")},
@@ -359,7 +361,7 @@ func TestDelete(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM},
 					},
 				},
 			},
@@ -376,7 +378,7 @@ func TestDelete(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PublicKey{
 					Spec: v1alpha1.PublicKeySpec{
-						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: "dummy"},
+						ForProvider: v1alpha1.PublicKeyParameters{Name: "K", PEM: testPublicKeyPEM},
 					},
 				},
 			},

@@ -16,6 +16,11 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 )
 
+const (
+	testRoleName = "DEMO_ROLE"
+	testUsername = "ADMIN"
+)
+
 // TestBuildGranteeLiteral pins down that the grantee passed to the catalog-view
 // queries (GRANTED_PRIVILEGES / GRANTED_ROLES) is the UNQUOTED identifier value,
 // matching how those views store the GRANTEE column. This is the direct fix for
@@ -29,7 +34,7 @@ func TestBuildGranteeLiteral(t *testing.T) {
 		want     string
 	}{
 		"NoSchema":          {schema: "", roleName: "DUMMY_SCHEMA::dummy_role_g", want: "DUMMY_SCHEMA::dummy_role_g"},
-		"NoSchemaSimple":    {schema: "", roleName: "DEMO_ROLE", want: "DEMO_ROLE"},
+		"NoSchemaSimple":    {schema: "", roleName: testRoleName, want: testRoleName},
 		"SchemaQualified":   {schema: "MY_CONTAINER", roleName: "ns::reader", want: "MY_CONTAINER.ns::reader"},
 		"NoQuotesEverAdded": {schema: "", roleName: `DUMMY_SYSTEM_PRIVILEGE_WITH_GRANT_OPTION`, want: `DUMMY_SYSTEM_PRIVILEGE_WITH_GRANT_OPTION`},
 	}
@@ -79,7 +84,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName: "DEMO_ROLE",
+					RoleName: testRoleName,
 				},
 			},
 			want: want{
@@ -100,7 +105,7 @@ func TestRead(t *testing.T) {
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
 						rows := sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "ROLEGROUP_NAME"}).
-							AddRow("", "DEMO_ROLE", nil)
+							AddRow("", testRoleName, nil)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -109,13 +114,13 @@ func TestRead(t *testing.T) {
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
 					Schema:   "",
-					RoleName: "DEMO_ROLE",
+					RoleName: testRoleName,
 				},
 			},
 			want: want{
 				observed: &v1alpha1.RoleObservation{
 					Schema:     "",
-					RoleName:   "DEMO_ROLE",
+					RoleName:   testRoleName,
 					Privileges: make([]string, 0),
 					Roles:      make([]string, 0),
 				},
@@ -132,7 +137,7 @@ func TestRead(t *testing.T) {
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
 						rows := sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "ROLEGROUP_NAME"}).
-							AddRow("", "DEMO_ROLE", "MY_ROLEGROUP")
+							AddRow("", testRoleName, "MY_ROLEGROUP")
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -141,13 +146,13 @@ func TestRead(t *testing.T) {
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
 					Schema:   "",
-					RoleName: "DEMO_ROLE",
+					RoleName: testRoleName,
 				},
 			},
 			want: want{
 				observed: &v1alpha1.RoleObservation{
 					Schema:     "",
-					RoleName:   "DEMO_ROLE",
+					RoleName:   testRoleName,
 					Rolegroup:  "MY_ROLEGROUP",
 					Privileges: make([]string, 0),
 					Roles:      make([]string, 0),
@@ -158,7 +163,7 @@ func TestRead(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			c := Client{DB: tc.fields.db, Client: &privilege.PrivilegeClient{DB: tc.fields.db}, username: "ADMIN"}
+			c := Client{DB: tc.fields.db, Client: &privilege.PrivilegeClient{DB: tc.fields.db}, username: testUsername}
 			got, err := c.Read(tc.args.ctx, tc.args.parameters)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Read(...): -want error, +got error:\n%s\n", tc.reason, diff)
@@ -218,7 +223,7 @@ func TestReadPassesUnquotedGrantee(t *testing.T) {
 					return db.QueryRowContext(context.Background(), "SELECT")
 				},
 			}
-			c := Client{DB: db, Client: &privilege.PrivilegeClient{DB: db}, username: "ADMIN"}
+			c := Client{DB: db, Client: &privilege.PrivilegeClient{DB: db}, username: testUsername}
 			if _, err := c.Read(context.Background(), &v1alpha1.RoleParameters{Schema: tc.schema, RoleName: tc.roleName}); err != nil {
 				t.Fatalf("Read(...) unexpected error: %v", err)
 			}
@@ -285,7 +290,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName: "DEMO_ROLE",
+					RoleName: testRoleName,
 				},
 			},
 			want: want{
@@ -303,7 +308,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName: "DEMO_ROLE",
+					RoleName: testRoleName,
 				},
 			},
 			want: want{
@@ -313,7 +318,7 @@ func TestDelete(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			c := Client{DB: tc.fields.db, Client: &privilege.PrivilegeClient{DB: tc.fields.db}, username: "ADMIN"}
+			c := Client{DB: tc.fields.db, Client: &privilege.PrivilegeClient{DB: tc.fields.db}, username: testUsername}
 			err := c.Delete(tc.args.ctx, tc.args.parameters)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Read(...): -want error, +got error:\n%s\n", tc.reason, diff)
@@ -355,7 +360,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName: "DEMO_ROLE",
+					RoleName: testRoleName,
 				},
 			},
 			want: want{
@@ -367,7 +372,7 @@ func TestCreate(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expected := `CREATE ROLE "DEMO_ROLE" SET ROLEGROUP "MY_ROLEGROUP"`
+						expected := `CREATE ROLE "` + testRoleName + `" SET ROLEGROUP "MY_ROLEGROUP"`
 						if query != expected {
 							t.Errorf("expected query %q, got %q", expected, query)
 						}
@@ -377,7 +382,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName:  "DEMO_ROLE",
+					RoleName:  testRoleName,
 					Rolegroup: "MY_ROLEGROUP",
 				},
 			},
@@ -390,7 +395,7 @@ func TestCreate(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expected := `CREATE ROLE "DEMO_ROLE"`
+						expected := `CREATE ROLE "` + testRoleName + `"`
 						if query != expected {
 							t.Errorf("expected query %q, got %q", expected, query)
 						}
@@ -400,7 +405,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName: "DEMO_ROLE",
+					RoleName: testRoleName,
 				},
 			},
 			want: want{
@@ -410,7 +415,7 @@ func TestCreate(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			c := Client{DB: tc.fields.db, Client: &privilege.PrivilegeClient{DB: tc.fields.db}, username: "ADMIN"}
+			c := Client{DB: tc.fields.db, Client: &privilege.PrivilegeClient{DB: tc.fields.db}, username: testUsername}
 			err := c.Create(tc.args.ctx, tc.args.parameters)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Create(...): -want error, +got error:\n%s\n", tc.reason, diff)
@@ -452,7 +457,7 @@ func TestUpdateRolegroup(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName:  "DEMO_ROLE",
+					RoleName:  testRoleName,
 					Rolegroup: "NEW_ROLEGROUP",
 				},
 			},
@@ -465,7 +470,7 @@ func TestUpdateRolegroup(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expected := `ALTER ROLE "DEMO_ROLE" SET ROLEGROUP "MY_ROLEGROUP"`
+						expected := `ALTER ROLE "` + testRoleName + `" SET ROLEGROUP "MY_ROLEGROUP"`
 						if query != expected {
 							t.Errorf("expected query %q, got %q", expected, query)
 						}
@@ -475,7 +480,7 @@ func TestUpdateRolegroup(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName:  "DEMO_ROLE",
+					RoleName:  testRoleName,
 					Rolegroup: "MY_ROLEGROUP",
 				},
 			},
@@ -488,7 +493,7 @@ func TestUpdateRolegroup(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expected := `ALTER ROLE "DEMO_ROLE" UNSET ROLEGROUP`
+						expected := `ALTER ROLE "` + testRoleName + `" UNSET ROLEGROUP`
 						if query != expected {
 							t.Errorf("expected query %q, got %q", expected, query)
 						}
@@ -498,7 +503,7 @@ func TestUpdateRolegroup(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RoleParameters{
-					RoleName:  "DEMO_ROLE",
+					RoleName:  testRoleName,
 					Rolegroup: "",
 				},
 			},
@@ -509,7 +514,7 @@ func TestUpdateRolegroup(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			c := Client{DB: tc.fields.db, Client: &privilege.PrivilegeClient{DB: tc.fields.db}, username: "ADMIN"}
+			c := Client{DB: tc.fields.db, Client: &privilege.PrivilegeClient{DB: tc.fields.db}, username: testUsername}
 			err := c.UpdateRolegroup(tc.args.ctx, tc.args.parameters)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.UpdateRolegroup(...): -want error, +got error:\n%s\n", tc.reason, diff)

@@ -188,7 +188,7 @@ func TestCertName(t *testing.T) {
 		},
 		"InvalidPEM": {
 			reason:  "Non-PEM input should return an error",
-			base:    "my-ca",
+			base:    testCertificateName,
 			pem:     []byte("not pem"),
 			wantErr: "failed to decode PEM block for name derivation",
 		},
