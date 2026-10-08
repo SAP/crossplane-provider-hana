@@ -1123,3 +1123,108 @@ func TestResolveJWTProviderNamesMissingRef(t *testing.T) {
 		t.Fatal("expected error for mapping without Name or ProviderRef")
 	}
 }
+
+// TestResolveX509ProviderNames locks in the fix for the X509 providerRef drift
+// bug. Before the fix, spec-side X509UserMapping entries that used providerRef
+// were never resolved before isX509MappingsUpToDate compared them against
+// observed entries from SYS.X509_USER_MAPPINGS. The names never matched, so
+// the controller emitted DROP IDENTITY + ADD IDENTITY every reconcile,
+// causing a constantly updating ASSIGN_TIME in SYS.X509_USER_MAPPINGS.
+func TestResolveX509ProviderNames(t *testing.T) {
+	const (
+		k8sProviderName  = "sap-pki"
+		hanaProviderName = "SAP_PKI_PROVIDER"
+		subjectName      = "CN=Test User,O=SAP"
+	)
+
+	resolverKube := &test.MockClient{
+		MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+			xp, ok := obj.(*v1alpha1.X509Provider)
+			if !ok {
+				return fmt.Errorf("unexpected Get type %T", obj)
+			}
+			xp.Spec.ForProvider.Name = hanaProviderName
+			return nil
+		}),
+	}
+
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			X509Providers: []v1alpha1.X509UserMapping{{
+				X509ProviderRef: v1alpha1.X509ProviderRef{
+					ProviderRef: &xpv2.Reference{Name: k8sProviderName},
+				},
+				SubjectName: subjectName,
+			}},
+		},
+	}
+
+	observed := &v1alpha1.UserObservation{
+		X509Providers: []v1alpha1.X509UserMapping{{
+			X509ProviderRef: v1alpha1.X509ProviderRef{Name: hanaProviderName},
+			SubjectName:     subjectName,
+		}},
+	}
+
+	if isX509MappingsUpToDate(observed, desired) {
+		t.Fatal("unresolved desired must not match observed; this is the precondition for the bug being fixed")
+	}
+
+	c := &external{kube: resolverKube, log: &MockLogger{}}
+	if err := c.resolveX509ProviderNames(context.Background(), desired); err != nil {
+		t.Fatalf("resolveX509ProviderNames: %v", err)
+	}
+
+	if got := desired.Authentication.X509Providers[0].Name; got != hanaProviderName {
+		t.Errorf("desired Name after resolve: want %q, got %q", hanaProviderName, got)
+	}
+
+	if !isX509MappingsUpToDate(observed, desired) {
+		t.Errorf("after resolveX509ProviderNames, desired and observed must compare equal")
+	}
+}
+
+// TestResolveX509ProviderNamesExplicitNameWins ensures an explicit Name on
+// the mapping is preserved and providerRef is not consulted.
+func TestResolveX509ProviderNamesExplicitNameWins(t *testing.T) {
+	const hanaName = "DIRECTLY_SET_PROVIDER"
+
+	resolverKube := &test.MockClient{
+		MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+			return fmt.Errorf("kube.Get must not be called when Name is set explicitly")
+		}),
+	}
+
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			X509Providers: []v1alpha1.X509UserMapping{{
+				X509ProviderRef: v1alpha1.X509ProviderRef{Name: hanaName},
+				SubjectName:     "CN=Some User",
+			}},
+		},
+	}
+	c := &external{kube: resolverKube, log: &MockLogger{}}
+	if err := c.resolveX509ProviderNames(context.Background(), desired); err != nil {
+		t.Fatalf("resolveX509ProviderNames: %v", err)
+	}
+	if got := desired.Authentication.X509Providers[0].Name; got != hanaName {
+		t.Errorf("want %q, got %q", hanaName, got)
+	}
+}
+
+// TestResolveX509ProviderNamesMissingRef ensures we surface a clear error when
+// neither Name nor ProviderRef is set, rather than silently producing "".
+func TestResolveX509ProviderNamesMissingRef(t *testing.T) {
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			X509Providers: []v1alpha1.X509UserMapping{{
+				SubjectName: "CN=Some User",
+			}},
+		},
+	}
+	c := &external{kube: &test.MockClient{}, log: &MockLogger{}}
+	err := c.resolveX509ProviderNames(context.Background(), desired)
+	if err == nil {
+		t.Fatal("expected error for mapping without Name or ProviderRef")
+	}
+}

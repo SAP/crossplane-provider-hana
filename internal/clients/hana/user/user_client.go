@@ -546,6 +546,11 @@ func (c Client) UpdateX509Providers(ctx context.Context, username string, toAdd,
 				return err
 			}
 		}
+		// HANA requires a separate ENABLE X509 step; ADD IDENTITY alone leaves
+		// IS_X509_ENABLED = FALSE in SYS.USERS, blocking certificate-based login.
+		if _, err := c.ExecContext(ctx, fmt.Sprintf("ALTER USER %s ENABLE X509", username)); err != nil {
+			return fmt.Errorf("failed to enable X509 for user %s: %w", username, err)
+		}
 	}
 
 	if len(toRemove) > 0 {

@@ -205,6 +205,11 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, err
 	}
 
+	if err := c.resolveX509ProviderNames(ctx, parameters); err != nil {
+		c.log.Info("Error resolving X.509 provider references", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, err
+	}
+
 	var err error
 	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
 	if err != nil {
@@ -318,10 +323,33 @@ func isPasswordUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.Us
 }
 
 func isX509MappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
-	if desired.Authentication.X509Providers != nil {
-		return utils.ArraysEqual(observed.X509Providers, desired.Authentication.X509Providers)
+	desiredCount := len(desired.Authentication.X509Providers)
+	observedCount := len(observed.X509Providers)
+	if desired.Authentication.X509Providers == nil {
+		return observedCount == 0
 	}
-	return len(observed.X509Providers) == 0
+	if desiredCount != observedCount {
+		return false
+	}
+	if desiredCount == 0 {
+		return true
+	}
+	// Compare by resolved HANA provider Name and SubjectName only, ignoring
+	// the Kubernetes ProviderRef field which is absent in observed entries.
+	in := func(m v1alpha1.X509UserMapping, s []v1alpha1.X509UserMapping) bool {
+		for _, x := range s {
+			if x.Name == m.Name && x.SubjectName == m.SubjectName {
+				return true
+			}
+		}
+		return false
+	}
+	for _, d := range desired.Authentication.X509Providers {
+		if !in(d, observed.X509Providers) {
+			return false
+		}
+	}
+	return true
 }
 
 func isJWTMappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
@@ -586,36 +614,55 @@ func (c *external) updateUsergroup(ctx context.Context, cr *v1alpha1.User, desir
 }
 
 func (c *external) updateX509Providers(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
-	desiredProviders := desired.Authentication.X509Providers
-	observedProviders := observed.X509Providers
-
-	isEqual, providerMappingsToAdd, providerMappingsToRemove := utils.ArraysBothDiff(desiredProviders, observedProviders)
-	providersToAdd, err := c.ResolveUserMappings(ctx, providerMappingsToAdd, cr.GetNamespace())
-	if err != nil {
-		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
-		return fmt.Errorf(errUpdateUser, err)
+	if isX509MappingsUpToDate(observed, desired) {
+		return nil
 	}
 
-	providersToRemove, err := c.ResolveUserMappings(ctx, providerMappingsToRemove, cr.GetNamespace())
-	if err != nil {
-		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
-		return fmt.Errorf(errUpdateUser, err)
-	}
-
-	if !isEqual {
-		c.log.Info("Updating user X.509 providers",
-			"name", cr.Name,
-			"username", desired.Username,
-			"toAdd", providersToAdd,
-			"toRemove", providersToRemove)
-
-		if err := c.client.UpdateX509Providers(ctx, desired.Username, providersToAdd, providersToRemove); err != nil {
-			c.log.Info("Error updating user X.509 providers", "name", cr.Name, "error", err)
-			return fmt.Errorf(errUpdateUser, err)
+	in := func(m v1alpha1.X509UserMapping, s []v1alpha1.X509UserMapping) bool {
+		for _, x := range s {
+			if x.Name == m.Name && x.SubjectName == m.SubjectName {
+				return true
+			}
 		}
-		cr.Status.AtProvider.X509Providers = desired.Authentication.X509Providers
-		c.log.Info("Updated user X.509 providers", "name", cr.Name, "username", desired.Username)
+		return false
 	}
+
+	var toAdd, toRemove []v1alpha1.X509UserMapping
+	for _, d := range desired.Authentication.X509Providers {
+		if !in(d, observed.X509Providers) {
+			toAdd = append(toAdd, d)
+		}
+	}
+	for _, o := range observed.X509Providers {
+		if !in(o, desired.Authentication.X509Providers) {
+			toRemove = append(toRemove, o)
+		}
+	}
+
+	providersToAdd, err := c.ResolveUserMappings(ctx, toAdd, cr.GetNamespace())
+	if err != nil {
+		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+
+	providersToRemove, err := c.ResolveUserMappings(ctx, toRemove, cr.GetNamespace())
+	if err != nil {
+		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+
+	c.log.Info("Updating user X.509 providers",
+		"name", cr.Name,
+		"username", desired.Username,
+		"toAdd", providersToAdd,
+		"toRemove", providersToRemove)
+
+	if err := c.client.UpdateX509Providers(ctx, desired.Username, providersToAdd, providersToRemove); err != nil {
+		c.log.Info("Error updating user X.509 providers", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+	cr.Status.AtProvider.X509Providers = desired.Authentication.X509Providers
+	c.log.Info("Updated user X.509 providers", "name", cr.Name, "username", desired.Username)
 
 	return nil
 }
@@ -702,6 +749,10 @@ func (c *external) buildDesiredParameters(ctx context.Context, cr *v1alpha1.User
 	parameters := handleDefaults(cr)
 
 	if err := c.resolveJWTProviderNames(ctx, parameters); err != nil {
+		return nil, err
+	}
+
+	if err := c.resolveX509ProviderNames(ctx, parameters); err != nil {
 		return nil, err
 	}
 
@@ -899,6 +950,29 @@ func (c *external) resolveJWTProviderNames(ctx context.Context, params *v1alpha1
 			return err
 		}
 		params.Authentication.JWTProviders[i].Name = name
+	}
+	return nil
+}
+
+// resolveX509ProviderNames mutates params.Authentication.X509Providers so each
+// entry's Name carries the HANA-side X509_PROVIDER_NAME. Required before any
+// comparison against observed.X509Providers (which always carries the resolved
+// name from SYS.X509_USER_MAPPINGS); see isX509MappingsUpToDate.
+func (c *external) resolveX509ProviderNames(ctx context.Context, params *v1alpha1.UserParameters) error {
+	for i := range params.Authentication.X509Providers {
+		m := &params.Authentication.X509Providers[i]
+		switch {
+		case m.Name != "":
+			// direct HANA name already present
+		case m.ProviderRef != nil:
+			obj := &v1alpha1.X509Provider{}
+			if err := c.kube.Get(ctx, types.NamespacedName{Name: m.ProviderRef.Name}, obj); err != nil {
+				return fmt.Errorf("cannot resolve X.509 provider reference: %w", err)
+			}
+			m.Name = obj.Spec.ForProvider.Name
+		default:
+			return errors.New("cannot resolve X.509 provider reference: no name or providerRef specified")
+		}
 	}
 	return nil
 }
