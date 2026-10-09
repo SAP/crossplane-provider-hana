@@ -28,6 +28,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	testRoleName       = "DEMO_ROLE"
+	createAnyPrivilege = "CREATE ANY"
+)
+
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct{}
 
@@ -263,7 +268,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+							RoleName: testRoleName,
 						},
 					},
 				},
@@ -289,7 +294,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+							RoleName: testRoleName,
 						},
 					},
 				},
@@ -308,9 +313,9 @@ func TestObserve(t *testing.T) {
 					// Observe writes observed values, never spec values.
 					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
 						return &v1alpha1.RoleObservation{
-							RoleName:   "DEMO_ROLE",
+							RoleName:   testRoleName,
 							Schema:     "MY_SCHEMA",
-							Privileges: []string{"CREATE ANY"},
+							Privileges: []string{createAnyPrivilege},
 							Roles:      []string{`"CONTAINER"."ns::reader"`},
 							Rolegroup:  "MY_ROLEGROUP",
 						}, nil
@@ -322,7 +327,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+							RoleName: testRoleName,
 						},
 					},
 				},
@@ -334,9 +339,9 @@ func TestObserve(t *testing.T) {
 					ResourceUpToDate: false,
 				},
 				atProvider: &v1alpha1.RoleObservation{
-					RoleName:   "DEMO_ROLE",
+					RoleName:   testRoleName,
 					Schema:     "MY_SCHEMA",
-					Privileges: []string{"CREATE ANY"},
+					Privileges: []string{createAnyPrivilege},
 					Roles:      []string{`"CONTAINER"."ns::reader"`},
 					Rolegroup:  "MY_ROLEGROUP",
 				},
@@ -356,7 +361,7 @@ func TestObserve(t *testing.T) {
 				client: mockClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
 						return &v1alpha1.RoleObservation{
-							RoleName:   "DEMO_ROLE",
+							RoleName:   testRoleName,
 							Privileges: []string{},
 							Roles:      []string{`"DUMMY_SYSTEM_ROLE_A"`, `"DUMMY_SYSTEM_ROLE_B"`},
 						}, nil
@@ -368,7 +373,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName:   "DEMO_ROLE",
+							RoleName:   testRoleName,
 							Privileges: []string{"DUMMY_SYSTEM_ROLE_A"},
 							Roles:      []string{"DUMMY_SYSTEM_ROLE_B"},
 						},
@@ -391,9 +396,9 @@ func TestObserve(t *testing.T) {
 				client: mockClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.RoleParameters) (observed *v1alpha1.RoleObservation, err error) {
 						return &v1alpha1.RoleObservation{
-							RoleName:   "DEMO_ROLE",
+							RoleName:   testRoleName,
 							Schema:     "",
-							Privileges: []string{"CREATE ANY"},
+							Privileges: []string{createAnyPrivilege},
 							// QueryRoles always emits the quoted canonical form.
 							Roles: []string{`"MY_ROLE"`, `"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
 						}, nil
@@ -405,8 +410,8 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName:   "DEMO_ROLE",
-							Privileges: []string{"CREATE ANY"},
+							RoleName:   testRoleName,
+							Privileges: []string{createAnyPrivilege},
 							// Spec is written unquoted, as a user naturally would.
 							Roles: []string{`MY_ROLE`, `"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
 						},
@@ -490,7 +495,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+							RoleName: testRoleName,
 						},
 					},
 				},
@@ -513,7 +518,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+							RoleName: testRoleName,
 						},
 					},
 				},
@@ -585,7 +590,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+							RoleName: testRoleName,
 						},
 					},
 				},
@@ -608,7 +613,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.Role{
 					Spec: v1alpha1.RoleSpec{
 						ForProvider: v1alpha1.RoleParameters{
-							RoleName: "DEMO_ROLE",
+							RoleName: testRoleName,
 						},
 					},
 				},
@@ -643,7 +648,7 @@ func TestBuildDesiredParameters(t *testing.T) {
 					ForProvider: v1alpha1.RoleParameters{
 						RoleName:         "sap.hana::MixedCase_Role",
 						Schema:           "mySchema",
-						Privileges:       []string{`SELECT ON SCHEMA "testSchema"`, "CREATE ANY"},
+						Privileges:       []string{`SELECT ON SCHEMA "testSchema"`, createAnyPrivilege},
 						LdapGroups:       []string{"cn=Securities_DBA,OU=Groups,dc=example,dc=com"},
 						NoGrantToCreator: true,
 						Rolegroup:        "MY_ROLEGROUP",
@@ -653,7 +658,7 @@ func TestBuildDesiredParameters(t *testing.T) {
 			want: &v1alpha1.RoleParameters{
 				RoleName:         "sap.hana::MixedCase_Role",
 				Schema:           "mySchema",
-				Privileges:       []string{`SELECT ON SCHEMA "testSchema"`, "CREATE ANY"},
+				Privileges:       []string{`SELECT ON SCHEMA "testSchema"`, createAnyPrivilege},
 				LdapGroups:       []string{"cn=Securities_DBA,OU=Groups,dc=example,dc=com"},
 				NoGrantToCreator: true,
 				Rolegroup:        "MY_ROLEGROUP",
@@ -668,8 +673,8 @@ func TestBuildDesiredParameters(t *testing.T) {
 			cr: &v1alpha1.Role{
 				Spec: v1alpha1.RoleSpec{
 					ForProvider: v1alpha1.RoleParameters{
-						RoleName:   "DEMO_ROLE",
-						Privileges: []string{"CREATE ANY"},
+						RoleName:   testRoleName,
+						Privileges: []string{createAnyPrivilege},
 						Roles: []string{
 							"MY_ROLE",
 							`"CONTAINER"."ns::reader" WITH ADMIN OPTION`,
@@ -678,8 +683,8 @@ func TestBuildDesiredParameters(t *testing.T) {
 				},
 			},
 			want: &v1alpha1.RoleParameters{
-				RoleName:   "DEMO_ROLE",
-				Privileges: []string{"CREATE ANY"},
+				RoleName:   testRoleName,
+				Privileges: []string{createAnyPrivilege},
 				Roles: []string{
 					"MY_ROLE",
 					`"CONTAINER"."ns::reader" WITH ADMIN OPTION`,
@@ -712,14 +717,14 @@ func TestUpdate(t *testing.T) {
 	// spec wants role "NEW_ROLE" and privilege "NEW_PRIV". Update must therefore
 	// grant the NEW_* entries and revoke the OLD_* entries.
 	observed := v1alpha1.RoleObservation{
-		RoleName:   "DEMO_ROLE",
+		RoleName:   testRoleName,
 		Privileges: []string{"OLD_PRIV"},
 		Roles:      []string{`"OLD_ROLE"`},
 	}
 	cr := &v1alpha1.Role{
 		Spec: v1alpha1.RoleSpec{
 			ForProvider: v1alpha1.RoleParameters{
-				RoleName:   "DEMO_ROLE",
+				RoleName:   testRoleName,
 				Privileges: []string{"NEW_PRIV"},
 				Roles:      []string{`"NEW_ROLE"`},
 			},

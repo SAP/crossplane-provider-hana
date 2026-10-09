@@ -20,6 +20,13 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 )
 
+const (
+	testProviderName = "test-provider"
+	testMatchingRule = "rule1"
+	testSecondRule   = "rule2"
+	testIssuer       = "CN=Test CA"
+)
+
 // Unlike many Kubernetes projects Crossplane does not use third party testing
 // libraries, per the common Go test review comments. Crossplane encourages the
 // use of table driven unit tests. The tests of the crossplane-runtime project
@@ -65,7 +72,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name: "test-provider",
+					Name: testProviderName,
 				},
 			},
 			want: want{
@@ -105,28 +112,28 @@ func TestRead(t *testing.T) {
 						// Mock issuer query
 						db, mock, _ := sqlmock.New()
 						rows := sqlmock.NewRows([]string{"ISSUER_NAME"}).
-							AddRow("CN=Test CA")
+							AddRow(testIssuer)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
 					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 						// Mock matching rules query
 						return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{"MATCHING_RULE"}).
-							AddRow("rule1").
-							AddRow("rule2")), nil
+							AddRow(testMatchingRule).
+							AddRow(testSecondRule)), nil
 					},
 				},
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name: "test-provider",
+					Name: testProviderName,
 				},
 			},
 			want: want{
 				observed: &v1alpha1.X509ProviderObservation{
-					Name:          new("test-provider"),
-					Issuer:        new("CN=Test CA"),
-					MatchingRules: []string{"rule1", "rule2"},
+					Name:          new(testProviderName),
+					Issuer:        new(testIssuer),
+					MatchingRules: []string{testMatchingRule, testSecondRule},
 				},
 				err: nil,
 			},
@@ -171,7 +178,7 @@ func TestRead(t *testing.T) {
 						// Mock successful issuer query
 						db, mock, _ := sqlmock.New()
 						rows := sqlmock.NewRows([]string{"ISSUER_NAME"}).
-							AddRow("CN=Test CA")
+							AddRow(testIssuer)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -183,7 +190,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name: "test-provider",
+					Name: testProviderName,
 				},
 			},
 			want: want{
@@ -240,8 +247,8 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:   "test-provider",
-					Issuer: "CN=Test CA",
+					Name:   testProviderName,
+					Issuer: testIssuer,
 				},
 			},
 			want: want{
@@ -263,8 +270,8 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:   "test-provider",
-					Issuer: "CN=Test CA",
+					Name:   testProviderName,
+					Issuer: testIssuer,
 				},
 			},
 			want: want{
@@ -344,11 +351,11 @@ func TestUpdate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:   "test-provider",
+					Name:   testProviderName,
 					Issuer: "CN=New CA",
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:   new("test-provider"),
+					Name:   new(testProviderName),
 					Issuer: new("CN=Old CA"),
 				},
 			},
@@ -370,13 +377,13 @@ func TestUpdate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:          "test-provider",
-					Issuer:        "CN=Test CA",
+					Name:          testProviderName,
+					Issuer:        testIssuer,
 					MatchingRules: []string{"new-rule"},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          new("test-provider"),
-					Issuer:        new("CN=Test CA"),
+					Name:          new(testProviderName),
+					Issuer:        new(testIssuer),
 					MatchingRules: []string{"old-rule"},
 				},
 			},
@@ -399,14 +406,14 @@ func TestUpdate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:          "test-provider",
+					Name:          testProviderName,
 					Issuer:        "CN=New CA",
-					MatchingRules: []string{"rule1", "rule2"},
+					MatchingRules: []string{testMatchingRule, testSecondRule},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          new("test-provider"),
+					Name:          new(testProviderName),
 					Issuer:        new("CN=Old CA"),
-					MatchingRules: []string{"rule1", "rule2"},
+					MatchingRules: []string{testMatchingRule, testSecondRule},
 				},
 			},
 			want: want{
@@ -428,13 +435,13 @@ func TestUpdate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:          "test-provider",
-					Issuer:        "CN=Test CA",
+					Name:          testProviderName,
+					Issuer:        testIssuer,
 					MatchingRules: []string{"new-rule1", "new-rule2"},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          new("test-provider"),
-					Issuer:        new("CN=Test CA"),
+					Name:          new(testProviderName),
+					Issuer:        new(testIssuer),
 					MatchingRules: []string{"old-rule"},
 				},
 			},
@@ -456,12 +463,12 @@ func TestUpdate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:          "test-provider",
+					Name:          testProviderName,
 					Issuer:        "CN=New CA",
 					MatchingRules: []string{"new-rule"},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          new("test-provider"),
+					Name:          new(testProviderName),
 					Issuer:        new("CN=Old CA"),
 					MatchingRules: []string{"old-rule"},
 				},
@@ -485,14 +492,14 @@ func TestUpdate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:          "test-provider",
-					Issuer:        "CN=Test CA",
+					Name:          testProviderName,
+					Issuer:        testIssuer,
 					MatchingRules: []string{},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          new("test-provider"),
-					Issuer:        new("CN=Test CA"),
-					MatchingRules: []string{"rule1"},
+					Name:          new(testProviderName),
+					Issuer:        new(testIssuer),
+					MatchingRules: []string{testMatchingRule},
 				},
 			},
 			want: want{
@@ -510,14 +517,14 @@ func TestUpdate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name:          "test-provider",
-					Issuer:        "CN=Test CA",
-					MatchingRules: []string{"rule1", "rule2"},
+					Name:          testProviderName,
+					Issuer:        testIssuer,
+					MatchingRules: []string{testMatchingRule, testSecondRule},
 				},
 				observation: &v1alpha1.X509ProviderObservation{
-					Name:          new("test-provider"),
-					Issuer:        new("CN=Test CA"),
-					MatchingRules: []string{"rule1", "rule2"},
+					Name:          new(testProviderName),
+					Issuer:        new(testIssuer),
+					MatchingRules: []string{testMatchingRule, testSecondRule},
 				},
 			},
 			want: want{
@@ -570,7 +577,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name: "test-provider",
+					Name: testProviderName,
 				},
 			},
 			want: want{
@@ -592,7 +599,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.X509ProviderParameters{
-					Name: "test-provider",
+					Name: testProviderName,
 				},
 			},
 			want: want{

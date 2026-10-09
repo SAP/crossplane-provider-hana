@@ -14,6 +14,16 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 )
 
+const (
+	testAuditPolicyName    = "DEMO_AUDIT_POLICY"
+	successCaseName        = "Success"
+	infoAuditLevel         = "INFO"
+	testAuditAction        = "ACTIONS"
+	successfulAuditStatus  = "SUCCESSFUL"
+	userPrincipalType      = "USER"
+	usergroupPrincipalType = "USERGROUP"
+)
+
 func TestRead(t *testing.T) {
 	errBoom := errors.New("boom")
 
@@ -48,7 +58,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName: "DEMO_AUDIT_POLICY",
+					PolicyName: testAuditPolicyName,
 				},
 			},
 			want: want{
@@ -56,7 +66,7 @@ func TestRead(t *testing.T) {
 				err:      errBoom,
 			},
 		},
-		"Success": {
+		successCaseName: {
 			reason: "No error should be returned when we successfully read a role",
 			fields: fields{
 				db: fake.MockDB{
@@ -67,10 +77,10 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:          "DEMO_AUDIT_POLICY",
+					PolicyName:          testAuditPolicyName,
 					AuditActions:        []string{"GRANT"},
 					AuditStatus:         "ALL",
-					AuditLevel:          "INFO",
+					AuditLevel:          infoAuditLevel,
 					AuditTrailRetention: func(i int) *int { return &i }(7),
 					Enabled:             func(b bool) *bool { return &b }(true),
 				},
@@ -94,29 +104,29 @@ func TestRead(t *testing.T) {
 					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 						cols := []string{"AUDIT_POLICY_NAME", "EVENT_STATUS", "EVENT_ACTION", "EVENT_LEVEL", "RETENTION_PERIOD", "IS_AUDIT_POLICY_ACTIVE", "PRINCIPAL_NAME", "EXCEPT_PRINCIPAL_NAME", "PRINCIPAL_TYPE"}
 						rows := sqlmock.NewRows(cols).
-							AddRow("DEMO_AUDIT_POLICY", "SUCCESSFUL EVENTS", "ACTIONS", "CRITICAL", 7, "TRUE", "MONITORING_ADMIN", nil, "USER").
-							AddRow("DEMO_AUDIT_POLICY", "SUCCESSFUL EVENTS", "ACTIONS", "CRITICAL", 7, "TRUE", "TECHNICAL_USER_GROUP", nil, "USERGROUP")
+							AddRow(testAuditPolicyName, "SUCCESSFUL EVENTS", testAuditAction, "CRITICAL", 7, "TRUE", "MONITORING_ADMIN", nil, userPrincipalType).
+							AddRow(testAuditPolicyName, "SUCCESSFUL EVENTS", testAuditAction, "CRITICAL", 7, "TRUE", "TECHNICAL_USER_GROUP", nil, usergroupPrincipalType)
 						return fake.MockRowsToSQLRows(rows), nil
 					},
 				},
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName: "DEMO_AUDIT_POLICY",
+					PolicyName: testAuditPolicyName,
 				},
 			},
 			want: want{
 				observed: &v1alpha1.AuditPolicyObservation{
-					PolicyName:          "DEMO_AUDIT_POLICY",
-					AuditActions:        []string{"ACTIONS"},
-					AuditStatus:         "SUCCESSFUL",
+					PolicyName:          testAuditPolicyName,
+					AuditActions:        []string{testAuditAction},
+					AuditStatus:         successfulAuditStatus,
 					AuditLevel:          "CRITICAL",
 					AuditTrailRetention: func(i int) *int { return &i }(7),
 					Enabled:             func(b bool) *bool { return &b }(true),
 					ExceptPrincipals:    false,
 					AuditPrincipals: []v1alpha1.AuditPrincipal{
-						{Type: "USER", Name: "MONITORING_ADMIN"},
-						{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+						{Type: userPrincipalType, Name: "MONITORING_ADMIN"},
+						{Type: usergroupPrincipalType, Name: "TECHNICAL_USER_GROUP"},
 					},
 				},
 				err: nil,
@@ -129,29 +139,29 @@ func TestRead(t *testing.T) {
 					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 						cols := []string{"AUDIT_POLICY_NAME", "EVENT_STATUS", "EVENT_ACTION", "EVENT_LEVEL", "RETENTION_PERIOD", "IS_AUDIT_POLICY_ACTIVE", "PRINCIPAL_NAME", "EXCEPT_PRINCIPAL_NAME", "PRINCIPAL_TYPE"}
 						rows := sqlmock.NewRows(cols).
-							AddRow("DEMO_AUDIT_POLICY", "SUCCESSFUL EVENTS", "ACTIONS", "CRITICAL", 7, "FALSE", nil, "MONITORING_ADMIN", "USER").
-							AddRow("DEMO_AUDIT_POLICY", "SUCCESSFUL EVENTS", "ACTIONS", "CRITICAL", 7, "FALSE", nil, "TECHNICAL_USER_GROUP", "USERGROUP")
+							AddRow(testAuditPolicyName, "SUCCESSFUL EVENTS", testAuditAction, "CRITICAL", 7, "FALSE", nil, "MONITORING_ADMIN", userPrincipalType).
+							AddRow(testAuditPolicyName, "SUCCESSFUL EVENTS", testAuditAction, "CRITICAL", 7, "FALSE", nil, "TECHNICAL_USER_GROUP", usergroupPrincipalType)
 						return fake.MockRowsToSQLRows(rows), nil
 					},
 				},
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName: "DEMO_AUDIT_POLICY",
+					PolicyName: testAuditPolicyName,
 				},
 			},
 			want: want{
 				observed: &v1alpha1.AuditPolicyObservation{
-					PolicyName:          "DEMO_AUDIT_POLICY",
-					AuditActions:        []string{"ACTIONS"},
-					AuditStatus:         "SUCCESSFUL",
+					PolicyName:          testAuditPolicyName,
+					AuditActions:        []string{testAuditAction},
+					AuditStatus:         successfulAuditStatus,
 					AuditLevel:          "CRITICAL",
 					AuditTrailRetention: func(i int) *int { return &i }(7),
 					Enabled:             func(b bool) *bool { return &b }(false),
 					ExceptPrincipals:    true,
 					AuditPrincipals: []v1alpha1.AuditPrincipal{
-						{Type: "USER", Name: "MONITORING_ADMIN"},
-						{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+						{Type: userPrincipalType, Name: "MONITORING_ADMIN"},
+						{Type: usergroupPrincipalType, Name: "TECHNICAL_USER_GROUP"},
 					},
 				},
 				err: nil,
@@ -205,7 +215,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:          "DEMO_AUDIT_POLICY",
+					PolicyName:          testAuditPolicyName,
 					AuditTrailRetention: func(i int) *int { return &i }(7),
 					Enabled:             func(b bool) *bool { return &b }(true),
 				},
@@ -214,7 +224,7 @@ func TestCreate(t *testing.T) {
 				err: errBoom,
 			},
 		},
-		"Success": {
+		successCaseName: {
 			reason: "No error should be returned when we successfully create an audit policy",
 			fields: fields{
 				db: fake.MockDB{
@@ -225,7 +235,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:          "DEMO_AUDIT_POLICY",
+					PolicyName:          testAuditPolicyName,
 					AuditTrailRetention: func(i int) *int { return &i }(7),
 					Enabled:             func(b bool) *bool { return &b }(true),
 				},
@@ -262,10 +272,10 @@ func TestPrepareCreateSql(t *testing.T) {
 			reason: "The statement should not contain a FOR PRINCIPALS clause when no principals are configured",
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:          "DEMO_AUDIT_POLICY",
+					PolicyName:          testAuditPolicyName,
 					AuditStatus:         "ALL",
 					AuditActions:        []string{"GRANT ANY", "REVOKE ANY"},
-					AuditLevel:          "INFO",
+					AuditLevel:          infoAuditLevel,
 					AuditTrailRetention: retention(30),
 				},
 			},
@@ -275,13 +285,13 @@ func TestPrepareCreateSql(t *testing.T) {
 			reason: "The statement should contain a FOR PRINCIPALS USER clause for a single user principal",
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:   "DEMO_AUDIT_POLICY",
-					AuditStatus:  "SUCCESSFUL",
-					AuditActions: []string{"ACTIONS"},
+					PolicyName:   testAuditPolicyName,
+					AuditStatus:  successfulAuditStatus,
+					AuditActions: []string{testAuditAction},
 					AuditPrincipals: []v1alpha1.AuditPrincipal{
-						{Type: "USER", Name: "USER_A"},
+						{Type: userPrincipalType, Name: "USER_A"},
 					},
-					AuditLevel:          "INFO",
+					AuditLevel:          infoAuditLevel,
 					AuditTrailRetention: retention(180),
 				},
 			},
@@ -291,14 +301,14 @@ func TestPrepareCreateSql(t *testing.T) {
 			reason: "The statement should render a mixed, ordered list of users and user groups",
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:   "DEMO_AUDIT_POLICY",
-					AuditStatus:  "SUCCESSFUL",
-					AuditActions: []string{"ACTIONS"},
+					PolicyName:   testAuditPolicyName,
+					AuditStatus:  successfulAuditStatus,
+					AuditActions: []string{testAuditAction},
 					AuditPrincipals: []v1alpha1.AuditPrincipal{
-						{Type: "USER", Name: "USER_A"},
-						{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+						{Type: userPrincipalType, Name: "USER_A"},
+						{Type: usergroupPrincipalType, Name: "TECHNICAL_USER_GROUP"},
 					},
-					AuditLevel:          "INFO",
+					AuditLevel:          infoAuditLevel,
 					AuditTrailRetention: retention(180),
 				},
 			},
@@ -309,12 +319,12 @@ func TestPrepareCreateSql(t *testing.T) {
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
 					PolicyName:   "SIGNAVIO_TECHNICAL_USER_CONNECT",
-					AuditStatus:  "SUCCESSFUL",
+					AuditStatus:  successfulAuditStatus,
 					AuditActions: []string{"CONNECT"},
 					AuditPrincipals: []v1alpha1.AuditPrincipal{
-						{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+						{Type: usergroupPrincipalType, Name: "TECHNICAL_USER_GROUP"},
 					},
-					AuditLevel:          "INFO",
+					AuditLevel:          infoAuditLevel,
 					AuditTrailRetention: retention(180),
 				},
 			},
@@ -325,13 +335,13 @@ func TestPrepareCreateSql(t *testing.T) {
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
 					PolicyName:   "EXCEPT_PRINCIPALS_AUDIT_POLICY1",
-					AuditStatus:  "SUCCESSFUL",
-					AuditActions: []string{"ACTIONS"},
+					AuditStatus:  successfulAuditStatus,
+					AuditActions: []string{testAuditAction},
 					AuditPrincipals: []v1alpha1.AuditPrincipal{
-						{Type: "USER", Name: "USER1"},
-						{Type: "USERGROUP", Name: "USERGROUP1"},
-						{Type: "USER", Name: "USER2"},
-						{Type: "USERGROUP", Name: "USERGROUP2"},
+						{Type: userPrincipalType, Name: "USER1"},
+						{Type: usergroupPrincipalType, Name: "USERGROUP1"},
+						{Type: userPrincipalType, Name: "USER2"},
+						{Type: usergroupPrincipalType, Name: "USERGROUP2"},
 					},
 					ExceptPrincipals:    true,
 					AuditLevel:          "CRITICAL",
@@ -344,14 +354,14 @@ func TestPrepareCreateSql(t *testing.T) {
 			reason: "Principal names must be rendered unquoted; HANA rejects double-quoted identifiers in the principal list",
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:   "DEMO_AUDIT_POLICY",
-					AuditStatus:  "SUCCESSFUL",
-					AuditActions: []string{"ACTIONS"},
+					PolicyName:   testAuditPolicyName,
+					AuditStatus:  successfulAuditStatus,
+					AuditActions: []string{testAuditAction},
 					AuditPrincipals: []v1alpha1.AuditPrincipal{
-						{Type: "USER", Name: "MY_USER"},
-						{Type: "USERGROUP", Name: "MY_GROUP"},
+						{Type: userPrincipalType, Name: "MY_USER"},
+						{Type: usergroupPrincipalType, Name: "MY_GROUP"},
 					},
-					AuditLevel:          "INFO",
+					AuditLevel:          infoAuditLevel,
 					AuditTrailRetention: retention(180),
 				},
 			},
@@ -401,7 +411,7 @@ func TestRecreatePolicy(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName: "DEMO_AUDIT_POLICY",
+					PolicyName: testAuditPolicyName,
 				},
 			},
 			want: want{
@@ -413,7 +423,7 @@ func TestRecreatePolicy(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						if query == prepareDeleteSql(&v1alpha1.AuditPolicyParameters{PolicyName: "DEMO_AUDIT_POLICY"}) {
+						if query == prepareDeleteSql(&v1alpha1.AuditPolicyParameters{PolicyName: testAuditPolicyName}) {
 							return nil, nil
 						}
 						return nil, errBoom
@@ -422,7 +432,7 @@ func TestRecreatePolicy(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:          "DEMO_AUDIT_POLICY",
+					PolicyName:          testAuditPolicyName,
 					AuditTrailRetention: func(i int) *int { return &i }(7),
 					Enabled:             func(b bool) *bool { return &b }(true),
 				},
@@ -431,7 +441,7 @@ func TestRecreatePolicy(t *testing.T) {
 				err: errBoom,
 			},
 		},
-		"Success": {
+		successCaseName: {
 			reason: "No error should be returned when we successfully recreate an audit policy",
 			fields: fields{
 				db: fake.MockDB{
@@ -442,7 +452,7 @@ func TestRecreatePolicy(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:          "DEMO_AUDIT_POLICY",
+					PolicyName:          testAuditPolicyName,
 					AuditTrailRetention: func(i int) *int { return &i }(7),
 					Enabled:             func(b bool) *bool { return &b }(true),
 				},
@@ -493,7 +503,7 @@ func TestUpdateRetentionDays(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:          "DEMO_AUDIT_POLICY",
+					PolicyName:          testAuditPolicyName,
 					AuditTrailRetention: func(i int) *int { return &i }(30),
 				},
 			},
@@ -501,7 +511,7 @@ func TestUpdateRetentionDays(t *testing.T) {
 				err: errBoom,
 			},
 		},
-		"Success": {
+		successCaseName: {
 			reason: "No error should be returned when we successfully update the retention days",
 			fields: fields{
 				db: fake.MockDB{
@@ -512,7 +522,7 @@ func TestUpdateRetentionDays(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName:          "DEMO_AUDIT_POLICY",
+					PolicyName:          testAuditPolicyName,
 					AuditTrailRetention: func(i int) *int { return &i }(30),
 				},
 			},
@@ -562,7 +572,7 @@ func TestUpdateEnablePolicy(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName: "DEMO_AUDIT_POLICY",
+					PolicyName: testAuditPolicyName,
 					Enabled:    func(b bool) *bool { return &b }(true),
 				},
 			},
@@ -570,7 +580,7 @@ func TestUpdateEnablePolicy(t *testing.T) {
 				err: errBoom,
 			},
 		},
-		"Success": {
+		successCaseName: {
 			reason: "No error should be returned when we successfully update the enable status",
 			fields: fields{
 				db: fake.MockDB{
@@ -581,7 +591,7 @@ func TestUpdateEnablePolicy(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName: "DEMO_AUDIT_POLICY",
+					PolicyName: testAuditPolicyName,
 					Enabled:    func(b bool) *bool { return &b }(true),
 				},
 			},
@@ -634,14 +644,14 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName: "DEMO_AUDIT_POLICY",
+					PolicyName: testAuditPolicyName,
 				},
 			},
 			want: want{
 				err: errBoom,
 			},
 		},
-		"Success": {
+		successCaseName: {
 			reason: "No error should be returned when we successfully delete an audit policy",
 			fields: fields{
 				db: fake.MockDB{
@@ -652,7 +662,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.AuditPolicyParameters{
-					PolicyName: "DEMO_AUDIT_POLICY",
+					PolicyName: testAuditPolicyName,
 				},
 			},
 			want: want{

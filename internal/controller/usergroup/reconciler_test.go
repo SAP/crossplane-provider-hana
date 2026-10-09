@@ -27,6 +27,8 @@ import (
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 )
 
+const testUsergroupName = "DEMO_USERGROUP"
+
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct{}
 
@@ -232,7 +234,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Usergroup{
 					Spec: v1alpha1.UsergroupSpec{
 						ForProvider: v1alpha1.UsergroupParameters{
-							UsergroupName: "DEMO_USERGROUP",
+							UsergroupName: testUsergroupName,
 						},
 					},
 				},
@@ -257,7 +259,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Usergroup{
 					Spec: v1alpha1.UsergroupSpec{
 						ForProvider: v1alpha1.UsergroupParameters{
-							UsergroupName: "DEMO_USERGROUP",
+							UsergroupName: testUsergroupName,
 						},
 					},
 				},
@@ -329,7 +331,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Usergroup{
 					Spec: v1alpha1.UsergroupSpec{
 						ForProvider: v1alpha1.UsergroupParameters{
-							UsergroupName: "DEMO_USERGROUP",
+							UsergroupName: testUsergroupName,
 						},
 					},
 				},
@@ -352,7 +354,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Usergroup{
 					Spec: v1alpha1.UsergroupSpec{
 						ForProvider: v1alpha1.UsergroupParameters{
-							UsergroupName: "DEMO_USERGROUP",
+							UsergroupName: testUsergroupName,
 						},
 					},
 				},
@@ -424,7 +426,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.Usergroup{
 					Spec: v1alpha1.UsergroupSpec{
 						ForProvider: v1alpha1.UsergroupParameters{
-							UsergroupName: "DEMO_USERGROUP",
+							UsergroupName: testUsergroupName,
 						},
 					},
 				},
@@ -447,7 +449,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.Usergroup{
 					Spec: v1alpha1.UsergroupSpec{
 						ForProvider: v1alpha1.UsergroupParameters{
-							UsergroupName: "DEMO_USERGROUP",
+							UsergroupName: testUsergroupName,
 						},
 					},
 				},

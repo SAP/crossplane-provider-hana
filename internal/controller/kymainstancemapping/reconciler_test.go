@@ -25,6 +25,15 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud"
 )
 
+const (
+	testMappingName      = "test-mapping"
+	defaultNamespace     = "default"
+	testHANAInstanceName = "hana-instance"
+	testAdminBindingName = "admin-binding"
+	testInstanceID       = "test-instance-id"
+	testClusterID        = "test-cluster-id"
+)
+
 // stringPtr returns a pointer to the given string value
 func stringPtr(s string) *string {
 	return &s
@@ -64,27 +73,27 @@ func TestConnector_Connect(t *testing.T) {
 			name: "successfully connects with valid resources",
 			cr: &v1alpha1.KymaInstanceMapping{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-mapping",
+					Name: testMappingName,
 				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
 					ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
-						ProviderConfigReference: &xpv2.Reference{Name: "default"},
+						ProviderConfigReference: &xpv2.Reference{Name: defaultNamespace},
 					},
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
 						KymaConnectionRef: &v1alpha1.KymaConnectionReference{
 							SecretRef: v1alpha1.SecretReference{
 								Name:      "kyma-kubeconfig",
-								Namespace: "default",
+								Namespace: defaultNamespace,
 							},
 							KubeconfigKey: "kubeconfig",
 						},
 						ServiceInstanceRef: v1alpha1.ResourceReference{
-							Name:      "hana-instance",
-							Namespace: "default",
+							Name:      testHANAInstanceName,
+							Namespace: defaultNamespace,
 						},
 						AdminBindingRef: v1alpha1.ResourceReference{
-							Name:      "admin-binding",
-							Namespace: "default",
+							Name:      testAdminBindingName,
+							Namespace: defaultNamespace,
 						},
 						TargetNamespace: stringPtr("target-ns"),
 					},
@@ -92,13 +101,13 @@ func TestConnector_Connect(t *testing.T) {
 			},
 			objects: []client.Object{
 				&apisv1alpha1.ProviderConfig{
-					ObjectMeta: metav1.ObjectMeta{Name: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: defaultNamespace},
 					Spec: apisv1alpha1.ProviderConfigSpec{
 						Credentials: apisv1alpha1.ProviderCredentials{
 							Source: xpv2.CredentialsSourceSecret,
 							ConnectionSecretRef: &xpv2.SecretReference{
 								Name:      "provider-creds",
-								Namespace: "default",
+								Namespace: defaultNamespace,
 							},
 						},
 					},
@@ -106,7 +115,7 @@ func TestConnector_Connect(t *testing.T) {
 				&corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "kyma-kubeconfig",
-						Namespace: "default",
+						Namespace: defaultNamespace,
 					},
 					Data: map[string][]byte{
 						"kubeconfig": []byte(validKubeconfig()),
@@ -122,26 +131,26 @@ func TestConnector_Connect(t *testing.T) {
 			name: "fails when kubeconfig secret not found",
 			cr: &v1alpha1.KymaInstanceMapping{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-mapping",
+					Name: testMappingName,
 				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
 					ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
-						ProviderConfigReference: &xpv2.Reference{Name: "default"},
+						ProviderConfigReference: &xpv2.Reference{Name: defaultNamespace},
 					},
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
 						KymaConnectionRef: &v1alpha1.KymaConnectionReference{
 							SecretRef: v1alpha1.SecretReference{
 								Name:      "missing-kubeconfig",
-								Namespace: "default",
+								Namespace: defaultNamespace,
 							},
 						},
 						ServiceInstanceRef: v1alpha1.ResourceReference{
-							Name:      "hana-instance",
-							Namespace: "default",
+							Name:      testHANAInstanceName,
+							Namespace: defaultNamespace,
 						},
 						AdminBindingRef: v1alpha1.ResourceReference{
-							Name:      "admin-binding",
-							Namespace: "default",
+							Name:      testAdminBindingName,
+							Namespace: defaultNamespace,
 						},
 						TargetNamespace: stringPtr("target-ns"),
 					},
@@ -149,7 +158,7 @@ func TestConnector_Connect(t *testing.T) {
 			},
 			objects: []client.Object{
 				&apisv1alpha1.ProviderConfig{
-					ObjectMeta: metav1.ObjectMeta{Name: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: defaultNamespace},
 				},
 			},
 			wantErr: true,
@@ -215,7 +224,7 @@ func TestExternal_Observe(t *testing.T) {
 			name: "child InstanceMapping exists and is ready",
 			cr: &v1alpha1.KymaInstanceMapping{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-mapping",
+					Name: testMappingName,
 					UID:  "test-uid",
 				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
@@ -230,9 +239,9 @@ func TestExternal_Observe(t *testing.T) {
 				},
 				Spec: v1alpha1.InstanceMappingSpec{
 					ForProvider: v1alpha1.InstanceMappingParameters{
-						ServiceInstanceID: "test-instance-id",
+						ServiceInstanceID: testInstanceID,
 						Platform:          "kubernetes",
-						PrimaryID:         "test-cluster-id",
+						PrimaryID:         testClusterID,
 						SecondaryID:       stringPtr("target-ns"),
 					},
 				},
@@ -257,7 +266,7 @@ func TestExternal_Observe(t *testing.T) {
 			name: "child InstanceMapping does not exist",
 			cr: &v1alpha1.KymaInstanceMapping{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-mapping",
+					Name: testMappingName,
 					UID:  "test-uid",
 				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
@@ -288,8 +297,8 @@ func TestExternal_Observe(t *testing.T) {
 				managementClient: fakeClient,
 				clusterClient:    nil,
 				kymaData: &kymaExtractedData{
-					serviceInstanceID: "test-instance-id",
-					clusterID:         "test-cluster-id",
+					serviceInstanceID: testInstanceID,
+					clusterID:         testClusterID,
 				},
 				log: logging.NewNopLogger(),
 			}
@@ -333,7 +342,7 @@ func TestExternal_Create(t *testing.T) {
 			name: "successfully creates child resources",
 			cr: &v1alpha1.KymaInstanceMapping{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-mapping",
+					Name: testMappingName,
 					UID:  "test-uid",
 				},
 				Spec: v1alpha1.KymaInstanceMappingSpec{
@@ -360,8 +369,8 @@ func TestExternal_Create(t *testing.T) {
 				managementClient: fakeClient,
 				clusterClient:    nil,
 				kymaData: &kymaExtractedData{
-					serviceInstanceID: "test-instance-id",
-					clusterID:         "test-cluster-id",
+					serviceInstanceID: testInstanceID,
+					clusterID:         testClusterID,
 					adminAPICredentials: hanacloud.AdminAPICredentials{
 						BaseURL: "api.hana.example.com",
 						UAA: hanacloud.UAAConfig{
@@ -408,13 +417,13 @@ func TestExternal_Create(t *testing.T) {
 			}
 
 			// Verify InstanceMapping spec
-			if im.Spec.ForProvider.ServiceInstanceID != "test-instance-id" {
+			if im.Spec.ForProvider.ServiceInstanceID != testInstanceID {
 				t.Errorf("InstanceMapping.ServiceInstanceID = %v, want %v",
-					im.Spec.ForProvider.ServiceInstanceID, "test-instance-id")
+					im.Spec.ForProvider.ServiceInstanceID, testInstanceID)
 			}
-			if im.Spec.ForProvider.PrimaryID != "test-cluster-id" {
+			if im.Spec.ForProvider.PrimaryID != testClusterID {
 				t.Errorf("InstanceMapping.PrimaryID = %v, want %v",
-					im.Spec.ForProvider.PrimaryID, "test-cluster-id")
+					im.Spec.ForProvider.PrimaryID, testClusterID)
 			}
 		})
 	}
@@ -444,11 +453,11 @@ func TestExtractKymaData(t *testing.T) {
 			objects: []client.Object{
 				&servicescloudsapv1.ServiceInstance{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "hana-instance",
-						Namespace: "default",
+						Name:      testHANAInstanceName,
+						Namespace: defaultNamespace,
 					},
 					Status: servicescloudsapv1.ServiceInstanceStatus{
-						InstanceID: "test-instance-id",
+						InstanceID: testInstanceID,
 						Conditions: []metav1.Condition{
 							{
 								Type:   "Ready",
@@ -459,8 +468,8 @@ func TestExtractKymaData(t *testing.T) {
 				},
 				&servicescloudsapv1.ServiceBinding{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "admin-binding",
-						Namespace: "default",
+						Name:      testAdminBindingName,
+						Namespace: defaultNamespace,
 					},
 					Spec: servicescloudsapv1.ServiceBindingSpec{
 						SecretName: "admin-secret",
@@ -469,7 +478,7 @@ func TestExtractKymaData(t *testing.T) {
 				&corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "admin-secret",
-						Namespace: "default",
+						Namespace: defaultNamespace,
 					},
 					Data: map[string][]byte{
 						"baseurl": []byte("https://hana-cloud-api.example.com"),
@@ -482,7 +491,7 @@ func TestExtractKymaData(t *testing.T) {
 						Namespace: "kyma-system",
 					},
 					Data: map[string]string{
-						"CLUSTER_ID": "test-cluster-id",
+						"CLUSTER_ID": testClusterID,
 					},
 				},
 			},
@@ -490,21 +499,21 @@ func TestExtractKymaData(t *testing.T) {
 				Spec: v1alpha1.KymaInstanceMappingSpec{
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
 						ServiceInstanceRef: v1alpha1.ResourceReference{
-							Name:      "hana-instance",
-							Namespace: "default",
+							Name:      testHANAInstanceName,
+							Namespace: defaultNamespace,
 						},
 						AdminBindingRef: v1alpha1.ResourceReference{
-							Name:      "admin-binding",
-							Namespace: "default",
+							Name:      testAdminBindingName,
+							Namespace: defaultNamespace,
 						},
 						TargetNamespace: stringPtr("target-ns"),
 					},
 				},
 			},
 			wantData: &kymaExtractedData{
-				serviceInstanceID:    "test-instance-id",
-				clusterID:            "test-cluster-id",
-				serviceInstanceName:  "hana-instance",
+				serviceInstanceID:    testInstanceID,
+				clusterID:            testClusterID,
+				serviceInstanceName:  testHANAInstanceName,
 				serviceInstanceReady: true,
 				adminAPICredentials: hanacloud.AdminAPICredentials{
 					BaseURL: "https://hana-cloud-api.example.com",
@@ -525,11 +534,11 @@ func TestExtractKymaData(t *testing.T) {
 					ForProvider: v1alpha1.KymaInstanceMappingParameters{
 						ServiceInstanceRef: v1alpha1.ResourceReference{
 							Name:      "missing-instance",
-							Namespace: "default",
+							Namespace: defaultNamespace,
 						},
 						AdminBindingRef: v1alpha1.ResourceReference{
-							Name:      "admin-binding",
-							Namespace: "default",
+							Name:      testAdminBindingName,
+							Namespace: defaultNamespace,
 						},
 					},
 				},

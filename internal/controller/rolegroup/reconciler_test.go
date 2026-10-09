@@ -27,6 +27,8 @@ import (
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 )
 
+const testRolegroupName = "DEMO_ROLEGROUP"
+
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct{}
 
@@ -224,7 +226,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Rolegroup{
 					Spec: v1alpha1.RolegroupSpec{
 						ForProvider: v1alpha1.RolegroupParameters{
-							RolegroupName: "DEMO_ROLEGROUP",
+							RolegroupName: testRolegroupName,
 						},
 					},
 				},
@@ -249,7 +251,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.Rolegroup{
 					Spec: v1alpha1.RolegroupSpec{
 						ForProvider: v1alpha1.RolegroupParameters{
-							RolegroupName: "DEMO_ROLEGROUP",
+							RolegroupName: testRolegroupName,
 						},
 					},
 				},
@@ -321,7 +323,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Rolegroup{
 					Spec: v1alpha1.RolegroupSpec{
 						ForProvider: v1alpha1.RolegroupParameters{
-							RolegroupName: "DEMO_ROLEGROUP",
+							RolegroupName: testRolegroupName,
 						},
 					},
 				},
@@ -344,7 +346,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Rolegroup{
 					Spec: v1alpha1.RolegroupSpec{
 						ForProvider: v1alpha1.RolegroupParameters{
-							RolegroupName: "DEMO_ROLEGROUP",
+							RolegroupName: testRolegroupName,
 						},
 					},
 				},
@@ -416,7 +418,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.Rolegroup{
 					Spec: v1alpha1.RolegroupSpec{
 						ForProvider: v1alpha1.RolegroupParameters{
-							RolegroupName: "DEMO_ROLEGROUP",
+							RolegroupName: testRolegroupName,
 						},
 					},
 				},
@@ -439,7 +441,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.Rolegroup{
 					Spec: v1alpha1.RolegroupSpec{
 						ForProvider: v1alpha1.RolegroupParameters{
-							RolegroupName: "DEMO_ROLEGROUP",
+							RolegroupName: testRolegroupName,
 						},
 					},
 				},
