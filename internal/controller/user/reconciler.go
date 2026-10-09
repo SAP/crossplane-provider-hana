@@ -323,19 +323,19 @@ func isPasswordUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.Us
 }
 
 func isX509MappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
-	desiredCount := len(desired.Authentication.X509Providers)
-	observedCount := len(observed.X509Providers)
 	if desired.Authentication.X509Providers == nil {
-		return observedCount == 0
+		return len(observed.X509Providers) == 0
 	}
-	if desiredCount != observedCount {
-		return false
-	}
-	if desiredCount == 0 {
-		return true
-	}
-	// Compare by resolved HANA provider Name and SubjectName only, ignoring
-	// the Kubernetes ProviderRef field which is absent in observed entries.
+	toAdd, toRemove := diffX509Mappings(desired.Authentication.X509Providers, observed.X509Providers)
+	return len(toAdd) == 0 && len(toRemove) == 0
+}
+
+// diffX509Mappings returns the X.509 mappings that need to be added (present in
+// desired but not observed) and removed (present in observed but not desired).
+// Comparison is by resolved HANA provider Name and SubjectName only — the
+// Kubernetes ProviderRef field is ignored because observed entries read back
+// from SYS.X509_USER_MAPPINGS never carry it.
+func diffX509Mappings(desired, observed []v1alpha1.X509UserMapping) (toAdd, toRemove []v1alpha1.X509UserMapping) {
 	in := func(m v1alpha1.X509UserMapping, s []v1alpha1.X509UserMapping) bool {
 		for _, x := range s {
 			if x.Name == m.Name && x.SubjectName == m.SubjectName {
@@ -344,12 +344,17 @@ func isX509MappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha
 		}
 		return false
 	}
-	for _, d := range desired.Authentication.X509Providers {
-		if !in(d, observed.X509Providers) {
-			return false
+	for _, d := range desired {
+		if !in(d, observed) {
+			toAdd = append(toAdd, d)
 		}
 	}
-	return true
+	for _, o := range observed {
+		if !in(o, desired) {
+			toRemove = append(toRemove, o)
+		}
+	}
+	return toAdd, toRemove
 }
 
 func isJWTMappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
@@ -618,26 +623,7 @@ func (c *external) updateX509Providers(ctx context.Context, cr *v1alpha1.User, d
 		return nil
 	}
 
-	in := func(m v1alpha1.X509UserMapping, s []v1alpha1.X509UserMapping) bool {
-		for _, x := range s {
-			if x.Name == m.Name && x.SubjectName == m.SubjectName {
-				return true
-			}
-		}
-		return false
-	}
-
-	var toAdd, toRemove []v1alpha1.X509UserMapping
-	for _, d := range desired.Authentication.X509Providers {
-		if !in(d, observed.X509Providers) {
-			toAdd = append(toAdd, d)
-		}
-	}
-	for _, o := range observed.X509Providers {
-		if !in(o, desired.Authentication.X509Providers) {
-			toRemove = append(toRemove, o)
-		}
-	}
+	toAdd, toRemove := diffX509Mappings(desired.Authentication.X509Providers, observed.X509Providers)
 
 	providersToAdd, err := c.ResolveUserMappings(ctx, toAdd, cr.GetNamespace())
 	if err != nil {
