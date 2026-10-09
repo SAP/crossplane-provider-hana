@@ -24,15 +24,16 @@ on:
 permissions:
   contents: read
 
+# All e2e runs share one HANA DB, so serialize them repo-wide. queue: max keeps
+# every waiting run (default would cancel all but the newest pending one).
+concurrency:
+  group: hana-shared-db-e2e
+  queue: max
+
 jobs:
   e2e-tests:
     if: ${{ !inputs.skip }}
     runs-on: ubuntu-latest
-    # All e2e runs share one HANA DB, so serialize them repo-wide. queue: max keeps
-    # every waiting run (default would cancel all but the newest pending one).
-    concurrency:
-      group: hana-shared-db-e2e
-      queue: max
     environment:
       name: pr-e2e-no-approval
       deployment: false
