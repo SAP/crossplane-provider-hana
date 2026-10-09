@@ -12,7 +12,6 @@ USER 65532
 ENTRYPOINT ["crossplane-hana-provider"]
 
 ARG DISTROLESS_DIGEST
-ARG BUILD_TIMESTAMP
 ARG GIT_COMMIT
 
 LABEL org.opencontainers.image.title="provider-hana" \
@@ -23,5 +22,4 @@ LABEL org.opencontainers.image.title="provider-hana" \
       org.opencontainers.image.vendor="SAP SE" \
       org.opencontainers.image.base.name="gcr.io/distroless/static" \
       org.opencontainers.image.base.digest="$DISTROLESS_DIGEST" \
-      org.opencontainers.image.revision="$GIT_COMMIT" \
-      org.opencontainers.image.created="$BUILD_TIMESTAMP"
+      org.opencontainers.image.revision="$GIT_COMMIT"

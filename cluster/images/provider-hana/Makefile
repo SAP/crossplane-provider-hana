@@ -8,9 +8,6 @@ include ../../../build/makelib/common.mk
 #  Options
 include ../../../build/makelib/imagelight.mk
 
-# Commit time rather than wall-clock time keeps image labels reproducible
-BUILD_TIMESTAMP ?= $(shell TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd)
-
 # ====================================================================================
 # Targets
 
@@ -29,7 +26,6 @@ img.build.shared:
 	@cp -r $(OUTPUT_DIR)/bin/ $(IMAGE_TEMP_DIR)/bin || $(FAIL)
 	@docker buildx build $(BUILD_ARGS) \
 		--build-arg GIT_COMMIT=$(COMMIT_HASH) \
-		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--platform $(IMAGE_PLATFORMS) \
 		-t $(IMAGE) \
 		$(IMAGE_TEMP_DIR) || $(FAIL)
