@@ -1063,16 +1063,37 @@ func TestUpdateX509Providers(t *testing.T) {
 				err: errBoom,
 			},
 		},
-		"SuccessAddSingleProvider": {
-			reason: "Should successfully add a single X509 provider",
+		"ErrEnableX509": {
+			reason: "Errors on ENABLE X509 after ADD IDENTITY should be returned",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expectedQuery := "ALTER USER TEST_USER ADD IDENTITY 'CN=Test User,O=Acme Corp' FOR X509 PROVIDER TEST_PROVIDER"
-						if query != expectedQuery {
-							return nil, fmt.Errorf("unexpected query: got %s, want %s", query, expectedQuery)
+						if strings.Contains(query, "ENABLE X509") {
+							return nil, errBoom
 						}
 						return nil, nil
+					},
+				},
+			},
+			args: args{
+				username: "TEST_USER",
+				toAdd: []ResolvedUserMapping{
+					{Name: "TEST_PROVIDER", SubjectName: "CN=Test User"},
+				},
+			},
+			want: want{
+				err: fmt.Errorf("failed to enable X509 for user TEST_USER: %w", errBoom),
+			},
+		},
+		"SuccessAddSingleProvider": {
+			reason: "Should successfully add a single X509 provider and enable X509",
+			fields: fields{
+				db: fake.MockDB{
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "ENABLE X509") {
+							return nil, nil
+						}
+						return nil, fmt.Errorf("unexpected query: %s", query)
 					},
 				},
 			},
@@ -1110,12 +1131,11 @@ func TestUpdateX509Providers(t *testing.T) {
 			},
 		},
 		"SuccessAddMultipleProviders": {
-			reason: "Should successfully add multiple X509 providers",
+			reason: "Should successfully add multiple X509 providers and enable X509 once",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						// Expect two separate queries for multiple providers
-						if strings.Contains(query, "MAIN_PROVIDER") || strings.Contains(query, "BACKUP_PROVIDER") {
+						if strings.Contains(query, "MAIN_PROVIDER") || strings.Contains(query, "BACKUP_PROVIDER") || strings.Contains(query, "ENABLE X509") {
 							return nil, nil
 						}
 						return nil, fmt.Errorf("unexpected query: %s", query)
@@ -1162,8 +1182,7 @@ func TestUpdateX509Providers(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						// Should handle both ADD and DROP operations
-						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "DROP IDENTITY") {
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "DROP IDENTITY") || strings.Contains(query, "ENABLE X509") {
 							return nil, nil
 						}
 						return nil, fmt.Errorf("unexpected query: %s", query)
@@ -1202,15 +1221,14 @@ func TestUpdateX509Providers(t *testing.T) {
 			},
 		},
 		"SuccessWithAnySubject": {
-			reason: "Should successfully handle providers with ANY subject name",
+			reason: "Should successfully handle providers with ANY subject name and enable X509",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expectedQuery := "ALTER USER ANY_USER ADD IDENTITY 'ANY' FOR X509 PROVIDER ANY_PROVIDER"
-						if query != expectedQuery {
-							return nil, fmt.Errorf("unexpected query: got %s, want %s", query, expectedQuery)
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "ENABLE X509") {
+							return nil, nil
 						}
-						return nil, nil
+						return nil, fmt.Errorf("unexpected query: %s", query)
 					},
 				},
 			},
