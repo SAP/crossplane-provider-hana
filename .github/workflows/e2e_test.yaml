@@ -23,12 +23,16 @@ on:
 
 permissions:
   contents: read
-  actions: read  # Needed for Turnstyle to query workflow runs
 
 jobs:
   e2e-tests:
     if: ${{ !inputs.skip }}
     runs-on: ubuntu-latest
+    # All e2e runs share one HANA DB, so serialize them repo-wide. queue: max keeps
+    # every waiting run (default would cancel all but the newest pending one).
+    concurrency:
+      group: hana-shared-db-e2e
+      queue: max
     environment:
       name: pr-e2e-no-approval
       deployment: false
@@ -44,12 +48,6 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.27'
-
-      - name: Wait for other e2e tests on shared HANA DB
-        uses: softprops/turnstyle@v3
-        with:
-          same-branch-only: false
-          abort-after-seconds: 7200
 
       - name: Run build and e2e test
         run: make e2e.run
