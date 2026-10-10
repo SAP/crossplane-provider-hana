@@ -1,0 +1,15 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: AuditPolicy
+metadata:
+  name: example-auditpolicy
+spec:
+  forProvider:
+    policyName: E2E_EXAMPLE_AUDIT_POLICY
+    auditStatus: UNSUCCESSFUL
+    auditLevel: INFO
+    auditActions:
+      - GRANT ANY
+    auditTrailRetention: 30
+    enabled: true
+  providerConfigRef:
+    name: example
