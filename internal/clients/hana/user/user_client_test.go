@@ -31,6 +31,7 @@ const (
 	lastPasswordChangeTime         = "LAST_PASSWORD_CHANGE_TIME"
 	userGroupName                  = "USERGROUP_NAME"
 	userName                       = "USER_NAME"
+	testProvider                   = "TEST_PROVIDER"
 )
 
 var testTime = metav1.Now()
@@ -302,7 +303,7 @@ func TestRead(t *testing.T) {
 						// Check if this is an X509 providers query
 						if strings.Contains(query, "X509_USER_MAPPINGS") {
 							return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{"X509_PROVIDER_NAME", "SUBJECT_NAME"}).
-								AddRow("TEST_PROVIDER", "CN=John Doe,O=Acme Corp").
+								AddRow(testProvider, "CN=John Doe,O=Acme Corp").
 								AddRow("BACKUP_PROVIDER", sql.NullString{})), nil
 						}
 						// Other queries return empty results
@@ -320,7 +321,7 @@ func TestRead(t *testing.T) {
 					Authentication: v1alpha1.Authentication{
 						X509Providers: []v1alpha1.X509UserMapping{
 							{
-								X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
+								X509ProviderRef: v1alpha1.X509ProviderRef{Name: testProvider},
 								SubjectName:     "CN=John Doe,O=Acme Corp",
 							},
 							{
@@ -348,7 +349,7 @@ func TestRead(t *testing.T) {
 					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
-							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
+							X509ProviderRef: v1alpha1.X509ProviderRef{Name: testProvider},
 							SubjectName:     "CN=John Doe,O=Acme Corp",
 						},
 						{
@@ -1048,7 +1049,7 @@ func TestUpdateX509Providers(t *testing.T) {
 			args: args{
 				username: testCatalogUser,
 				toAdd: []ResolvedUserMapping{
-					{Name: "TEST_PROVIDER", SubjectName: "CN=Test User"},
+					{Name: testProvider, SubjectName: "CN=Test User"},
 				},
 			},
 			want: want{
@@ -1092,7 +1093,7 @@ func TestUpdateX509Providers(t *testing.T) {
 			args: args{
 				username: testCatalogUser,
 				toAdd: []ResolvedUserMapping{
-					{Name: "TEST_PROVIDER", SubjectName: "CN=Test User"},
+					{Name: testProvider, SubjectName: "CN=Test User"},
 				},
 			},
 			want: want{
