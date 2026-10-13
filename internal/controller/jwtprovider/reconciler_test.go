@@ -19,6 +19,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/jwtprovider"
 )
 
+const testIssuerURL = "https://issuer.example"
+
 func TestObserve(t *testing.T) {
 	errBoom := errors.New("boom")
 
@@ -62,7 +64,7 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.JWTProvider{
 					Spec: v1alpha1.JWTProviderSpec{
-						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: "https://issuer.example", Priority: 100},
+						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: testIssuerURL, Priority: 100},
 					},
 				},
 			},
@@ -81,7 +83,7 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.JWTProvider{
 					Spec: v1alpha1.JWTProviderSpec{
-						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: "https://issuer.example", Priority: 100},
+						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: testIssuerURL, Priority: 100},
 					},
 				},
 			},
@@ -92,7 +94,7 @@ func TestObserve(t *testing.T) {
 			fields: fields{
 				client: &mockJWTProviderClient{
 					MockRead: func(_ context.Context, _ *v1alpha1.JWTProviderParameters) (*v1alpha1.JWTProviderObservation, error) {
-						issuer := "https://issuer.example"
+						issuer := testIssuerURL
 						claim := "sub"
 						prio := 100
 						return &v1alpha1.JWTProviderObservation{
@@ -110,7 +112,7 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.JWTProviderSpec{
 						ForProvider: v1alpha1.JWTProviderParameters{
 							Name:                  "P",
-							Issuer:                "https://issuer.example",
+							Issuer:                testIssuerURL,
 							ExternalIdentityClaim: "sub",
 							Priority:              100,
 						},
@@ -209,7 +211,7 @@ func TestCreate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.JWTProvider{
 					Spec: v1alpha1.JWTProviderSpec{
-						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: "https://issuer.example", Priority: 100},
+						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: testIssuerURL, Priority: 100},
 					},
 				},
 			},
@@ -226,7 +228,7 @@ func TestCreate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.JWTProvider{
 					Spec: v1alpha1.JWTProviderSpec{
-						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: "https://issuer.example", Priority: 100},
+						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: testIssuerURL, Priority: 100},
 					},
 				},
 			},
@@ -372,7 +374,7 @@ func TestDelete(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.JWTProvider{
 					Spec: v1alpha1.JWTProviderSpec{
-						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: "https://issuer.example", Priority: 100},
+						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: testIssuerURL, Priority: 100},
 					},
 				},
 			},
@@ -389,7 +391,7 @@ func TestDelete(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.JWTProvider{
 					Spec: v1alpha1.JWTProviderSpec{
-						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: "https://issuer.example", Priority: 100},
+						ForProvider: v1alpha1.JWTProviderParameters{Name: "P", Issuer: testIssuerURL, Priority: 100},
 					},
 				},
 			},
