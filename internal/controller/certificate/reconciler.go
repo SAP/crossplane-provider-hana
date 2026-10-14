@@ -110,20 +110,22 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	return &external{
-		client: c.newClient(conn),
-		kube:   c.kube,
-		log:    c.log,
+		client:     c.newClient(conn),
+		connection: conn,
+		kube:       c.kube,
+		log:        c.log,
 	}, nil
 }
 
 func (c *external) Disconnect(_ context.Context) error {
-	return nil
+	return c.connection.Close()
 }
 
 type external struct {
-	client certclient.CertificateClient
-	kube   client.Client
-	log    logging.Logger
+	client     certclient.CertificateClient
+	connection xsql.DB
+	kube       client.Client
+	log        logging.Logger
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
