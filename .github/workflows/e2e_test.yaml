@@ -43,6 +43,9 @@ jobs:
           #use inputs.checkout-ref to be able to call it from a pull_request_target workflow, since there it needs to be github.event.pull_request.head.sha and not the default
           ref: ${{ inputs.checkout-ref }}
           submodules: true
+          # Opt in to checking out fork PR code under pull_request_target. actions/checkout v7 refuses this by default.
+          # Safe here: the caller's `approve` job (pr-e2e-approval, required_reviewers) must succeed before this workflow's jobs run, so a maintainer inspects the fork diff before it runs with secrets.
+          allow-unsafe-pr-checkout: true
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
