@@ -61,11 +61,16 @@ type hanaDB struct {
 	shutdownErr  error
 }
 
-// New returns a new connector backed by shared HANA connection pools.
-func New(logger logging.Logger) xsql.Connector {
-	return newConnector(logger, func(dsn string) (database, error) {
+// New returns a new connector backed by shared HANA connection pools. Idle pools
+// are retained for at least pollInterval (plus a small margin, since the next
+// reconcile is requeued pollInterval after the previous one releases) so a
+// resource's next reconcile reuses its pool instead of reopening it.
+func New(logger logging.Logger, pollInterval time.Duration) xsql.Connector {
+	h := newConnector(logger, func(dsn string) (database, error) {
 		return sql.Open("hdb", dsn)
 	})
+	h.idleTimeout = max(defaultPoolIdleTimeout, pollInterval+time.Second)
+	return h
 }
 
 func newConnector(logger logging.Logger, open func(string) (database, error)) *hanaDB {
