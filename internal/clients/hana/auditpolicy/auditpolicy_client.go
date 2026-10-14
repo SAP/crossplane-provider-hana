@@ -98,6 +98,12 @@ func scanPolicyRow(rows *sql.Rows, observed *v1alpha1.AuditPolicyObservation, se
 	return nil
 }
 
+// allUsersSentinel is the value HANA stores in PRINCIPAL_NAME when an audit
+// policy has no explicit "FOR PRINCIPALS ..." clause (i.e. it applies to every
+// user). It must not be treated as a real principal, otherwise policies without
+// a principal clause would report spurious drift and fail reconciliation.
+const allUsersSentinel = "ALL USERS"
+
 // mergePrincipal parses the principal clause of a single row and appends the
 // resolved principal to observed (de-duplicated via seenPrincipals).
 //
@@ -106,10 +112,14 @@ func scanPolicyRow(rows *sql.Rows, observed *v1alpha1.AuditPolicyObservation, se
 // "EXCEPT FOR PRINCIPALS ..." clause. PRINCIPAL_NAME/EXCEPT_PRINCIPAL_NAME cover
 // both USER and USERGROUP principals, so we rely on them (and PRINCIPAL_TYPE)
 // rather than the legacy USER_NAME/EXCEPT_USERNAME columns.
+//
+// When a policy has no principal clause, HANA reports PRINCIPAL_NAME as the
+// sentinel "ALL USERS" rather than NULL, which we skip so that such policies
+// observe an empty principal list.
 func mergePrincipal(observed *v1alpha1.AuditPolicyObservation, seenPrincipals map[v1alpha1.AuditPrincipal]struct{}, principalName, exceptPrincipalName, principalType sql.NullString) {
 	var resolvedName string
 	switch {
-	case principalName.Valid && principalName.String != "":
+	case principalName.Valid && principalName.String != "" && principalName.String != allUsersSentinel:
 		// "FOR PRINCIPALS ..." -> ExceptPrincipals stays false.
 		resolvedName = principalName.String
 	case exceptPrincipalName.Valid && exceptPrincipalName.String != "":
