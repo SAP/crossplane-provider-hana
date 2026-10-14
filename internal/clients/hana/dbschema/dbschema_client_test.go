@@ -14,6 +14,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 )
 
+const testSchemaName = "DEMO_SCHEMA"
+
 // nolint: contextcheck
 func TestRead(t *testing.T) {
 	errBoom := errors.New("boom")
@@ -51,7 +53,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.DbSchemaParameters{
-					SchemaName: "DEMO_SCHEMA",
+					SchemaName: testSchemaName,
 				},
 			},
 			want: want{
@@ -69,7 +71,7 @@ func TestRead(t *testing.T) {
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
 						rows := sqlmock.NewRows([]string{"SCHEMA_NAME", "SCHEMA_OWNER"}).
-							AddRow("DEMO_SCHEMA", "DEMO_USER")
+							AddRow(testSchemaName, "DEMO_USER")
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -77,12 +79,12 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.DbSchemaParameters{
-					SchemaName: "DEMO_SCHEMA",
+					SchemaName: testSchemaName,
 				},
 			},
 			want: want{
 				observed: &v1alpha1.DbSchemaObservation{
-					SchemaName: "DEMO_SCHEMA",
+					SchemaName: testSchemaName,
 					Owner:      "DEMO_USER",
 				},
 				err: nil,
@@ -137,7 +139,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.DbSchemaParameters{
-					SchemaName: "DEMO_SCHEMA",
+					SchemaName: testSchemaName,
 				},
 			},
 			want: want{
@@ -155,11 +157,11 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.DbSchemaParameters{
-					SchemaName: "DEMO_SCHEMA",
+					SchemaName: testSchemaName,
 				},
 			},
 			want: want{
-				query: `CREATE SCHEMA "DEMO_SCHEMA"`,
+				query: `CREATE SCHEMA "` + testSchemaName + `"`,
 				err:   nil,
 			},
 		},
@@ -174,12 +176,12 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.DbSchemaParameters{
-					SchemaName: "DEMO_SCHEMA",
+					SchemaName: testSchemaName,
 					Owner:      "E2E-TEST_USER",
 				},
 			},
 			want: want{
-				query: `CREATE SCHEMA "DEMO_SCHEMA" OWNED BY "E2E-TEST_USER"`,
+				query: `CREATE SCHEMA "` + testSchemaName + `" OWNED BY "E2E-TEST_USER"`,
 				err:   nil,
 			},
 		},
@@ -240,7 +242,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.DbSchemaParameters{
-					SchemaName: "DEMO_SCHEMA",
+					SchemaName: testSchemaName,
 				},
 			},
 			want: want{
@@ -258,7 +260,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.DbSchemaParameters{
-					SchemaName: "DEMO_SCHEMA",
+					SchemaName: testSchemaName,
 				},
 			},
 			want: want{

@@ -18,6 +18,12 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 )
 
+const (
+	testCertificateName   = "my-ca"
+	certificateIDColumn   = "CERTIFICATE_ID"
+	certificateNameColumn = "CERTIFICATE_NAME"
+)
+
 // nolint: contextcheck
 func TestRead(t *testing.T) {
 	errBoom := errors.New("boom")
@@ -54,7 +60,7 @@ func TestRead(t *testing.T) {
 				},
 			},
 			args: args{
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{
 				observed: nil,
@@ -66,13 +72,13 @@ func TestRead(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-						rows := sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"})
+						rows := sqlmock.NewRows([]string{certificateIDColumn, certificateNameColumn})
 						return fake.MockRowsToSQLRows(rows), nil
 					},
 				},
 			},
 			args: args{
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{
 				observed: nil,
@@ -84,14 +90,14 @@ func TestRead(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-						rows := sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"}).
+						rows := sqlmock.NewRows([]string{certificateIDColumn, certificateNameColumn}).
 							AddRow(1, "my-ca-1")
 						return fake.MockRowsToSQLRows(rows), nil
 					},
 				},
 			},
 			args: args{
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{
 				observed: &adminv1alpha1.CertificateObservation{
@@ -107,7 +113,7 @@ func TestRead(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-						rows := sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"}).
+						rows := sqlmock.NewRows([]string{certificateIDColumn, certificateNameColumn}).
 							AddRow(1, "my-ca-1").
 							AddRow(2, "my-ca-2")
 						return fake.MockRowsToSQLRows(rows), nil
@@ -115,7 +121,7 @@ func TestRead(t *testing.T) {
 				},
 			},
 			args: args{
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{
 				observed: &adminv1alpha1.CertificateObservation{
@@ -199,7 +205,7 @@ func TestCreate(t *testing.T) {
 			reason: "Non-PEM input should return an error before BeginTx is called",
 			fields: fields{db: fake.MockDB{}},
 			args: args{
-				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters:     &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 				certificatePEM: []byte("not valid pem"),
 			},
 			// splitPEMChain uses stdlib errors.New
@@ -216,7 +222,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				ctx:            context.Background(),
-				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters:     &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 				certificatePEM: singlePEM,
 			},
 			want: want{err: fmt.Errorf("failed to begin transaction: %w", errBoom)},
@@ -232,7 +238,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				ctx:            context.Background(),
-				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters:     &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 				certificatePEM: singlePEM,
 			},
 			want: want{err: fmt.Errorf("failed to create certificate %q: %w", "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032", errBoom)},
@@ -249,7 +255,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				ctx:            context.Background(),
-				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters:     &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 				certificatePEM: chainPEM,
 			},
 			want: want{err: fmt.Errorf("failed to create certificate %q: %w", "MY_CA_CRT_SRV_CERTIFICATE_1002_16072026074032", errBoom)},
@@ -265,7 +271,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				ctx:            context.Background(),
-				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters:     &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 				certificatePEM: singlePEM,
 			},
 			want: want{err: nil},
@@ -282,7 +288,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				ctx:            context.Background(),
-				parameters:     &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters:     &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 				certificatePEM: chainPEM,
 			},
 			want: want{err: nil},
@@ -343,13 +349,13 @@ func TestDelete(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-						return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"})), nil
+						return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{certificateIDColumn, certificateNameColumn})), nil
 					},
 				},
 			},
 			args: args{
 				ctx:        context.Background(),
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{err: nil},
 		},
@@ -364,7 +370,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				ctx:        context.Background(),
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{err: fmt.Errorf("failed to read certificates before delete: %w",
 				fmt.Errorf("failed to query certificates: %w", errBoom))},
@@ -374,7 +380,7 @@ func TestDelete(t *testing.T) {
 			fields: fields{
 				db: mockDBWithTxAndQuery(func(mock sqlmock.Sqlmock) {
 					mock.ExpectQuery("SELECT").
-						WillReturnRows(sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"}).
+						WillReturnRows(sqlmock.NewRows([]string{certificateIDColumn, certificateNameColumn}).
 							AddRow(1, "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032"))
 					mock.ExpectBegin()
 					mock.ExpectExec("DROP CERTIFICATE").WillReturnError(errBoom)
@@ -383,7 +389,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				ctx:        context.Background(),
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{err: fmt.Errorf("failed to drop certificate %q: %w", "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032", errBoom)},
 		},
@@ -392,7 +398,7 @@ func TestDelete(t *testing.T) {
 			fields: fields{
 				db: mockDBWithTxAndQuery(func(mock sqlmock.Sqlmock) {
 					mock.ExpectQuery("SELECT").
-						WillReturnRows(sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"}).
+						WillReturnRows(sqlmock.NewRows([]string{certificateIDColumn, certificateNameColumn}).
 							AddRow(id1, "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032"))
 					mock.ExpectBegin()
 					mock.ExpectExec("DROP CERTIFICATE").WillReturnResult(sqlmock.NewResult(1, 1))
@@ -401,7 +407,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				ctx:        context.Background(),
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{err: nil},
 		},
@@ -410,7 +416,7 @@ func TestDelete(t *testing.T) {
 			fields: fields{
 				db: mockDBWithTxAndQuery(func(mock sqlmock.Sqlmock) {
 					mock.ExpectQuery("SELECT").
-						WillReturnRows(sqlmock.NewRows([]string{"CERTIFICATE_ID", "CERTIFICATE_NAME"}).
+						WillReturnRows(sqlmock.NewRows([]string{certificateIDColumn, certificateNameColumn}).
 							AddRow(id1, "MY_CA_CRT_SRV_CERTIFICATE_1001_16072026074032").
 							AddRow(id2, "MY_CA_CRT_SRV_CERTIFICATE_1002_16072026074032"))
 					mock.ExpectBegin()
@@ -421,7 +427,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				ctx:        context.Background(),
-				parameters: &adminv1alpha1.CertificateParameters{Name: "my-ca"},
+				parameters: &adminv1alpha1.CertificateParameters{Name: testCertificateName},
 			},
 			want: want{err: nil},
 		},

@@ -20,7 +20,12 @@ import (
 	imclient "github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud/instancemapping"
 )
 
-const testNamespace = "test-namespace"
+const (
+	testNamespace         = "test-namespace"
+	testPlatform          = "kubernetes"
+	testClusterID         = "cluster-1"
+	testServiceInstanceID = "test-instance-id"
+)
 
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct{}
@@ -91,8 +96,8 @@ func TestObserve(t *testing.T) {
 					MockList: func(ctx context.Context, serviceInstanceID string) ([]imclient.InstanceMapping, error) {
 						return []imclient.InstanceMapping{
 							{
-								Platform:    "kubernetes",
-								PrimaryID:   "cluster-1",
+								Platform:    testPlatform,
+								PrimaryID:   testClusterID,
 								SecondaryID: &secondaryID,
 								IsDefault:   true,
 							},
@@ -105,9 +110,9 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 							SecondaryID:       &secondaryID,
 							IsDefault:         true,
 						},
@@ -128,8 +133,8 @@ func TestObserve(t *testing.T) {
 					MockList: func(ctx context.Context, serviceInstanceID string) ([]imclient.InstanceMapping, error) {
 						return []imclient.InstanceMapping{
 							{
-								Platform:    "kubernetes",
-								PrimaryID:   "cluster-1",
+								Platform:    testPlatform,
+								PrimaryID:   testClusterID,
 								SecondaryID: nil,
 								IsDefault:   false,
 							},
@@ -142,9 +147,9 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 							SecondaryID:       nil,
 							IsDefault:         false,
 						},
@@ -172,9 +177,9 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 							SecondaryID:       &secondaryID,
 						},
 					},
@@ -194,8 +199,8 @@ func TestObserve(t *testing.T) {
 						differentSecondaryID := "different-namespace"
 						return []imclient.InstanceMapping{
 							{
-								Platform:    "kubernetes",
-								PrimaryID:   "cluster-1",
+								Platform:    testPlatform,
+								PrimaryID:   testClusterID,
 								SecondaryID: &differentSecondaryID,
 								IsDefault:   true,
 							},
@@ -208,9 +213,9 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 							SecondaryID:       &secondaryID,
 						},
 					},
@@ -236,9 +241,9 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 						},
 					},
 				},
@@ -302,13 +307,13 @@ func TestCreate(t *testing.T) {
 			fields: fields{
 				client: &mockInstanceMappingClient{
 					MockCreate: func(ctx context.Context, serviceInstanceID string, req imclient.CreateMappingRequest) error {
-						if serviceInstanceID != "test-instance-id" {
+						if serviceInstanceID != testServiceInstanceID {
 							t.Errorf("expected serviceInstanceID 'test-instance-id', got %s", serviceInstanceID)
 						}
-						if req.Platform != "kubernetes" {
+						if req.Platform != testPlatform {
 							t.Errorf("expected platform 'kubernetes', got %s", req.Platform)
 						}
-						if req.PrimaryID != "cluster-1" {
+						if req.PrimaryID != testClusterID {
 							t.Errorf("expected primaryID 'cluster-1', got %s", req.PrimaryID)
 						}
 						if req.SecondaryID == nil || *req.SecondaryID != testNamespace {
@@ -326,9 +331,9 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 							SecondaryID:       &secondaryID,
 							IsDefault:         true,
 						},
@@ -354,9 +359,9 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 							SecondaryID:       nil,
 						},
 					},
@@ -378,9 +383,9 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 						},
 					},
 				},
@@ -485,10 +490,10 @@ func TestDelete(t *testing.T) {
 			fields: fields{
 				client: &mockInstanceMappingClient{
 					MockDelete: func(ctx context.Context, serviceInstanceID, primaryID, secondaryIDParam string) error {
-						if serviceInstanceID != "test-instance-id" {
+						if serviceInstanceID != testServiceInstanceID {
 							t.Errorf("expected serviceInstanceID 'test-instance-id', got %s", serviceInstanceID)
 						}
-						if primaryID != "cluster-1" {
+						if primaryID != testClusterID {
 							t.Errorf("expected primaryID 'cluster-1', got %s", primaryID)
 						}
 						if secondaryIDParam != testNamespace {
@@ -503,9 +508,9 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 							SecondaryID:       &secondaryID,
 						},
 					},
@@ -530,9 +535,9 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 							SecondaryID:       nil,
 						},
 					},
@@ -554,9 +559,9 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.InstanceMapping{
 					Spec: v1alpha1.InstanceMappingSpec{
 						ForProvider: v1alpha1.InstanceMappingParameters{
-							ServiceInstanceID: "test-instance-id",
-							Platform:          "kubernetes",
-							PrimaryID:         "cluster-1",
+							ServiceInstanceID: testServiceInstanceID,
+							Platform:          testPlatform,
+							PrimaryID:         testClusterID,
 						},
 					},
 				},

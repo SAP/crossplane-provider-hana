@@ -17,6 +17,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+const (
+	testMappingNamespace = "test-namespace"
+	testMappingPlatform  = "kubernetes"
+	testMappingClusterID = "cluster-1"
+)
+
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct{}
 
@@ -29,7 +35,7 @@ func (l *MockLogger) WithValues(_ ...interface{}) logging.Logger {
 func TestList(t *testing.T) {
 	ctx := context.Background()
 
-	secondaryID := "test-namespace"
+	secondaryID := testMappingNamespace
 
 	cases := map[string]struct {
 		handler http.HandlerFunc
@@ -48,8 +54,8 @@ func TestList(t *testing.T) {
 				if err := json.NewEncoder(w).Encode(listMappingsResponse{
 					Mappings: []InstanceMapping{
 						{
-							Platform:    "kubernetes",
-							PrimaryID:   "cluster-1",
+							Platform:    testMappingPlatform,
+							PrimaryID:   testMappingClusterID,
 							SecondaryID: &secondaryID,
 							IsDefault:   true,
 						},
@@ -60,8 +66,8 @@ func TestList(t *testing.T) {
 			},
 			want: []InstanceMapping{
 				{
-					Platform:    "kubernetes",
-					PrimaryID:   "cluster-1",
+					Platform:    testMappingPlatform,
+					PrimaryID:   testMappingClusterID,
 					SecondaryID: &secondaryID,
 					IsDefault:   true,
 				},
@@ -146,7 +152,7 @@ func TestList(t *testing.T) {
 func TestCreate(t *testing.T) {
 	ctx := context.Background()
 
-	secondaryID := "test-namespace"
+	secondaryID := testMappingNamespace
 
 	cases := map[string]struct {
 		handler http.HandlerFunc
@@ -161,8 +167,8 @@ func TestCreate(t *testing.T) {
 				w.WriteHeader(http.StatusCreated)
 			},
 			req: CreateMappingRequest{
-				Platform:    "kubernetes",
-				PrimaryID:   "cluster-1",
+				Platform:    testMappingPlatform,
+				PrimaryID:   testMappingClusterID,
 				SecondaryID: &secondaryID,
 				IsDefault:   true,
 			},
@@ -173,8 +179,8 @@ func TestCreate(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			},
 			req: CreateMappingRequest{
-				Platform:  "kubernetes",
-				PrimaryID: "cluster-1",
+				Platform:  testMappingPlatform,
+				PrimaryID: testMappingClusterID,
 			},
 			wantErr: false,
 		},
@@ -184,8 +190,8 @@ func TestCreate(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error": "invalid request"}`))
 			},
 			req: CreateMappingRequest{
-				Platform:  "kubernetes",
-				PrimaryID: "cluster-1",
+				Platform:  testMappingPlatform,
+				PrimaryID: testMappingClusterID,
 			},
 			wantErr: true,
 		},
@@ -195,8 +201,8 @@ func TestCreate(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error": "mapping already exists"}`))
 			},
 			req: CreateMappingRequest{
-				Platform:  "kubernetes",
-				PrimaryID: "cluster-1",
+				Platform:  testMappingPlatform,
+				PrimaryID: testMappingClusterID,
 			},
 			wantErr: true,
 		},
@@ -206,8 +212,8 @@ func TestCreate(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error": "internal server error"}`))
 			},
 			req: CreateMappingRequest{
-				Platform:  "kubernetes",
-				PrimaryID: "cluster-1",
+				Platform:  testMappingPlatform,
+				PrimaryID: testMappingClusterID,
 			},
 			wantErr: true,
 		},
@@ -227,13 +233,13 @@ func TestCreate(t *testing.T) {
 					t.Errorf("failed to unmarshal request body: %v", err)
 				}
 
-				if req.Platform != "kubernetes" {
+				if req.Platform != testMappingPlatform {
 					t.Errorf("expected platform 'kubernetes', got %s", req.Platform)
 				}
-				if req.PrimaryID != "cluster-1" {
+				if req.PrimaryID != testMappingClusterID {
 					t.Errorf("expected primaryID 'cluster-1', got %s", req.PrimaryID)
 				}
-				if req.SecondaryID == nil || *req.SecondaryID != "test-namespace" {
+				if req.SecondaryID == nil || *req.SecondaryID != testMappingNamespace {
 					t.Errorf("expected secondaryID 'test-namespace', got %v", req.SecondaryID)
 				}
 				if !req.IsDefault {
@@ -243,8 +249,8 @@ func TestCreate(t *testing.T) {
 				w.WriteHeader(http.StatusCreated)
 			},
 			req: CreateMappingRequest{
-				Platform:    "kubernetes",
-				PrimaryID:   "cluster-1",
+				Platform:    testMappingPlatform,
+				PrimaryID:   testMappingClusterID,
 				SecondaryID: &secondaryID,
 				IsDefault:   true,
 			},
@@ -292,24 +298,24 @@ func TestDelete(t *testing.T) {
 				}
 				w.WriteHeader(http.StatusNoContent)
 			},
-			primaryID:   "cluster-1",
-			secondaryID: "test-namespace",
+			primaryID:   testMappingClusterID,
+			secondaryID: testMappingNamespace,
 			wantErr:     false,
 		},
 		"Success200OK": {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			},
-			primaryID:   "cluster-1",
-			secondaryID: "test-namespace",
+			primaryID:   testMappingClusterID,
+			secondaryID: testMappingNamespace,
 			wantErr:     false,
 		},
 		"NotFound404IsSuccess": {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 			},
-			primaryID:   "cluster-1",
-			secondaryID: "test-namespace",
+			primaryID:   testMappingClusterID,
+			secondaryID: testMappingNamespace,
 			wantErr:     false,
 		},
 		"BadRequest400": {
@@ -317,8 +323,8 @@ func TestDelete(t *testing.T) {
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"error": "invalid request"}`))
 			},
-			primaryID:   "cluster-1",
-			secondaryID: "test-namespace",
+			primaryID:   testMappingClusterID,
+			secondaryID: testMappingNamespace,
 			wantErr:     true,
 		},
 		"ServerError500": {
@@ -326,23 +332,23 @@ func TestDelete(t *testing.T) {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`{"error": "internal server error"}`))
 			},
-			primaryID:   "cluster-1",
-			secondaryID: "test-namespace",
+			primaryID:   testMappingClusterID,
+			secondaryID: testMappingNamespace,
 			wantErr:     true,
 		},
 		"VerifyQueryParams": {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				query := r.URL.Query()
-				if query.Get("primaryID") != "cluster-1" {
+				if query.Get("primaryID") != testMappingClusterID {
 					t.Errorf("expected primaryID=cluster-1, got %s", query.Get("primaryID"))
 				}
-				if query.Get("secondaryID") != "test-namespace" {
+				if query.Get("secondaryID") != testMappingNamespace {
 					t.Errorf("expected secondaryID=test-namespace, got %s", query.Get("secondaryID"))
 				}
 				w.WriteHeader(http.StatusNoContent)
 			},
-			primaryID:   "cluster-1",
-			secondaryID: "test-namespace",
+			primaryID:   testMappingClusterID,
+			secondaryID: testMappingNamespace,
 			wantErr:     false,
 		},
 	}

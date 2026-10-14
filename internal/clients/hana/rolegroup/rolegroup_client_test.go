@@ -14,6 +14,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 )
 
+const testRolegroupName = "DEMO_ROLEGROUP"
+
 // nolint: contextcheck
 func TestRead(t *testing.T) {
 	errBoom := errors.New("boom")
@@ -51,7 +53,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RolegroupParameters{
-					RolegroupName: "DEMO_ROLEGROUP",
+					RolegroupName: testRolegroupName,
 				},
 			},
 			want: want{
@@ -68,7 +70,7 @@ func TestRead(t *testing.T) {
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
 						rows := sqlmock.NewRows([]string{"ROLEGROUP_NAME", "IS_ROLE_ADMIN_ENABLED"}).
-							AddRow("DEMO_ROLEGROUP", "TRUE")
+							AddRow(testRolegroupName, "TRUE")
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -81,7 +83,7 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.RolegroupObservation{
-					RolegroupName: "DEMO_ROLEGROUP",
+					RolegroupName: testRolegroupName,
 				},
 				err: nil,
 			},
@@ -134,7 +136,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RolegroupParameters{
-					RolegroupName: "DEMO_ROLEGROUP",
+					RolegroupName: testRolegroupName,
 				},
 			},
 			want: want{
@@ -152,7 +154,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RolegroupParameters{
-					RolegroupName: "DEMO_ROLEGROUP",
+					RolegroupName: testRolegroupName,
 				},
 			},
 			want: want{
@@ -204,7 +206,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RolegroupParameters{
-					RolegroupName: "DEMO_ROLEGROUP",
+					RolegroupName: testRolegroupName,
 				},
 			},
 			want: want{
@@ -222,7 +224,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.RolegroupParameters{
-					RolegroupName: "DEMO_ROLEGROUP",
+					RolegroupName: testRolegroupName,
 				},
 			},
 			want: want{

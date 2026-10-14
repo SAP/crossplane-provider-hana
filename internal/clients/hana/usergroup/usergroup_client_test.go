@@ -14,6 +14,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 )
 
+const testUsergroupName = "DEMO_USERGROUP"
+
 // nolint: contextcheck
 func TestRead(t *testing.T) {
 	errBoom := errors.New("boom")
@@ -51,7 +53,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UsergroupParameters{
-					UsergroupName: "DEMO_USERGROUP",
+					UsergroupName: testUsergroupName,
 				},
 			},
 			want: want{
@@ -77,7 +79,7 @@ func TestRead(t *testing.T) {
 						return fake.MockRowsToSQLRows(
 							sqlmock.NewRows(
 								[]string{"USERGROUP_NAME", "PARAMETER_KEY", "PARAMETER_VALUE"},
-							).AddRow("DEMO_USERGROUP", "key", "value"),
+							).AddRow(testUsergroupName, "key", "value"),
 						), nil
 					},
 				},
@@ -148,7 +150,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UsergroupParameters{
-					UsergroupName: "DEMO_USERGROUP",
+					UsergroupName: testUsergroupName,
 				},
 			},
 			want: want{
@@ -166,7 +168,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UsergroupParameters{
-					UsergroupName: "DEMO_USERGROUP",
+					UsergroupName: testUsergroupName,
 				},
 			},
 			want: want{
@@ -218,7 +220,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UsergroupParameters{
-					UsergroupName: "DEMO_USERGROUP",
+					UsergroupName: testUsergroupName,
 				},
 			},
 			want: want{
@@ -236,7 +238,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UsergroupParameters{
-					UsergroupName: "DEMO_USERGROUP",
+					UsergroupName: testUsergroupName,
 				},
 			},
 			want: want{

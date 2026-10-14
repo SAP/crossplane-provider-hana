@@ -11,7 +11,7 @@ PLATFORMS ?= linux_amd64 linux_arm64
 VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "v0.0.0-$$(git rev-parse HEAD)")
 $(info VERSION is $(VERSION))
 
-GOLANGCILINT_VERSION ?= 2.10.1
+GOLANGCILINT_VERSION ?= 2.14.0
 
 -include build/makelib/common.mk
 

@@ -92,6 +92,9 @@ linters:
           - staticcheck
         text: 'SA3000:'
       - linters:
+          - staticcheck
+        text: 'SA1019: sigs\.k8s\.io/controller-runtime/pkg/scheme\.Builder is deprecated:'
+      - linters:
           - gosec
         text: 'G101:'
       - linters:

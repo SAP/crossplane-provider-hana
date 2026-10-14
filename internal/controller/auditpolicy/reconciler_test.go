@@ -24,6 +24,12 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
+const (
+	auditPrincipalUsergroup = "USERGROUP"
+	auditPrincipalUser      = "USER"
+	monitoringAdminUser     = "MONITORING_ADMIN"
+)
+
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct{}
 
@@ -559,7 +565,7 @@ func TestBuildDesiredParameters(t *testing.T) {
 						AuditStatus:  "successful",
 						AuditActions: []string{"connect"},
 						AuditPrincipals: []v1alpha1.AuditPrincipal{
-							{Type: "usergroup", Name: "technical_user_group"},
+							{Type: auditPrincipalUsergroup, Name: "technical_user_group"},
 						},
 						AuditLevel: "info",
 					},
@@ -570,7 +576,7 @@ func TestBuildDesiredParameters(t *testing.T) {
 				AuditStatus:  "SUCCESSFUL",
 				AuditActions: []string{"CONNECT"},
 				AuditPrincipals: []v1alpha1.AuditPrincipal{
-					{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+					{Type: auditPrincipalUsergroup, Name: "TECHNICAL_USER_GROUP"},
 				},
 				AuditLevel: "INFO",
 			},
@@ -604,10 +610,10 @@ func TestBuildDesiredParameters(t *testing.T) {
 						AuditStatus:  "successful",
 						AuditActions: []string{"actions"},
 						AuditPrincipals: []v1alpha1.AuditPrincipal{
-							{Type: "user", Name: "user1"},
-							{Type: "usergroup", Name: "usergroup1"},
-							{Type: "user", Name: "user2"},
-							{Type: "usergroup", Name: "usergroup2"},
+							{Type: auditPrincipalUser, Name: "user1"},
+							{Type: auditPrincipalUsergroup, Name: "usergroup1"},
+							{Type: auditPrincipalUser, Name: "user2"},
+							{Type: auditPrincipalUsergroup, Name: "usergroup2"},
 						},
 						ExceptPrincipals: true,
 						AuditLevel:       "critical",
@@ -619,10 +625,10 @@ func TestBuildDesiredParameters(t *testing.T) {
 				AuditStatus:  "SUCCESSFUL",
 				AuditActions: []string{"ACTIONS"},
 				AuditPrincipals: []v1alpha1.AuditPrincipal{
-					{Type: "USER", Name: "USER1"},
-					{Type: "USERGROUP", Name: "USERGROUP1"},
-					{Type: "USER", Name: "USER2"},
-					{Type: "USERGROUP", Name: "USERGROUP2"},
+					{Type: auditPrincipalUser, Name: "USER1"},
+					{Type: auditPrincipalUsergroup, Name: "USERGROUP1"},
+					{Type: auditPrincipalUser, Name: "USER2"},
+					{Type: auditPrincipalUsergroup, Name: "USERGROUP2"},
 				},
 				ExceptPrincipals: true,
 				AuditLevel:       "CRITICAL",
@@ -657,14 +663,14 @@ func TestPrincipalsDiffer(t *testing.T) {
 			reason: "Principal comparison is order-independent",
 			observed: &v1alpha1.AuditPolicyObservation{
 				AuditPrincipals: []v1alpha1.AuditPrincipal{
-					{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
-					{Type: "USER", Name: "MONITORING_ADMIN"},
+					{Type: auditPrincipalUsergroup, Name: "TECHNICAL_USER_GROUP"},
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
 				},
 			},
 			desired: &v1alpha1.AuditPolicyParameters{
 				AuditPrincipals: []v1alpha1.AuditPrincipal{
-					{Type: "USER", Name: "MONITORING_ADMIN"},
-					{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
+					{Type: auditPrincipalUsergroup, Name: "TECHNICAL_USER_GROUP"},
 				},
 			},
 			want: false,
@@ -673,13 +679,13 @@ func TestPrincipalsDiffer(t *testing.T) {
 			reason: "Adding a principal is a difference",
 			observed: &v1alpha1.AuditPolicyObservation{
 				AuditPrincipals: []v1alpha1.AuditPrincipal{
-					{Type: "USER", Name: "MONITORING_ADMIN"},
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
 				},
 			},
 			desired: &v1alpha1.AuditPolicyParameters{
 				AuditPrincipals: []v1alpha1.AuditPrincipal{
-					{Type: "USER", Name: "MONITORING_ADMIN"},
-					{Type: "USERGROUP", Name: "TECHNICAL_USER_GROUP"},
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
+					{Type: auditPrincipalUsergroup, Name: "TECHNICAL_USER_GROUP"},
 				},
 			},
 			want: true,
@@ -688,13 +694,13 @@ func TestPrincipalsDiffer(t *testing.T) {
 			reason: "Flipping ExceptPrincipals with principals configured is a difference",
 			observed: &v1alpha1.AuditPolicyObservation{
 				AuditPrincipals: []v1alpha1.AuditPrincipal{
-					{Type: "USER", Name: "MONITORING_ADMIN"},
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
 				},
 				ExceptPrincipals: false,
 			},
 			desired: &v1alpha1.AuditPolicyParameters{
 				AuditPrincipals: []v1alpha1.AuditPrincipal{
-					{Type: "USER", Name: "MONITORING_ADMIN"},
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
 				},
 				ExceptPrincipals: true,
 			},

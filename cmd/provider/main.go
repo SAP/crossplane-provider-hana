@@ -11,6 +11,7 @@ import (
 
 	kingpin "github.com/alecthomas/kingpin/v2"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -19,6 +20,7 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
+	crconfig "sigs.k8s.io/controller-runtime/pkg/config"
 
 	"github.com/SAP/crossplane-provider-hana/apis"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
@@ -48,6 +50,9 @@ func main() {
 	kingpin.FatalIfError(err, "Cannot get API server rest config")
 
 	mgr, err := ctrl.NewManager(ratelimiter.LimitRESTConfig(cfg, *maxReconcileRate), ctrl.Options{
+		Controller: crconfig.Controller{
+			UsePriorityQueue: ptr.To(false),
+		},
 		Cache: cache.Options{
 			SyncPeriod: syncInterval,
 		},

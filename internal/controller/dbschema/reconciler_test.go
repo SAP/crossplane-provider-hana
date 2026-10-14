@@ -25,6 +25,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
 
+const testSchemaName = "DEMO_SCHEMA"
+
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct{}
 
@@ -220,7 +222,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -246,7 +248,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -318,7 +320,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -341,7 +343,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -412,7 +414,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -435,7 +437,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},

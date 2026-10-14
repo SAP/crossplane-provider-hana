@@ -21,6 +21,8 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
 )
 
+const testPSEName = "test-pse"
+
 // Unlike many Kubernetes projects Crossplane does not use third party testing
 // libraries, per the common Go test review comments. Crossplane encourages the
 // use of table driven unit tests. The tests of the crossplane-runtime project
@@ -66,7 +68,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
@@ -106,7 +108,7 @@ func TestRead(t *testing.T) {
 							rows := sqlmock.NewRows([]string{"PURPOSE_OBJECT"}).AddRow("test-provider")
 							mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						} else {
-							rows := sqlmock.NewRows([]string{"NAME"}).AddRow("test-pse")
+							rows := sqlmock.NewRows([]string{"NAME"}).AddRow(testPSEName)
 							mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						}
 						return db.QueryRowContext(context.Background(), "SELECT")
@@ -121,12 +123,12 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
 				observed: &v1alpha1.PersonalSecurityEnvironmentObservation{
-					Name:             "test-pse",
+					Name:             testPSEName,
 					Purpose:          v1alpha1.PSEPurposeX509,
 					X509ProviderName: "test-provider",
 					CertificateRefs: []v1alpha1.CertificateRef{
@@ -220,7 +222,7 @@ func TestRead(t *testing.T) {
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						// Mock successful PSE query
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"NAME"}).AddRow("test-pse")
+						rows := sqlmock.NewRows([]string{"NAME"}).AddRow(testPSEName)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -232,7 +234,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
@@ -290,7 +292,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 				provider: "test-provider",
 			},
@@ -313,7 +315,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 				provider: "",
 			},
@@ -447,7 +449,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName:      "test-pse",
+				pseName:      testPSEName,
 				providerName: "new-provider",
 			},
 			want: want{
@@ -467,7 +469,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName: "test-pse",
+				pseName: testPSEName,
 				toAdd: []v1alpha1.CertificateRef{
 					{ID: new(1), Name: new("cert1")},
 				},
@@ -490,7 +492,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName: "test-pse",
+				pseName: testPSEName,
 				toAdd: []v1alpha1.CertificateRef{
 					{ID: new(1)},
 					{ID: new(2)},
@@ -514,7 +516,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName: "test-pse",
+				pseName: testPSEName,
 				toRemove: []v1alpha1.CertificateRef{
 					{Name: new("cert1")},
 					{Name: new("cert2")},
@@ -538,7 +540,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName:      "test-pse",
+				pseName:      testPSEName,
 				providerName: "new-provider",
 			},
 			want: want{
@@ -581,7 +583,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName:      "test-pse",
+				pseName:      testPSEName,
 				toAdd:        []v1alpha1.CertificateRef{},
 				toRemove:     []v1alpha1.CertificateRef{},
 				providerName: "",
@@ -639,7 +641,7 @@ func TestCreateJWTPurpose(t *testing.T) {
 			// wiring still happens through ALTER PSE ADD PUBLIC KEY.
 			reason: "JWT purpose with empty provider emits CREATE PSE + ALTER PSE ADD PUBLIC KEY, no SET PSE",
 			params: &v1alpha1.PersonalSecurityEnvironmentParameters{
-				Name:    "test-pse",
+				Name:    testPSEName,
 				Purpose: v1alpha1.PSEPurposeJWT,
 				PublicKeyRefs: []v1alpha1.PublicKeyRef{
 					{Name: "IAS_SIGNING_KEY"},
@@ -711,14 +713,14 @@ func TestUpdateJWTPurpose(t *testing.T) {
 	}{
 		"AddKeys": {
 			reason:    "Adding a public key emits ALTER PSE ... ADD PUBLIC KEY",
-			pseName:   "test-pse",
+			pseName:   testPSEName,
 			keysToAdd: []string{"KEY_A"},
 			wantSQL:   []string{"ALTER PSE test-pse ADD PUBLIC KEY KEY_A"},
 			unwant:    []string{"CERTIFICATE"},
 		},
 		"RemoveKeys": {
 			reason:       "Removing a public key emits ALTER PSE ... DROP PUBLIC KEY",
-			pseName:      "test-pse",
+			pseName:      testPSEName,
 			keysToRemove: []string{"KEY_A"},
 			wantSQL:      []string{"ALTER PSE test-pse DROP PUBLIC KEY KEY_A"},
 			unwant:       []string{"CERTIFICATE"},
@@ -727,7 +729,7 @@ func TestUpdateJWTPurpose(t *testing.T) {
 			// Regression guard for the drift path exercised by the JWT-SSO
 			// e2e: rebind a JWT PSE to a (possibly new) provider name.
 			reason:       "Setting a provider name on a JWT PSE emits SET PSE ... PURPOSE JWT FOR PROVIDER",
-			pseName:      "test-pse",
+			pseName:      testPSEName,
 			providerName: "new-provider",
 			wantSQL:      []string{"SET PSE test-pse PURPOSE JWT FOR PROVIDER new-provider"},
 		},
@@ -791,7 +793,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
@@ -813,7 +815,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
