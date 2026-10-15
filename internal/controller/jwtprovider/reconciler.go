@@ -106,19 +106,21 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	return &external{
-		client: c.newClient(conn),
-		kube:   c.kube,
-		log:    c.log,
+		client:     c.newClient(conn),
+		connection: conn,
+		kube:       c.kube,
+		log:        c.log,
 	}, nil
 }
 
 type external struct {
-	client jwtprovider.JWTProviderClient
-	kube   client.Client
-	log    logging.Logger
+	client     jwtprovider.JWTProviderClient
+	connection xsql.DB
+	kube       client.Client
+	log        logging.Logger
 }
 
-func (c *external) Disconnect(ctx context.Context) error { return nil }
+func (c *external) Disconnect(_ context.Context) error { return c.connection.Close() }
 
 // comparison and flattening mirrors the JWTProvider surface.
 //

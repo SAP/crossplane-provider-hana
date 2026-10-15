@@ -117,22 +117,24 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	return &external{
-		client: c.newClient(conn),
-		kube:   c.kube,
-		log:    c.log,
+		client:     c.newClient(conn),
+		connection: conn,
+		kube:       c.kube,
+		log:        c.log,
 	}, nil
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
-	client x509provider.X509ProviderClient
-	kube   client.Client
-	log    logging.Logger
+	client     x509provider.X509ProviderClient
+	connection xsql.DB
+	kube       client.Client
+	log        logging.Logger
 }
 
-func (c *external) Disconnect(ctx context.Context) error {
-	return nil
+func (c *external) Disconnect(_ context.Context) error {
+	return c.connection.Close()
 }
 
 func isUpToDate(p adminv1alpha1.X509ProviderParameters, o adminv1alpha1.X509ProviderObservation) bool {

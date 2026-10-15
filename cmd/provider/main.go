@@ -84,7 +84,7 @@ func main() {
 	o.Features.Enable(features.EnableAlphaManagementPolicies)
 	log.Info("Beta feature enabled by default", "flag", features.EnableAlphaManagementPolicies)
 
-	hanaDB := hana.New(log.WithValues("component", "hanaDB"))
+	hanaDB := hana.New(log.WithValues("component", "hanaDB"), *pollInterval)
 	defer hanaDB.Disconnect() //nolint:errcheck
 
 	kingpin.FatalIfError(hanaController.Setup(mgr, o, hanaDB), "Cannot setup hana controllers")

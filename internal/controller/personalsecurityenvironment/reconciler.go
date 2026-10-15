@@ -114,22 +114,24 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	return &external{
-		client: c.newClient(conn),
-		kube:   c.kube,
-		log:    c.log,
+		client:     c.newClient(conn),
+		connection: conn,
+		kube:       c.kube,
+		log:        c.log,
 	}, nil
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
-	client personalsecurityenvironment.PersonalSecurityEnvironmentClient
-	kube   client.Client
-	log    logging.Logger
+	client     personalsecurityenvironment.PersonalSecurityEnvironmentClient
+	connection xsql.DB
+	kube       client.Client
+	log        logging.Logger
 }
 
-func (c *external) Disconnect(ctx context.Context) error {
-	return nil
+func (c *external) Disconnect(_ context.Context) error {
+	return c.connection.Close()
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
