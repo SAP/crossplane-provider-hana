@@ -41,7 +41,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
 	ctx := context.Background()
 
-	db := hana.New(logging.NewNopLogger())
+	db := hana.New(logging.NewNopLogger(), 0)
 	conn, err := db.Connect(ctx, creds)
 	if err != nil {
 		t.Fatalf("failed to connect to HANA DB: %v", err)
