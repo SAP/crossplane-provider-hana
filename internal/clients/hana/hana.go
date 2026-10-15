@@ -3,6 +3,7 @@ package hana
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	_ "github.com/SAP/go-hdb/driver"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
-	"golang.org/x/crypto/argon2"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
@@ -42,8 +42,13 @@ func (h *hanaDB) Connect(ctx context.Context, creds map[string][]byte) (xsql.DB,
 	password := string(creds[xpv2.CredentialsSecretPasswordKey])
 	dsn := DSN(username, password, endpoint, port)
 
-	hashBytes := argon2.IDKey([]byte(dsn), h.salt, 1, 64*1024, 4, 32)
-	dsnHash := base64.RawStdEncoding.EncodeToString(hashBytes)
+	// Derive a compact, deterministic key for the connection pool. This is a
+	// non-adversarial in-memory map key (not auth/password storage), so a FIPS
+	// approved hash is sufficient and keeps all crypto on the std-lib path.
+	hasher := sha256.New()
+	hasher.Write(h.salt)
+	hasher.Write([]byte(dsn))
+	dsnHash := base64.RawStdEncoding.EncodeToString(hasher.Sum(nil))
 
 	if val, ok := h.dbs.Load(dsnHash); ok {
 		if db, ok := val.(*sql.DB); ok {
