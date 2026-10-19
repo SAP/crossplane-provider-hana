@@ -47,13 +47,10 @@ func main() {
 
 	log.Info("Starting provider-hana", "debug", *debug)
 
-	// FIPS 140-3 runtime proof: when built with GOFIPS140=certified the binary
-	// links the CMVP-validated Go Cryptographic Module (cert #5247) and runs it
-	// in approved mode. Enabled() reports mode; Version() reports the linked
-	// module. Captured at startup as self-evidencing compliance log output.
-	log.Info("FIPS 140-3 status",
-		"enabled", fips140.Enabled(),
-		"module", fips140.Version())
+	// Record FIPS 140-3 status at startup as runtime compliance evidence. When
+	// built with GOFIPS140=certified this reports the linked CMVP-validated Go
+	// Cryptographic Module version and approved-mode status.
+	log.Info("FIPS 140-3 mode", "enabled", fips140.Enabled(), "module", fips140.Version())
 
 	cfg, err := ctrl.GetConfig()
 	kingpin.FatalIfError(err, "Cannot get API server rest config")
