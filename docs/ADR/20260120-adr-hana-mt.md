@@ -801,7 +801,7 @@ spec:
 status:
   phase: FailedDelete  # OR Deleting + DELETED after API confirms
   deletionTimestamp: "2026-01-31T15:00:00Z"
-  recoveryDeadline: "2026-02-14T15:00:00Z"  # 14 days later
+  purgeTimestamp: "2026-02-14T15:00:00Z"  # 14 days later
   conditions:
   - type: Deleting
     status: "True"
