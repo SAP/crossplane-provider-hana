@@ -1,0 +1,69 @@
+# InstanceMapping for Cloud Foundry
+#
+# This example shows how to create a HANA Cloud instance mapping for a
+# Cloud Foundry organization and space using the low-level InstanceMapping CR.
+#
+# Prerequisites:
+# 1. A HANA Cloud service instance with Admin API enabled
+# 2. A ServiceBinding with admin API credentials
+# 3. The org GUID and space GUID from your CF environment
+#
+# To get your CF org and space GUIDs:
+#   cf org <org-name> --guid
+#   cf space <space-name> --guid
+#
+# The admin credentials secret must contain a JSON blob with the following structure:
+# {
+#   "baseurl": "api.hana.cloud.sap",
+#   "uaa": {
+#     "url": "https://<subdomain>.authentication.<region>.hana.ondemand.com",
+#     "clientid": "<client-id>",
+#     "clientsecret": "<client-secret>"
+#   }
+# }
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hana-admin-credentials
+  namespace: crossplane-system
+type: Opaque
+stringData:
+  credentials: |
+    {
+      "baseurl": "api.hana.cloud.sap",
+      "uaa": {
+        "url": "https://mysubdomain.authentication.eu10.hana.ondemand.com",
+        "clientid": "sb-hana-cloud-admin!b12345",
+        "clientsecret": "secret-value-here"
+      }
+    }
+---
+apiVersion: inventory.hana.orchestrate.cloud.sap/v1alpha1
+kind: InstanceMapping
+metadata:
+  name: cf-mapping-example
+spec:
+  forProvider:
+    # HANA Cloud service instance GUID
+    # Get this from your HANA Cloud dashboard or CF service instance
+    serviceInstanceID: "12345678-1234-1234-1234-123456789abc"
+
+    # Platform must be "cloudfoundry" for CF deployments
+    platform: cloudfoundry
+
+    # CF org GUID (run: cf org <org-name> --guid)
+    primaryID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    # CF space GUID (run: cf space <space-name> --guid)
+    # Optional - omit to map to entire org
+    secondaryID: "ffffffff-1111-2222-3333-444444444444"
+
+    # Set to true to make this the default mapping for the org
+    isDefault: false
+
+    # Reference to the secret containing admin API credentials
+    adminCredentialsSecretRef:
+      name: hana-admin-credentials
+      namespace: crossplane-system
+      key: credentials

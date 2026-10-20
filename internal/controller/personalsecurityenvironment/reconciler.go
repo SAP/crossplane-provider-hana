@@ -9,20 +9,19 @@ import (
 	"errors"
 	"fmt"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/crossplane/crossplane-runtime/pkg/connection"
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/meta"
-	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/meta"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 
 	adminv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
@@ -41,19 +40,14 @@ const (
 )
 
 // Setup adds a controller that reconciles PersonalSecurityEnvironment managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(adminv1alpha1.PersonalSecurityEnvironmentGroupKind)
 
-	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
-	if o.Features.Enabled(features.EnableAlphaExternalSecretStores) {
-		cps = append(cps, connection.NewDetailsManager(mgr.GetClient(), v1alpha1.StoreConfigGroupVersionKind))
-	}
-
 	log := o.Logger.WithValues("controller", name)
-	t := resource.NewProviderConfigUsageTracker(mgr.GetClient(), &v1alpha1.ProviderConfigUsage{})
+	t := resource.NewLegacyProviderConfigUsageTracker(mgr.GetClient(), &v1alpha1.ProviderConfigUsage{})
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(adminv1alpha1.PersonalSecurityEnvironmentGroupVersionKind),
-		managed.WithExternalConnecter(&connector{
+		managed.WithExternalConnector(&connector{
 			kube:      mgr.GetClient(),
 			usage:     t,
 			newClient: personalsecurityenvironment.New,
@@ -61,8 +55,9 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 			db:        db,
 		}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
-		managed.WithConnectionPublishers(cps...))
+		managed.WithPollInterval(o.PollInterval),
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
+		features.ConfigureBetaManagementPolicies(o))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
@@ -75,10 +70,10 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 // is called.
 type connector struct {
 	kube      client.Client
-	usage     resource.Tracker
+	usage     resource.LegacyTracker
 	newClient func(db xsql.DB) personalsecurityenvironment.Client
 	log       logging.Logger
-	db        xsql.DB
+	db        xsql.Connector
 }
 
 // Connect typically produces an ExternalClient by:
@@ -92,7 +87,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotPersonalSecurityEnvironment)
 	}
 
-	if err := c.usage.Track(ctx, mg); err != nil {
+	if err := c.usage.Track(ctx, cr); err != nil {
 		return nil, fmt.Errorf(errTrackPCUsage, err)
 	}
 
@@ -111,16 +106,15 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, fmt.Errorf(errGetSecret, err)
 	}
 
-	client := c.newClient(c.db)
-
 	c.log.Info("Connecting to personalsecurityenvironment resource", "name", cr.Name)
 
-	if err := c.db.Connect(ctx, s.Data); err != nil {
+	conn, err := c.db.Connect(ctx, s.Data)
+	if err != nil {
 		return nil, fmt.Errorf(errDbFail, err)
 	}
 
 	return &external{
-		client: client,
+		client: c.newClient(conn),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil
@@ -158,13 +152,13 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		}, nil
 	}
 
-	providerName, err := c.getX509ProviderName(ctx, parameters.X509ProviderRef)
+	providerName, err := c.getProviderName(ctx, parameters)
 	if err != nil {
 		return managed.ExternalObservation{}, fmt.Errorf("failed to get provider for pse: %w", err)
 	}
 
 	cr.Status.AtProvider = *observed
-	cr.Status.SetConditions(xpv1.Available())
+	cr.Status.SetConditions(xpv2.Available())
 	meta.SetExternalName(cr, observed.Name)
 
 	return managed.ExternalObservation{
@@ -183,7 +177,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	parameters := cr.Spec.ForProvider.DeepCopy()
 
-	providerName, err := c.getX509ProviderName(ctx, parameters.X509ProviderRef)
+	providerName, err := c.getProviderName(ctx, parameters)
 	if err != nil {
 		return managed.ExternalCreation{}, fmt.Errorf("failed to get provider for pse: %w", err)
 	}
@@ -202,20 +196,36 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating Personal Security Environment", "name", cr.Name)
 
-	toAdd := certListDifference(parameters.CertificateRefs, observed.CertificateRefs)
-	toRemove := certListDifference(observed.CertificateRefs, parameters.CertificateRefs)
+	purpose := effectivePurpose(parameters.Purpose)
+	var certsToAdd, certsToRemove []adminv1alpha1.CertificateRef
+	var keysToAdd, keysToRemove []string
 
-	providerName, err := c.getX509ProviderName(ctx, parameters.X509ProviderRef)
+	// purpose has been run through effectivePurpose, so it's X509 or JWT.
+	switch purpose {
+	case adminv1alpha1.PSEPurposeJWT:
+		desiredKeys := publicKeyNames(parameters.PublicKeyRefs)
+		keysToAdd = stringSliceDifference(desiredKeys, observed.PublicKeys)
+		keysToRemove = stringSliceDifference(observed.PublicKeys, desiredKeys)
+	case adminv1alpha1.PSEPurposeX509:
+		certsToAdd = certListDifference(parameters.CertificateRefs, observed.CertificateRefs)
+		certsToRemove = certListDifference(observed.CertificateRefs, parameters.CertificateRefs)
+	}
+
+	providerName, err := c.getProviderName(ctx, parameters)
 	if err != nil {
 		return managed.ExternalUpdate{}, fmt.Errorf("failed to get provider for pse: %w", err)
 	}
 
 	// Avoid setting the provider name if it hasn't changed
-	if providerName == cr.Status.AtProvider.X509ProviderName {
+	currentProvider := observed.X509ProviderName
+	if purpose == adminv1alpha1.PSEPurposeJWT {
+		currentProvider = observed.JWTProviderName
+	}
+	if providerName == currentProvider {
 		providerName = ""
 	}
 
-	if err := c.client.Update(ctx, parameters.Name, toAdd, toRemove, providerName); err != nil {
+	if err := c.client.Update(ctx, parameters.Name, purpose, certsToAdd, certsToRemove, keysToAdd, keysToRemove, providerName); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
 
@@ -236,16 +246,99 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Deleting Personal Security Environment", "name", cr.Name)
 
-	cr.SetConditions(xpv1.Deleting())
+	cr.SetConditions(xpv2.Deleting())
 
 	return managed.ExternalDelete{}, c.client.Delete(ctx, parameters)
 }
 
 func isUpToDate(p *adminv1alpha1.PersonalSecurityEnvironmentParameters, o adminv1alpha1.PersonalSecurityEnvironmentObservation, providerName string) bool {
-	return len(p.CertificateRefs) == len(o.CertificateRefs) &&
-		len(certListDifference(p.CertificateRefs, o.CertificateRefs)) == 0 &&
-		providerName == o.X509ProviderName &&
-		p.Name == o.Name
+	if p.Name != o.Name {
+		return false
+	}
+	purpose := effectivePurpose(p.Purpose)
+	// purpose has been run through effectivePurpose, so it's X509 or JWT.
+	switch purpose {
+	case adminv1alpha1.PSEPurposeJWT:
+		desired := publicKeyNames(p.PublicKeyRefs)
+		if len(desired) != len(o.PublicKeys) ||
+			len(stringSliceDifference(desired, o.PublicKeys)) != 0 ||
+			len(stringSliceDifference(o.PublicKeys, desired)) != 0 {
+			return false
+		}
+		return providerName == o.JWTProviderName
+	case adminv1alpha1.PSEPurposeX509:
+		return len(p.CertificateRefs) == len(o.CertificateRefs) &&
+			len(certListDifference(p.CertificateRefs, o.CertificateRefs)) == 0 &&
+			providerName == o.X509ProviderName
+	}
+	return false
+}
+
+func effectivePurpose(p adminv1alpha1.PSEPurpose) adminv1alpha1.PSEPurpose {
+	if p == "" {
+		return adminv1alpha1.PSEPurposeX509
+	}
+	return p
+}
+
+func publicKeyNames(refs []adminv1alpha1.PublicKeyRef) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if r.Name != "" {
+			out = append(out, r.Name)
+		}
+	}
+	return out
+}
+
+func stringSliceDifference(a, b []string) []string {
+	var diff []string
+	for _, x := range a {
+		found := false
+		for _, y := range b {
+			if x == y {
+				found = true
+				break
+			}
+		}
+		if !found {
+			diff = append(diff, x)
+		}
+	}
+	return diff
+}
+
+func (c *external) getProviderName(ctx context.Context, parameters *adminv1alpha1.PersonalSecurityEnvironmentParameters) (string, error) {
+	purpose := effectivePurpose(parameters.Purpose)
+	// purpose has been run through effectivePurpose, so it's X509 or JWT.
+	switch purpose {
+	case adminv1alpha1.PSEPurposeJWT:
+		return c.getJWTProviderName(ctx, parameters.JWTProviderRef)
+	case adminv1alpha1.PSEPurposeX509:
+		return c.getX509ProviderName(ctx, parameters.X509ProviderRef)
+	}
+	return "", nil
+}
+
+func (c *external) getJWTProviderName(ctx context.Context, ref *adminv1alpha1.JWTProviderRef) (string, error) {
+	if ref == nil {
+		return "", nil
+	}
+	switch {
+	case ref.ProviderRef != nil:
+		provider := adminv1alpha1.JWTProvider{}
+		if err := c.kube.Get(ctx, types.NamespacedName{Name: ref.ProviderRef.Name}, &provider); err != nil {
+			return "", err
+		}
+		return provider.Spec.ForProvider.Name, nil
+	case ref.Name != "":
+		return ref.Name, nil
+	default:
+		return "", errors.New("JWTProviderRef must have either ProviderRef or Name specified")
+	}
 }
 
 func (c *external) getX509ProviderName(ctx context.Context, ref *adminv1alpha1.X509ProviderRef) (string, error) {

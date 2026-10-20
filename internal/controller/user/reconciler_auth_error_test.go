@@ -8,9 +8,9 @@ import (
 	"context"
 	"testing"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
@@ -46,12 +46,12 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						username := demoUser
-						usergroup := "DEFAULT"
+						usergroup := defaultUsergroup
 						isPasswordLifetimeCheckEnabled := false
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{quotedPublicRole},
 							Usergroup:                      &usergroup,
 							PasswordUpToDate:               nil,                             // No password authentication
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled, // Default value
@@ -67,11 +67,11 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: false,                   // Match observed
 							Parameters:                     make(map[string]string), // Empty parameters
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -89,12 +89,12 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						username := demoUser
-						usergroup := "DEFAULT"
+						usergroup := defaultUsergroup
 						isPasswordLifetimeCheckEnabled := false
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{quotedPublicRole},
 							Usergroup:                      &usergroup,
 							PasswordUpToDate:               nil,                             // No password authentication
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled, // Default value
@@ -110,11 +110,11 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: false,                   // Match observed
 							Parameters:                     make(map[string]string), // Empty parameters
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -132,12 +132,12 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						username := demoUser
-						usergroup := "DEFAULT"
+						usergroup := defaultUsergroup
 						isPasswordLifetimeCheckEnabled := false
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{quotedPublicRole},
 							Usergroup:                      &usergroup,
 							PasswordUpToDate:               nil,                             // No password authentication
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled, // Default value
@@ -153,11 +153,11 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: false,                   // Match observed
 							Parameters:                     make(map[string]string), // Empty parameters
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -181,7 +181,7 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{quotedPublicRole},
 							Usergroup:                      &usergroup,                      // Different from desired
 							PasswordUpToDate:               &passwordUpToDate,               // Password is correct, just outside validity period
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled, // Default value
@@ -197,14 +197,14 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",               // Different from observed
+							Usergroup:                      defaultUsergroup,        // Different from observed
 							IsPasswordLifetimeCheckEnabled: false,                   // Match observed
 							Parameters:                     make(map[string]string), // Empty parameters
 							Authentication: v1alpha1.Authentication{
 								Password: &v1alpha1.Password{}, // Enable password authentication
 							},
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -222,13 +222,13 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 				client: mockUserClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						username := demoUser
-						usergroup := "DEFAULT"
+						usergroup := defaultUsergroup
 						passwordUpToDate := true
 						isPasswordLifetimeCheckEnabled := true
 						return &v1alpha1.UserObservation{
 							Username:                       &username,
 							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{"PUBLIC"},
+							Roles:                          []string{quotedPublicRole},
 							Usergroup:                      &usergroup,
 							PasswordUpToDate:               &passwordUpToDate, // Password is correct, user is just locked
 							IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled,
@@ -243,13 +243,13 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: true,
 							Authentication: v1alpha1.Authentication{
 								Password: &v1alpha1.Password{}, // Enable password authentication
 							},
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -282,7 +282,7 @@ func TestObserveAuthenticationErrors(t *testing.T) {
 			conditions := tc.args.mg.Status.Conditions
 			var found bool
 			for _, condition := range conditions {
-				unavailableCondition := xpv1.Unavailable()
+				unavailableCondition := xpv2.Unavailable()
 				if condition.Type == unavailableCondition.Type {
 					found = true
 					if condition.Status != unavailableCondition.Status {

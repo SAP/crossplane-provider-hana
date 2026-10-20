@@ -10,18 +10,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // Authentication includes different authentication methods
 type Authentication struct {
 	Password      *Password         `json:"password,omitempty"`
 	X509Providers []X509UserMapping `json:"x509Providers,omitempty"`
+	JWTProviders  []JWTUserMapping  `json:"jwtProviders,omitempty"`
 }
 
 // Password authentication type
 type Password struct {
-	PasswordSecretRef        *xpv1.SecretKeySelector `json:"passwordSecretRef,omitempty"`
+	PasswordSecretRef        *xpv2.SecretKeySelector `json:"passwordSecretRef,omitempty"`
 	ForceFirstPasswordChange bool                    `json:"forceFirstPasswordChange,omitempty"`
 }
 
@@ -29,7 +30,7 @@ type Password struct {
 type UserParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
+	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
 	Username string `json:"username"`
 
 	// +kubebuilder:validation:Optional
@@ -49,13 +50,21 @@ type UserParameters struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Parameters map[string]string `json:"parameters,omitempty"`
 
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
+	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
 	// +kubebuilder:default:=DEFAULT
 	Usergroup string `json:"usergroup,omitempty" default:"DEFAULT"`
 
 	// +kubebuilder:default:=true
 	// +kubebuilder:validation:Optional
 	IsPasswordLifetimeCheckEnabled bool `json:"isPasswordLifetimeCheckEnabled" default:"true"`
+
+	// EnableClientConnect controls whether the user is allowed to open
+	// external client connections. `CREATE RESTRICTED USER` creates the user
+	// without this privilege by default; without it, non-password auth flows
+	// fail with internal error U04 at connect time. Defaults to true.
+	// +kubebuilder:default:=true
+	// +kubebuilder:validation:Optional
+	EnableClientConnect bool `json:"enableClientConnect,omitempty" default:"true"`
 }
 
 // UserObservation are the observable fields of a User.
@@ -68,6 +77,9 @@ type UserObservation struct {
 
 	// +kubebuilder:validation:Optional
 	X509Providers []X509UserMapping `json:"x509Providers,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	JWTProviders []JWTUserMapping `json:"jwtProviders,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	LastPasswordChangeTime metav1.Time `json:"lastPasswordChangeTime,omitempty"`
@@ -95,12 +107,22 @@ type UserObservation struct {
 
 	// +kubebuilder:validation:Optional
 	IsPasswordEnabled *bool `json:"isPasswordEnabled,omitempty"`
+
+	// IsClientConnectEnabled reflects whether the user is permitted to open
+	// external client connections.
+	// +kubebuilder:validation:Optional
+	IsClientConnectEnabled *bool `json:"isClientConnectEnabled,omitempty"`
+
+	// IsJWTEnabled reflects whether `ALTER USER ... ENABLE JWT` has been
+	// applied to the user.
+	// +kubebuilder:validation:Optional
+	IsJWTEnabled *bool `json:"isJWTEnabled,omitempty"`
 }
 
 // A UserSpec defines the desired state of a User.
 type UserSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       UserParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     UserParameters `json:"forProvider"`
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Enum=strict;lax
@@ -113,8 +135,8 @@ type UserSpec struct {
 
 // A UserStatus represents the observed state of a User.
 type UserStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          UserObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 UserObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

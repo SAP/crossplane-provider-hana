@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.26 AS builder
+FROM golang:1.27.1 AS builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -15,9 +15,11 @@ COPY apis/ apis/
 COPY internal/ internal/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o provider cmd/provider/main.go
+# GOFIPS140=certified links the CMVP-certified Go Cryptographic Module (cert
+# #5247) and enables FIPS 140-3 approved mode. CGO stays off (pure-Go module).
+RUN CGO_ENABLED=0 GOFIPS140=certified GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o provider cmd/provider/main.go
 
-FROM alpine:3.23
+FROM alpine:3.24
 WORKDIR /
 COPY --from=builder /workspace/provider .
 COPY package /

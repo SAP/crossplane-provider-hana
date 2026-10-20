@@ -10,17 +10,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // DbSchemaParameters are the configurable fields of a Dbschema.
 type DbSchemaParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
 	SchemaName string `json:"schemaName"`
 
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
+	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60]+$`
 	Owner string `json:"owner,omitempty"`
 }
 
@@ -33,14 +32,14 @@ type DbSchemaObservation struct {
 
 // A DbschemaSpec defines the desired state of a Dbschema.
 type DbSchemaSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       DbSchemaParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     DbSchemaParameters `json:"forProvider"`
 }
 
 // A DbschemaStatus represents the observed state of a Dbschema.
 type DbSchemaStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          DbSchemaObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 DbSchemaObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

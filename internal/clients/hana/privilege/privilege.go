@@ -11,6 +11,7 @@ import (
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 const (
@@ -86,10 +87,16 @@ func (c *PrivilegeClient) GrantRoles(ctx context.Context, _ DefaultSchema, grant
 		if err != nil {
 			return err
 		}
-		if role.IsGrantable {
-			adminRoles = append(adminRoles, role.Name)
+
+		normalized := Role{
+			Schema:      cleanIdentifier(role.Schema),
+			Name:        cleanIdentifier(role.Name),
+			IsGrantable: role.IsGrantable,
+		}
+		if normalized.IsGrantable {
+			adminRoles = append(adminRoles, normalized.quotedName())
 		} else {
-			normalRoles = append(normalRoles, role.Name)
+			normalRoles = append(normalRoles, normalized.quotedName())
 		}
 	}
 
@@ -135,7 +142,11 @@ func (c *PrivilegeClient) RevokeRoles(ctx context.Context, _ DefaultSchema, gran
 		if err != nil {
 			return err
 		}
-		namesToRevoke = append(namesToRevoke, role.Name)
+		normalized := Role{
+			Schema: cleanIdentifier(role.Schema),
+			Name:   cleanIdentifier(role.Name),
+		}
+		namesToRevoke = append(namesToRevoke, normalized.quotedName())
 	}
 
 	query := fmt.Sprintf("REVOKE %s FROM %s", strings.Join(namesToRevoke, ", "), grantee)
@@ -196,11 +207,11 @@ func (c *PrivilegeClient) QueryRoles(ctx context.Context, grantee Grantee, grant
 		if err := roleRows.Scan(&roleSchemaName, &roleName, &isGrantable); err != nil {
 			return observed, err
 		}
-		fullName := roleName
-		if roleSchemaName.Valid {
-			fullName = fmt.Sprintf("%s.%s", roleSchemaName.String, roleName)
-		}
-		r := Role{Name: fullName, IsGrantable: isGrantable}
+		// Populate Schema and Name as separate fields so quotedName() can
+		// emit "SCHEMA"."NAME" (HANA's only valid schema-qualified form).
+		// roleSchemaName.String is empty when the column is NULL (top-level
+		// role), which quotedName() treats as no schema.
+		r := Role{Schema: roleSchemaName.String, Name: roleName, IsGrantable: isGrantable}
 		observed = append(observed, r.String())
 	}
 	if err := roleRows.Err(); err != nil {
@@ -210,22 +221,44 @@ func (c *PrivilegeClient) QueryRoles(ctx context.Context, grantee Grantee, grant
 }
 
 type Privilege struct {
-	Type        PrivilegeType
-	Name        string
-	Identifier  string
-	IsGrantable bool
+	Type          PrivilegeType
+	Name          string
+	Identifier    string
+	SubIdentifier string
+	IsGrantable   bool
 }
 
 type Role struct {
+	// Schema is the optional schema (container) that owns the role. Empty means
+	// the role is top-level (no schema qualification). HDI containers register
+	// roles under their container schema, e.g. "RCSHAREDCONTENTHDICONTAINERA1B2C".
+	Schema      string
 	Name        string
 	IsGrantable bool
 }
 
 func (r Role) String() string {
+	name := r.quotedName()
 	if r.IsGrantable {
-		return r.Name + " WITH ADMIN OPTION"
+		return name + " WITH ADMIN OPTION"
 	}
-	return r.Name
+	return name
+}
+
+// quotedName wraps the role identifier in double quotes. In HANA SQL, quoting
+// is always safe for identifiers and ensures correct handling of special
+// characters (e.g. "::" from HDI role names). When Schema is set, schema and
+// name are quoted independently and joined by a bare dot: "SCHEMA"."NAME".
+// The dot MUST be outside the quotes — HANA treats "A.B" as a single identifier
+// (the whole string is one role name) and "A"."B" as schema-qualified.
+// The result is used both in Role.String() for canonical comparison and in
+// GrantRoles/RevokeRoles for SQL generation.
+func (r Role) quotedName() string {
+	name := fmt.Sprintf(`"%s"`, utils.EscapeDoubleQuotes(r.Name))
+	if r.Schema == "" {
+		return name
+	}
+	return fmt.Sprintf(`"%s".%s`, utils.EscapeDoubleQuotes(r.Schema), name)
 }
 
 // PrivilegeGroup holds aggregated names to build optimized SQL: GRANT Name1, Name2 ON ...
@@ -241,8 +274,17 @@ const (
 	grantOptionRegex = `(?i)(\s+WITH\s+GRANT\s+OPTION)?`
 )
 
-// Role regex supports: "ROLE_NAME", ROLE_NAME, SCHEMA.ROLE_NAME, and optional WITH ADMIN OPTION
-var roleRegex = regexp.MustCompile(`(?i)^\s*("[^"]+"|[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)?)` + adminOptionRegex + `\s*$`)
+// Role regex supports: "ROLE_NAME", ROLE_NAME, "SCHEMA"."ROLE_NAME",
+// SCHEMA.ROLE_NAME, and optional WITH ADMIN OPTION.
+// The schema part is captured independently from the name so they can be
+// quoted separately when generating SQL. HANA requires schema-qualified roles
+// to be written as "SCHEMA"."NAME" — the dot must sit BETWEEN the two quoted
+// identifiers, not inside a single pair of quotes. See parseRoleString for
+// the two-group extraction. Handles special identifiers with embedded quotes
+// (e.g. "SCHE""M'A"). A single dot anywhere in the raw input is treated as
+// the schema/name separator; this is the only valid interpretation in HANA,
+// where dots are never part of an identifier.
+var roleRegex = regexp.MustCompile(`(?i)^\s*(?:(` + identifierPattern + `)\.)?(` + identifierPattern + `)` + adminOptionRegex + `\s*$`)
 
 type PrivilegeType int
 
@@ -277,18 +319,48 @@ func (pt PrivilegeType) String() string {
 	}
 }
 
+// formatSpecialObjectPrivilege handles special object privilege formatting patterns
+func formatSpecialObjectPrivilege(name, identifier string) string {
+	switch {
+	case strings.HasPrefix(identifier, "PSE "):
+		pseName := strings.TrimPrefix(identifier, "PSE ")
+		return fmt.Sprintf(`%s ON PSE %s`, name, pseName)
+	case strings.HasPrefix(identifier, "JWT PROVIDER "):
+		providerName := strings.TrimPrefix(identifier, "JWT PROVIDER ")
+		return fmt.Sprintf(`%s ON JWT PROVIDER %s`, name, providerName)
+	case strings.HasPrefix(identifier, "SAML PROVIDER "):
+		providerName := strings.TrimPrefix(identifier, "SAML PROVIDER ")
+		return fmt.Sprintf(`%s ON SAML PROVIDER %s`, name, providerName)
+	case strings.HasPrefix(identifier, "X509 PROVIDER "):
+		providerName := strings.TrimPrefix(identifier, "X509 PROVIDER ")
+		return fmt.Sprintf(`%s ON X509 PROVIDER %s`, name, providerName)
+	default:
+		// Regular object privilege
+		return fmt.Sprintf(`%s ON "%s"`, name, utils.EscapeDoubleQuotes(identifier))
+	}
+}
+
+// formatObjectPrivilege handles object privilege formatting
+func (p Privilege) formatObjectPrivilege() string {
+	if p.SubIdentifier != "" {
+		// Both parsing and database cases: schema and object are separate fields
+		return fmt.Sprintf(`%s ON "%s"."%s"`, p.Name, utils.EscapeDoubleQuotes(p.Identifier), utils.EscapeDoubleQuotes(p.SubIdentifier))
+	}
+	return formatSpecialObjectPrivilege(p.Name, p.Identifier)
+}
+
 func (p Privilege) baseString() string {
 	switch p.Type {
 	case SystemPrivilegeType:
 		return p.Name
 	case SourcePrivilegeType:
-		return fmt.Sprintf("%s ON REMOTE SOURCE %s", p.Name, p.Identifier)
+		return fmt.Sprintf(`%s ON REMOTE SOURCE "%s"`, p.Name, utils.EscapeDoubleQuotes(p.Identifier))
 	case SchemaPrivilegeType:
-		return fmt.Sprintf("%s ON SCHEMA %s", p.Name, p.Identifier)
+		return fmt.Sprintf(`%s ON SCHEMA "%s"`, p.Name, utils.EscapeDoubleQuotes(p.Identifier))
 	case ObjectPrivilegeType:
-		return fmt.Sprintf("%s ON %s", p.Name, p.Identifier)
+		return p.formatObjectPrivilege()
 	case UserGroupPrivilegeType:
-		return fmt.Sprintf("USERGROUP OPERATOR ON USERGROUP %s", p.Identifier)
+		return fmt.Sprintf(`USERGROUP OPERATOR ON USERGROUP "%s"`, utils.EscapeDoubleQuotes(p.Identifier))
 	case ColumnKeyPrivilegeType:
 		return fmt.Sprintf("%s ON CLIENTSIDE ENCRYPTION COLUMN KEY %s", p.Name, p.Identifier)
 	case StructuredPrivilegeType:
@@ -310,8 +382,46 @@ func (p Privilege) String() string {
 	return base + " WITH GRANT OPTION"
 }
 
+// FormatRoleStrings parses and normalizes role strings to a canonical form.
+// This ensures that both quoted (e.g. `"data::access_g" WITH ADMIN OPTION`) and
+// unquoted (e.g. `data::access_g WITH ADMIN OPTION`) representations produce the
+// same output, enabling reliable comparison between spec and observed roles.
+func FormatRoleStrings(roleStrings []string) ([]string, error) {
+	res := make([]string, 0, len(roleStrings))
+	for _, rStr := range roleStrings {
+		role, err := parseRoleString(rStr)
+		if err != nil {
+			return nil, err
+		}
+		normalized := Role{
+			Schema:      cleanIdentifier(role.Schema),
+			Name:        cleanIdentifier(role.Name),
+			IsGrantable: role.IsGrantable,
+		}
+		res = append(res, normalized.String())
+	}
+	return res, nil
+}
+
 func FormatPrivilegeStrings(privilegeStrings []string, username string) ([]string, error) {
 	privileges, err := parsePrivilegeStrings(privilegeStrings, username)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]string, 0, len(privileges))
+	for _, priv := range privileges {
+		res = append(res, priv.String())
+	}
+	return res, nil
+}
+
+// FormatPrivilegeStringsWithPreprocessing safely preprocesses and formats privilege strings.
+// Use this function when processing privilege strings that may contain outer quotes or different escaping.
+func FormatPrivilegeStringsWithPreprocessing(privilegeStrings []string, username string) ([]string, error) {
+	// Pre-process privilege strings to remove outer quotes securely and normalize escaping
+	processedStrings := utils.PreprocessPrivilegeStrings(privilegeStrings)
+
+	privileges, err := parsePrivilegeStrings(processedStrings, username)
 	if err != nil {
 		return nil, err
 	}
@@ -346,9 +456,14 @@ func parsePrivilegeStrings(privilegeStrings []string, defaultSchema DefaultSchem
 func parseRoleString(roleStr string) (Role, error) {
 	m := roleRegex.FindStringSubmatch(roleStr)
 	if m != nil {
+		// m[1] = optional schema (empty when the role is top-level),
+		// m[2] = name, m[3] = WITH ADMIN OPTION suffix.
+		// Each identifier is cleaned independently so outer quotes and
+		// escaped inner quotes are stripped only from their own component.
 		return Role{
-			Name:        m[1],
-			IsGrantable: m[2] != "",
+			Schema:      cleanIdentifier(m[1]),
+			Name:        cleanIdentifier(m[2]),
+			IsGrantable: m[3] != "",
 		}, nil
 	}
 	// Check for invalid grant option usage
@@ -357,6 +472,20 @@ func parseRoleString(roleStr string) (Role, error) {
 		return Role{}, fmt.Errorf(errRoleInvalidGrantOption, roleStr)
 	}
 	return Role{}, fmt.Errorf(errUnknownRole, roleStr)
+}
+
+// identifierPattern matches both simple identifiers and special identifiers with embedded quotes
+// Special identifiers: "..." where " can be escaped as ""
+// Simple identifiers: Much more permissive to handle system identifiers and edge cases
+const identifierPattern = `(?:"(?:[^"]|"")*"|[^\s]+)`
+
+// cleanIdentifier removes outer quotes from an identifier and unescapes inner quotes
+func cleanIdentifier(identifier string) string {
+	if len(identifier) >= 2 && identifier[0] == '"' && identifier[len(identifier)-1] == '"' {
+		// Remove outer quotes and unescape inner doubled quotes
+		return strings.ReplaceAll(identifier[1:len(identifier)-1], `""`, `"`)
+	}
+	return identifier
 }
 
 type privilegePattern struct {
@@ -375,57 +504,86 @@ type privilegePattern struct {
 var privilegePatterns = []privilegePattern{
 	// USERGROUP OPERATOR ON USERGROUP <name>
 	{
-		re: regexp.MustCompile(`(?i)^\s*(USERGROUP\s+OPERATOR)\s+ON\s+USERGROUP\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(USERGROUP\s+OPERATOR)\s+ON\s+USERGROUP\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: UserGroupPrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
+			return Privilege{Type: UserGroupPrivilegeType, Name: m[1], Identifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Column key privilege: USAGE ON CLIENTSIDE ENCRYPTION COLUMN KEY <name>, currently only USAGE is supported.
 	{
-		re: regexp.MustCompile(`(?i)^\s*(USAGE)\b\s+ON\s+CLIENTSIDE\s+ENCRYPTION\s+COLUMN\s+KEY\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*(USAGE)\b\s+ON\s+CLIENTSIDE\s+ENCRYPTION\s+COLUMN\s+KEY\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: ColumnKeyPrivilegeType, Name: "USAGE", Identifier: m[2], IsGrantable: m[3] != ""}
+			return Privilege{Type: ColumnKeyPrivilegeType, Name: "USAGE", Identifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// PSE privilege: <privilege> ON PSE <name> (treated as object privilege)
+	{
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+PSE\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
+		build: func(m []string, _ DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: "PSE " + cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// JWT PROVIDER privilege: <privilege> ON JWT PROVIDER <name> (treated as object privilege)
+	{
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+JWT\s+PROVIDER\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
+		build: func(m []string, _ DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: "JWT PROVIDER " + cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// SAML PROVIDER privilege: <privilege> ON SAML PROVIDER <name> (treated as object privilege)
+	{
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+SAML\s+PROVIDER\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
+		build: func(m []string, _ DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: "SAML PROVIDER " + cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
+		},
+	},
+	// X509 PROVIDER privilege: <privilege> ON X509 PROVIDER <name> (treated as object privilege)
+	{
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+X509\s+PROVIDER\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
+		build: func(m []string, _ DefaultSchema) Privilege {
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: "X509 PROVIDER " + cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Remote source privilege
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+REMOTE\s+SOURCE\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+REMOTE\s+SOURCE\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: SourcePrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
+			return Privilege{Type: SourcePrivilegeType, Name: m[1], Identifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Schema privilege
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+SCHEMA\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+SCHEMA\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: SchemaPrivilegeType, Name: m[1], Identifier: m[2], IsGrantable: m[3] != ""}
+			return Privilege{Type: SchemaPrivilegeType, Name: m[1], Identifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Object privilege with schema qualification
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)\.("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+(` + identifierPattern + `)\.(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: fmt.Sprintf("%s.%s", m[2], m[3]), IsGrantable: m[4] != ""}
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: cleanIdentifier(m[2]), SubIdentifier: cleanIdentifier(m[3]), IsGrantable: m[4] != ""}
 		},
 	},
 	// Object privilege without schema (use default schema)
 	{
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*[A-Za-z])?)\s+ON\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?)\s+ON\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, defaultSchema DefaultSchema) Privilege {
-			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: fmt.Sprintf("%s.%s", defaultSchema, m[2]), IsGrantable: m[3] != ""}
+			return Privilege{Type: ObjectPrivilegeType, Name: m[1], Identifier: defaultSchema, SubIdentifier: cleanIdentifier(m[2]), IsGrantable: m[3] != ""}
 		},
 	},
 	// Structured privilege: STRUCTURED PRIVILEGE <name>
 	{
-		re: regexp.MustCompile(`(?i)^\s*STRUCTURED\s+PRIVILEGE\s+("[^"]+"|[A-Za-z][A-Za-z0-9_]*)` + grantOptionRegex + `\s*$`),
+		re: regexp.MustCompile(`(?i)^\s*STRUCTURED\s+PRIVILEGE\s+(` + identifierPattern + `)` + grantOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
-			return Privilege{Type: StructuredPrivilegeType, Name: "STRUCTURED PRIVILEGE", Identifier: m[1], IsGrantable: m[2] != ""}
+			return Privilege{Type: StructuredPrivilegeType, Name: "STRUCTURED PRIVILEGE", Identifier: cleanIdentifier(m[1]), IsGrantable: m[2] != ""}
 		},
 	},
 	// System privilege (standalone)
 	{
 		// Changed [A-Za-z\s]* to [A-Za-z\s]*? (added a question mark to enable non-greedy matching)
-		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z\s]*?[A-Za-z])?(?:\.[A-Za-z][A-Za-z0-9_]*)?)` + adminOptionRegex + `\s*$`),
+		// Extended character class to [A-Za-z0-9_\s] to support privilege names with digits and underscores (e.g. AFL__SYS_AFL_AFLPAL_EXECUTE)
+		re: regexp.MustCompile(`(?i)^\s*([A-Za-z](?:[A-Za-z0-9_\s]*?[A-Za-z0-9_])?(?:\.[A-Za-z][A-Za-z0-9_]*)?)` + adminOptionRegex + `\s*$`),
 		build: func(m []string, _ DefaultSchema) Privilege {
 			return Privilege{Type: SystemPrivilegeType, Name: m[1], IsGrantable: m[2] != ""}
 		},
@@ -475,14 +633,27 @@ func groupPrivilegesByTypeAndIdentifier(privileges []Privilege) []PrivilegeGroup
 
 	groupsMap := make(map[groupKey][]string)
 	for _, p := range privileges {
-		key := groupKey{p.Type, p.Identifier, p.IsGrantable}
+		// For object privileges, use the full object reference as the identifier
+		identifier := p.Identifier
+		if p.Type == ObjectPrivilegeType && p.SubIdentifier != "" {
+			identifier = p.Identifier + "." + p.SubIdentifier
+		}
+
+		key := groupKey{p.Type, identifier, p.IsGrantable}
 		groupsMap[key] = append(groupsMap[key], p.Name)
 	}
 
 	res := make([]PrivilegeGroup, 0, len(groupsMap))
 	for key, names := range groupsMap {
 		// Generate the base string (e.g. "SELECT, INSERT ON SCHEMA X")
-		temp := Privilege{Type: key.pType, Name: strings.Join(names, ", "), Identifier: key.identifier}
+		var temp Privilege
+		if key.pType == ObjectPrivilegeType && strings.Contains(key.identifier, ".") {
+			// Split back to Identifier and SubIdentifier for object privileges
+			parts := strings.SplitN(key.identifier, ".", 2)
+			temp = Privilege{Type: key.pType, Name: strings.Join(names, ", "), Identifier: parts[0], SubIdentifier: parts[1]}
+		} else {
+			temp = Privilege{Type: key.pType, Name: strings.Join(names, ", "), Identifier: key.identifier}
+		}
 		res = append(res, PrivilegeGroup{
 			Body:        temp.baseString(),
 			IsGrantable: key.isGrantable,
@@ -493,7 +664,7 @@ func groupPrivilegesByTypeAndIdentifier(privileges []Privilege) []PrivilegeGroup
 }
 
 func GetDefaultPrivilege(defaultSchema string) string {
-	return fmt.Sprintf(`CREATE ANY ON SCHEMA %s WITH GRANT OPTION`, defaultSchema)
+	return fmt.Sprintf(`CREATE ANY ON SCHEMA "%s" WITH GRANT OPTION`, defaultSchema)
 }
 
 // FilterManagedPrivileges filters the observed privileges based on the management policy
@@ -520,6 +691,46 @@ func FilterManagedPrivileges(observed *v1alpha1.UserObservation, specPrivileges 
 	}
 }
 
+// createSystemPrivilege creates a system privilege
+func createSystemPrivilege(privilege string, isGrantable bool) Privilege {
+	return Privilege{
+		Type:        SystemPrivilegeType,
+		Name:        privilege,
+		IsGrantable: isGrantable,
+	}
+}
+
+// createSchemaPrivilege creates a schema privilege
+func createSchemaPrivilege(privilege string, schemaName sql.NullString, isGrantable bool) Privilege {
+	return Privilege{
+		Type:        SchemaPrivilegeType,
+		Name:        privilege,
+		Identifier:  schemaName.String,
+		IsGrantable: isGrantable,
+	}
+}
+
+// createSpecialObjectPrivilege creates special object privileges (PSE, JWT/SAML/X509 PROVIDER)
+func createSpecialObjectPrivilege(privilege, objectType string, objectName sql.NullString, isGrantable bool) Privilege {
+	return Privilege{
+		Type:        ObjectPrivilegeType,
+		Name:        privilege,
+		Identifier:  objectType + " " + objectName.String,
+		IsGrantable: isGrantable,
+	}
+}
+
+// createRegularObjectPrivilege creates regular object privileges
+func createRegularObjectPrivilege(privilege string, schemaName, objectName sql.NullString, isGrantable bool) Privilege {
+	return Privilege{
+		Type:          ObjectPrivilegeType,
+		Name:          privilege,
+		Identifier:    schemaName.String,
+		SubIdentifier: objectName.String,
+		IsGrantable:   isGrantable,
+	}
+}
+
 func handlePrivilegeRows(privRows *sql.Rows) (Privilege, error) {
 	var objectType, privilege string
 	var isGrantable bool
@@ -528,35 +739,88 @@ func handlePrivilegeRows(privRows *sql.Rows) (Privilege, error) {
 		return Privilege{}, err
 	}
 
-	p := Privilege{IsGrantable: isGrantable}
 	switch objectType {
 	case "SYSTEMPRIVILEGE":
-		p.Type = SystemPrivilegeType
-		p.Name = privilege
+		return createSystemPrivilege(privilege, isGrantable), nil
 	case "SCHEMA":
-		p.Type = SchemaPrivilegeType
-		p.Name = privilege
-		p.Identifier = schemaName.String
+		return createSchemaPrivilege(privilege, schemaName, isGrantable), nil
 	case "SOURCE":
-		p.Type = SourcePrivilegeType
-		p.Name = privilege
-		p.Identifier = objectName.String
+		return Privilege{
+			Type:        SourcePrivilegeType,
+			Name:        privilege,
+			Identifier:  objectName.String,
+			IsGrantable: isGrantable,
+		}, nil
 	case "USERGROUP":
-		p.Type = UserGroupPrivilegeType
-		p.Name = privilege
-		p.Identifier = objectName.String
+		return Privilege{
+			Type:        UserGroupPrivilegeType,
+			Name:        privilege,
+			Identifier:  objectName.String,
+			IsGrantable: isGrantable,
+		}, nil
 	case "CLIENTSIDE ENCRYPTION COLUMN KEY":
-		p.Type = ColumnKeyPrivilegeType
-		p.Name = privilege
-		p.Identifier = objectName.String
+		return Privilege{
+			Type:        ColumnKeyPrivilegeType,
+			Name:        privilege,
+			Identifier:  objectName.String,
+			IsGrantable: isGrantable,
+		}, nil
 	case "STRUCTURED_PRIVILEGE":
-		p.Type = StructuredPrivilegeType
-		p.Name = "STRUCTURED PRIVILEGE"
-		p.Identifier = objectName.String
+		return Privilege{
+			Type:        StructuredPrivilegeType,
+			Name:        "STRUCTURED PRIVILEGE",
+			Identifier:  objectName.String,
+			IsGrantable: isGrantable,
+		}, nil
+	case "PSE", "JWT PROVIDER", "SAML PROVIDER", "X509 PROVIDER":
+		return createSpecialObjectPrivilege(privilege, objectType, objectName, isGrantable), nil
 	default:
-		p.Type = ObjectPrivilegeType
-		p.Name = privilege
-		p.Identifier = fmt.Sprintf("%s.%s", schemaName.String, objectName.String)
+		return createRegularObjectPrivilege(privilege, schemaName, objectName, isGrantable), nil
 	}
-	return p, nil
+}
+
+// FindPrivilegeRoleOverlap returns the entries in desiredPrivileges whose bare
+// name (without WITH ADMIN OPTION) also appears in observedRoles. Both slices
+// are expected to already be in the canonical quoted form produced by
+// FormatPrivilegeStrings / FormatRoleStrings / QueryRoles, so the comparison is
+// a direct string match after stripping the grant-option suffix.
+//
+// A non-empty return value means the operator has placed HANA role name(s) under
+// spec.forProvider.privileges instead of spec.forProvider.roles. Those entries
+// will never converge (HANA records them in GRANTED_ROLES, not
+// GRANTED_PRIVILEGES), causing an infinite reconcile loop.
+func FindPrivilegeRoleOverlap(desiredPrivileges, observedRoles []string) []string {
+	roleSet := make(map[string]struct{}, len(observedRoles))
+	for _, r := range observedRoles {
+		roleSet[bareIdentifier(r)] = struct{}{}
+	}
+
+	var overlap []string
+	for _, p := range desiredPrivileges {
+		if _, found := roleSet[bareIdentifier(p)]; found {
+			overlap = append(overlap, p)
+		}
+	}
+	return overlap
+}
+
+// bareIdentifier strips a trailing grant-option suffix and any surrounding
+// double quotes, giving a plain name suitable for cross-list comparison.
+// desiredPrivileges uses unquoted system-privilege names while observedRoles
+// uses quoted identifiers from the catalog, so both sides need this treatment.
+func bareIdentifier(s string) string {
+	s = stripGrantOption(s)
+	return cleanIdentifier(s)
+}
+
+// stripGrantOption removes a trailing " WITH ADMIN OPTION" or " WITH GRANT OPTION"
+// suffix (case-insensitive) so bare names can be compared across the two slices.
+func stripGrantOption(s string) string {
+	upper := strings.ToUpper(s)
+	for _, suffix := range []string{" WITH ADMIN OPTION", " WITH GRANT OPTION"} {
+		if strings.HasSuffix(upper, suffix) {
+			return s[:len(s)-len(suffix)]
+		}
+	}
+	return s
 }

@@ -5,13 +5,13 @@ BASE_NAME := hana
 PROJECT_NAME := crossplane-provider-$(BASE_NAME)
 PROJECT_REPO := github.com/SAP/$(PROJECT_NAME)
 
-TARGETARCH ?= amd64
-PLATFORMS ?= linux_amd64
 
-VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || git rev-parse HEAD)
+PLATFORMS ?= linux_amd64 linux_arm64
+
+VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "v0.0.0-$$(git rev-parse HEAD)")
 $(info VERSION is $(VERSION))
 
-GOLANGCILINT_VERSION ?= 2.10.1
+GOLANGCILINT_VERSION ?= 2.14.0
 
 -include build/makelib/common.mk
 
@@ -25,23 +25,91 @@ GO_STATIC_PACKAGES = $(GO_PROJECT)/cmd/provider
 GO_LDFLAGS += -X $(GO_PROJECT)/internal/version.Version=$(VERSION)
 GO_SUBDIRS += cmd internal apis
 GO111MODULE = on
+
+# FIPS 140-3: build with the latest CMVP-certified Go Cryptographic Module
+# (cert #5247) and enable approved mode by default. Exported so the makelib
+# `go build`/`go test` recipes inherit it. Override with GOFIPS140=off locally.
+GOFIPS140 ?= certified
+export GOFIPS140
+
 -include build/makelib/golang.mk
 
 # kind-related versions
 KIND_VERSION ?= v0.30.0
 KIND_NODE_IMAGE_TAG ?= v1.34.0
 
+# Crossplane v2 e2e setup. Crossplane 2.2+ resolves spec.package through a
+# registry before its local cache; keep the local xpkg sideload path covered
+# when updating this version.
+export CROSSPLANE_VERSION ?= 2.2.3
+USE_HELM = true
+USE_HELM3 = true
+CROSSPLANE_CLI_VERSION ?= v2.0.2
+
 # Setup Kubernetes tools
 -include build/makelib/k8s_tools.mk
 
-# Setup Images
-DOCKER_REGISTRY ?= crossplane
-IMAGES = $(BASE_NAME) $(BASE_NAME)-controller
--include build/makelib/image.mk
+# NOTE(hasheddan): ensure the package CLI is installed before platform-specific
+# build steps run in parallel to avoid installation races.
+build.init: $(CROSSPLANE_CLI)
 
-export UUT_CONFIG = $(BUILD_REGISTRY)/$(subst crossplane-,crossplane/,$(PROJECT_NAME)):$(VERSION)
-export UUT_CONTROLLER = $(BUILD_REGISTRY)/$(subst crossplane-,crossplane/,$(PROJECT_NAME))-controller:$(VERSION)
-export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_CONFIG)","crossplane/provider-hana-controller":"$(UUT_CONTROLLER)"}
+# Setup Images
+#
+# Migrated from the legacy two-image pattern (image.mk, IMAGES = $(BASE_NAME)
+# $(BASE_NAME)-controller) to the single-image xpkg pattern (imagelight.mk +
+# xpkg.mk). The package image now carries the provider runtime directly, which
+# is required for Crossplane v2 (spec.controller.image was removed from the
+# package API in crossplane#6487). Also fixes the missing io.crossplane.xpkg
+# label, which `crossplane xpkg build` sets automatically.
+#
+# Reference: SAP/crossplane-provider-btp#626, SAP/crossplane-provider-cloudfoundry
+IMAGES = provider-hana
+-include build/makelib/imagelight.mk
+
+# UUT_CONFIG and E2E_IMAGES are currently dead code: E2E_REUSE_CLUSTER is always
+# set so xp-testing's InstallCrossplaneProvider is never called and these values
+# are never consumed. Note: UUT_CONFIG is a runtime OCI image, not an xpkg
+# artifact — if the full xp-testing install path is ever re-enabled, this would
+# need to point at the xpkg output instead.
+export UUT_CONFIG = $(BUILD_REGISTRY)/provider-hana-$(ARCH):latest
+export E2E_IMAGES = {"crossplane/provider-hana":"$(UUT_CONFIG)"}
+
+# ====================================================================================
+# Setup XPKG
+
+XPKGS ?= provider-hana
+XPKG_REG_ORGS ?= ghcr.io/sap/crossplane-provider-hana/crossplane
+-include build/makelib/xpkg.mk
+
+# NOTE(hasheddan): we force image building to happen prior to xpkg build so that
+# we ensure image is present in daemon.
+xpkg.build.provider-hana: do.build.images
+
+# ====================================================================================
+# Local e2e setup (mirrors SAP/crossplane-provider-cloudfoundry)
+#
+# Uses the upstream Crossplane Helm chart, pinned by CROSSPLANE_VERSION.
+# E2E_REUSE_CLUSTER / E2E_CLUSTER_NAME tell xp-testing to reuse the pre-deployed
+# cluster so it skips provider installation entirely; the Go e2e setup reads the
+# same CROSSPLANE_VERSION only for xp-testing's v2 setup validation.
+
+CROSSPLANE_NAMESPACE = crossplane-system
+KIND_CLUSTER_NAME ?= local-dev
+# E2E_REUSE_CLUSTER is unconditionally exported so CI always reuses the cluster
+# that local-deploy just created, skipping redundant provider installation.
+# If local-deploy fails mid-way locally, reset with: make controlplane.down && make local-deploy
+export E2E_REUSE_CLUSTER = $(KIND_CLUSTER_NAME)
+export E2E_CLUSTER_NAME = $(KIND_CLUSTER_NAME)
+XPKG_SKIP_DEP_RESOLUTION ?= false
+-include build/makelib/local.xpkg.mk
+-include build/makelib/controlplane.mk
+
+.PHONY: local-deploy
+local-deploy: build xpkg.build.provider-hana controlplane.up local.xpkg.deploy.provider.provider-hana
+	@$(INFO) waiting for provider-hana to become healthy
+	@$(foreach x,$(XPKGS),$(KUBECTL) wait provider.pkg $(x) --for condition=Healthy --timeout=5m;)
+	@$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) wait --for=condition=Available deployment --all --timeout=5m
+	@$(OK) provider-hana is healthy
 
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .
@@ -53,10 +121,9 @@ test.run: $(GOJUNIT) $(GOCOVER_COBERTURA) go.test.unit
 # e2e tests
 e2e.run: test-e2e
 
-test-e2e: $(KIND) $(HELM3) build
+test-e2e: local-deploy
 	@$(INFO) running e2e tests
 	@echo E2E_IMAGES=$$E2E_IMAGES
-	# echo E2E_IMAGES=$$E2E_IMAGES > e2e.env
 	HANA_BINDINGS=$$HANA_BINDINGS go test $(PROJECT_REPO)/test/... -tags=e2e -test.v  -count=1
 	@$(OK) e2e tests passed
 
@@ -116,7 +183,7 @@ dev-clean: $(KIND) $(KUBECTL)
 	@$(INFO) Deleting kind cluster
 	@$(KIND) delete cluster --name=$(PROJECT_NAME)-dev
 
-.PHONY: submodules fallthrough test-integration run dev dev-clean test-e2e test.run
+.PHONY: submodules fallthrough test-integration run dev dev-clean test-e2e test.run local-deploy
 
 # ====================================================================================
 # Special Targets
@@ -202,14 +269,3 @@ crossplane.help:
 help-special: crossplane.help
 
 .PHONY: crossplane.help help-special
-
-PUBLISH_IMAGES ?= crossplane/provider-hana crossplane/provider-hana-controller
-
-.PHONY: publish
-publish:
-	@$(INFO) "Publishing images $(PUBLISH_IMAGES) to $(DOCKER_REGISTRY)"
-	@for image in $(PUBLISH_IMAGES); do \
-		echo "Publishing image $(DOCKER_REGISTRY)/$${image}:$(VERSION)"; \
-		docker push $(DOCKER_REGISTRY)/$${image}:$(VERSION); \
-	done
-	@$(OK) "Publishing images $(PUBLISH_IMAGES) to $(DOCKER_REGISTRY)"

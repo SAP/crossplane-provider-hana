@@ -8,14 +8,16 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
-	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 	"github.com/crossplane-contrib/xp-testing/pkg/resources"
 	"github.com/crossplane-contrib/xp-testing/pkg/xpenvfuncs"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 
@@ -38,7 +40,8 @@ type UserTestConfig struct {
 
 	DBSchemas []string // Track schema names
 	DBObjects []string // Track object names
-	db        xsql.DB
+	db        xsql.Connector
+	conn      xsql.DB
 }
 
 func TestUser(t *testing.T) {
@@ -78,16 +81,14 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 			return ctx
 		}
 
-		defaultSchemaName := user.Spec.ForProvider.Username
-
 		schemaName := c.DBSchemas[0]
 		objectName := c.DBObjects[0]
 
 		privileges := user.Spec.ForProvider.Privileges
 		privileges = append(privileges,
 			"AUDIT READ",
-			fmt.Sprintf("CREATE ANY ON SCHEMA %s", schemaName),
-			fmt.Sprintf("INSERT ON %s.%s", schemaName, objectName),
+			fmt.Sprintf(`CREATE ANY ON SCHEMA "%s"`, utils.EscapeDoubleQuotes(schemaName)),
+			fmt.Sprintf(`INSERT ON "%s"."%s"`, utils.EscapeDoubleQuotes(schemaName), utils.EscapeDoubleQuotes(objectName)),
 		)
 
 		user.Spec.ForProvider.Privileges = privileges
@@ -98,26 +99,23 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 			t.Fatal(err)
 		}
 
-		var fn = func(u k8s.Object) bool {
-			return u.GetName() == user.GetName() && u.GetNamespace() == user.GetNamespace()
-		}
-
+		// Wait until Status.AtProvider.Privileges reflects the updated spec. A plain
+		// name/namespace match is a no-op that can fire before the update reconcile
+		// completes; matching on the observed privileges (order-insensitive) forces
+		// us to wait for the controller to actually apply and re-observe the change.
+		less := func(a, b string) bool { return a < b }
 		err = wait.For(
-			conditions.New(res).ResourceMatch(user, fn),
+			conditions.New(res).ResourceMatch(user, func(obj k8s.Object) bool {
+				u, ok := obj.(*v1alpha1.User)
+				if !ok {
+					return false
+				}
+				return cmp.Diff(privileges, u.Status.AtProvider.Privileges, cmpopts.SortSlices(less)) == ""
+			}),
+			wait.WithTimeout(2*time.Minute),
 		)
 		if err != nil {
-			t.Error(err)
-		}
-
-		privileges = append(privileges,
-			privilege.GetDefaultPrivilege(defaultSchemaName),
-		)
-
-		less := func(a, b string) bool { return a < b }
-		equalIgnoreOrder := cmp.Diff(privileges, user.Status.AtProvider.Privileges, cmpopts.SortSlices(less)) == ""
-
-		if !equalIgnoreOrder {
-			t.Errorf("failed to update user privileges: Status does not match Spec. Name: %s, Namespace: %s", user.Name, user.Namespace)
+			t.Errorf("failed to update user privileges: Status does not match Spec. Name: %s, Namespace: %s: %v", user.Name, user.Namespace, err)
 
 			out, derr := exec.Command("kubectl", "describe", "user", user.Name, "-n", user.Namespace).CombinedOutput()
 			if derr != nil {
@@ -126,6 +124,64 @@ func (c *UserTestConfig) assessUpdate(ctx context.Context, t *testing.T, cfg *en
 				t.Logf("kubectl describe user output:\n%s", string(out))
 			}
 		}
+
+		// Test ManagementPolicies: Switch to ObserveOnly
+		t.Logf("Testing ManagementPolicies - setting to ObserveOnly")
+		if err := c.Resource.Get(ctx, user.GetName(), user.GetNamespace(), user); err != nil {
+			t.Errorf("failed to get user: %v", err)
+			return ctx
+		}
+
+		user.Spec.ManagementPolicies = []xpv2.ManagementAction{xpv2.ManagementActionObserve}
+		if err := res.Update(ctx, user); err != nil {
+			t.Errorf("failed to update user managementPolicies: %v", err)
+			return ctx
+		}
+		t.Logf("Changed user %s to ObserveOnly management policy", user.Spec.ForProvider.Username)
+
+		// Try to add a new privilege - this should NOT be applied due to ObserveOnly policy
+		if err := c.Resource.Get(ctx, user.GetName(), user.GetNamespace(), user); err != nil {
+			t.Errorf("failed to get user: %v", err)
+			return ctx
+		}
+
+		username := user.Spec.ForProvider.Username
+		newPrivilege := "BACKUP ADMIN"
+		user.Spec.ForProvider.Privileges = append(user.Spec.ForProvider.Privileges, newPrivilege)
+
+		if err := res.Update(ctx, user); err != nil {
+			t.Errorf("failed to update user spec: %v", err)
+			return ctx
+		}
+
+		// Wait a bit for reconciliation attempt
+		time.Sleep(30 * time.Second)
+
+		// Verify that the new privilege was NOT applied in the database
+		var privilegeCount int
+		row := c.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM GRANTED_PRIVILEGES WHERE GRANTEE = ? AND PRIVILEGE = ?", username, newPrivilege)
+		if err := row.Scan(&privilegeCount); err != nil {
+			t.Errorf("failed to query privileges: %v", err)
+			return ctx
+		}
+
+		if privilegeCount != 0 {
+			t.Errorf("ObserveOnly policy should prevent updates: found %d %s privileges, expected 0", privilegeCount, newPrivilege)
+		} else {
+			t.Logf("Verified: ObserveOnly policy prevented privilege update for user %s", username)
+		}
+
+		// Restore managementPolicies to full control for cleanup
+		if err := c.Resource.Get(ctx, user.GetName(), user.GetNamespace(), user); err != nil {
+			t.Errorf("failed to get user: %v", err)
+			return ctx
+		}
+		user.Spec.ManagementPolicies = []xpv2.ManagementAction{xpv2.ManagementActionAll}
+		if err := res.Update(ctx, user); err != nil {
+			t.Errorf("failed to restore managementPolicies: %v", err)
+			return ctx
+		}
+		t.Logf("Restored managementPolicies to All for cleanup")
 	}
 
 	return ctx
@@ -142,15 +198,17 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 		secretDataBytes[k] = []byte(v)
 	}
 
-	if err := c.db.Connect(ctx, secretDataBytes); err != nil {
+	conn, err := c.db.Connect(ctx, secretDataBytes)
+	if err != nil {
 		t.Errorf("failed to connect to database: %v", err)
 		return ctx
 	}
+	c.conn = conn
 
 	resources.ImportResources(ctx, t, cfg, c.TestConfig.ResourceDirectory)
 
 	objects := make([]k8s.Object, 0)
-	err := decoder.DecodeEachFile(
+	err = decoder.DecodeEachFile(
 		ctx, os.DirFS(c.TestConfig.ResourceDirectory), "*",
 		func(ctx context.Context, obj k8s.Object) error {
 			objects = append(objects, obj)
@@ -170,9 +228,9 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 
 	schemaName := "E2ENEWSCHEMA"
 	var schemaNamePlaceholder string
-	row := c.db.QueryRowContext(ctx, "SELECT SCHEMA_NAME FROM SCHEMAS WHERE SCHEMA_NAME = ?", schemaName)
+	row := c.conn.QueryRowContext(ctx, "SELECT SCHEMA_NAME FROM SCHEMAS WHERE SCHEMA_NAME = ?", schemaName)
 	if err := row.Scan(&schemaNamePlaceholder); xsql.IsNoRows(err) {
-		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA %s", schemaName)); err != nil {
+		if _, err := c.conn.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA %s", schemaName)); err != nil {
 			t.Errorf("failed to create schema: %v", err)
 			return ctx
 		} else {
@@ -186,9 +244,9 @@ func (c *UserTestConfig) SetupUser(ctx context.Context, t *testing.T, cfg *envco
 
 	objectName := "E2ENEWTABLE"
 	var objectNamePlaceholder string
-	row = c.db.QueryRowContext(ctx, "SELECT SCHEMA_NAME, TABLE_NAME FROM TABLES WHERE SCHEMA_NAME = ? AND TABLE_NAME = ?", schemaName, objectName)
+	row = c.conn.QueryRowContext(ctx, "SELECT SCHEMA_NAME, TABLE_NAME FROM TABLES WHERE SCHEMA_NAME = ? AND TABLE_NAME = ?", schemaName, objectName)
 	if err := row.Scan(&schemaNamePlaceholder, &objectNamePlaceholder); xsql.IsNoRows(err) {
-		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("CREATE TABLE %s.%s (ID INT PRIMARY KEY, NAME NVARCHAR(100))", schemaName, objectName)); err != nil {
+		if _, err := c.conn.ExecContext(ctx, fmt.Sprintf("CREATE TABLE %s.%s (ID INT PRIMARY KEY, NAME NVARCHAR(100))", schemaName, objectName)); err != nil {
 			t.Errorf("failed to create table: %v", err)
 			return ctx
 		} else {
@@ -252,11 +310,11 @@ func (c *UserTestConfig) TeardownUser(ctx context.Context, t *testing.T, cfg *en
 		schemaName := c.DBSchemas[0]
 		objectName := c.DBObjects[0]
 
-		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("DROP TABLE %s.%s", schemaName, objectName)); err != nil {
+		if _, err := c.conn.ExecContext(ctx, fmt.Sprintf("DROP TABLE %s.%s", schemaName, objectName)); err != nil {
 			t.Errorf("failed to drop table %s: %v", objectName, err)
 		}
 
-		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA %s CASCADE", schemaName)); err != nil {
+		if _, err := c.conn.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA %s CASCADE", schemaName)); err != nil {
 			t.Errorf("failed to drop schema %s: %v", schemaName, err)
 		}
 	}

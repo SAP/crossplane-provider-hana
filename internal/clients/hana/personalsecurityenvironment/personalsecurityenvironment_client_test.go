@@ -18,8 +18,10 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
 )
+
+const testPSEName = "test-pse"
 
 // Unlike many Kubernetes projects Crossplane does not use third party testing
 // libraries, per the common Go test review comments. Crossplane encourages the
@@ -66,7 +68,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
@@ -106,7 +108,7 @@ func TestRead(t *testing.T) {
 							rows := sqlmock.NewRows([]string{"PURPOSE_OBJECT"}).AddRow("test-provider")
 							mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						} else {
-							rows := sqlmock.NewRows([]string{"NAME"}).AddRow("test-pse")
+							rows := sqlmock.NewRows([]string{"NAME"}).AddRow(testPSEName)
 							mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						}
 						return db.QueryRowContext(context.Background(), "SELECT")
@@ -121,12 +123,13 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
 				observed: &v1alpha1.PersonalSecurityEnvironmentObservation{
-					Name:             "test-pse",
+					Name:             testPSEName,
+					Purpose:          v1alpha1.PSEPurposeX509,
 					X509ProviderName: "test-provider",
 					CertificateRefs: []v1alpha1.CertificateRef{
 						{ID: new(1), Name: new("cert1")},
@@ -166,6 +169,7 @@ func TestRead(t *testing.T) {
 			want: want{
 				observed: &v1alpha1.PersonalSecurityEnvironmentObservation{
 					Name:             "simple-pse",
+					Purpose:          v1alpha1.PSEPurposeX509,
 					X509ProviderName: "simple-provider",
 					CertificateRefs:  nil,
 				},
@@ -202,6 +206,7 @@ func TestRead(t *testing.T) {
 			want: want{
 				observed: &v1alpha1.PersonalSecurityEnvironmentObservation{
 					Name:             "no-provider-pse",
+					Purpose:          v1alpha1.PSEPurposeX509,
 					X509ProviderName: "",
 					CertificateRefs: []v1alpha1.CertificateRef{
 						{ID: new(3), Name: new("cert3")},
@@ -217,7 +222,7 @@ func TestRead(t *testing.T) {
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						// Mock successful PSE query
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"NAME"}).AddRow("test-pse")
+						rows := sqlmock.NewRows([]string{"NAME"}).AddRow(testPSEName)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
@@ -229,7 +234,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
@@ -287,7 +292,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 				provider: "test-provider",
 			},
@@ -310,7 +315,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 				provider: "",
 			},
@@ -444,7 +449,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName:      "test-pse",
+				pseName:      testPSEName,
 				providerName: "new-provider",
 			},
 			want: want{
@@ -464,7 +469,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName: "test-pse",
+				pseName: testPSEName,
 				toAdd: []v1alpha1.CertificateRef{
 					{ID: new(1), Name: new("cert1")},
 				},
@@ -487,7 +492,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName: "test-pse",
+				pseName: testPSEName,
 				toAdd: []v1alpha1.CertificateRef{
 					{ID: new(1)},
 					{ID: new(2)},
@@ -511,7 +516,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName: "test-pse",
+				pseName: testPSEName,
 				toRemove: []v1alpha1.CertificateRef{
 					{Name: new("cert1")},
 					{Name: new("cert2")},
@@ -535,7 +540,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName:      "test-pse",
+				pseName:      testPSEName,
 				providerName: "new-provider",
 			},
 			want: want{
@@ -578,7 +583,7 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			args: args{
-				pseName:      "test-pse",
+				pseName:      testPSEName,
 				toAdd:        []v1alpha1.CertificateRef{},
 				toRemove:     []v1alpha1.CertificateRef{},
 				providerName: "",
@@ -592,9 +597,164 @@ func TestUpdate(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			c := Client{DB: tc.fields.db}
-			err := c.Update(tc.args.ctx, tc.args.pseName, tc.args.toAdd, tc.args.toRemove, tc.args.providerName)
+			err := c.Update(tc.args.ctx, tc.args.pseName, v1alpha1.PSEPurposeX509, tc.args.toAdd, tc.args.toRemove, nil, nil, tc.args.providerName)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\nc.Update(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+// captureExec collects every ExecContext query so JWT-purpose tests can assert
+// on the exact DDL emitted. Matches the pattern used by
+// publickey/jwtprovider client tests.
+type captureExec struct {
+	queries []string
+}
+
+func (c *captureExec) mock() fake.MockDB {
+	return fake.MockDB{
+		MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+			c.queries = append(c.queries, query)
+			return nil, nil
+		},
+	}
+}
+
+// TestCreateJWTPurpose covers the PSE-Create branch that fires when Purpose is
+// JWT: the DDL must be CREATE PSE + ALTER PSE ... ADD PUBLIC KEY (one per
+// key), and when a provider name is supplied the SET PSE ... PURPOSE JWT FOR
+// PROVIDER statement must be emitted with PURPOSE JWT (not X509). Everything
+// else is covered by the X509 cases in TestCreate above.
+// nolint: contextcheck
+func TestCreateJWTPurpose(t *testing.T) {
+	cases := map[string]struct {
+		reason   string
+		params   *v1alpha1.PersonalSecurityEnvironmentParameters
+		provider string
+		wantSQL  []string
+		unwant   []string
+	}{
+		"JWTPurposeNoProvider": {
+			// Create-time with an empty provider name skips the SET PSE ...
+			// PURPOSE step (the provider hasn't been created yet). Public-key
+			// wiring still happens through ALTER PSE ADD PUBLIC KEY.
+			reason: "JWT purpose with empty provider emits CREATE PSE + ALTER PSE ADD PUBLIC KEY, no SET PSE",
+			params: &v1alpha1.PersonalSecurityEnvironmentParameters{
+				Name:    testPSEName,
+				Purpose: v1alpha1.PSEPurposeJWT,
+				PublicKeyRefs: []v1alpha1.PublicKeyRef{
+					{Name: "IAS_SIGNING_KEY"},
+				},
+			},
+			provider: "",
+			wantSQL: []string{
+				"CREATE PSE test-pse",
+				"ALTER PSE test-pse ADD PUBLIC KEY IAS_SIGNING_KEY",
+			},
+			unwant: []string{"SET PSE"},
+		},
+		"JWTPurposeWithProvider": {
+			// Regression guard: this branch is what the JWT-SSO flow actually
+			// uses at Update time. PURPOSE JWT must appear literally so we
+			// don't drift to `PURPOSE X509` (which fails on JWT PSEs).
+			reason: "JWT purpose with provider name emits SET PSE ... PURPOSE JWT FOR PROVIDER",
+			params: &v1alpha1.PersonalSecurityEnvironmentParameters{
+				Name:    "jwt-pse",
+				Purpose: v1alpha1.PSEPurposeJWT,
+				PublicKeyRefs: []v1alpha1.PublicKeyRef{
+					{Name: "IAS_SIGNING_KEY"},
+				},
+			},
+			provider: "jwt-provider",
+			wantSQL: []string{
+				"CREATE PSE jwt-pse",
+				"SET PSE jwt-pse PURPOSE JWT FOR PROVIDER jwt-provider",
+				"ALTER PSE jwt-pse ADD PUBLIC KEY IAS_SIGNING_KEY",
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var cap captureExec
+			c := Client{DB: cap.mock()}
+			if err := c.Create(context.Background(), tc.params, tc.provider); err != nil {
+				t.Fatalf("%s: Create returned unexpected error: %v", tc.reason, err)
+			}
+			joined := strings.Join(cap.queries, "\n---\n")
+			for _, w := range tc.wantSQL {
+				if !strings.Contains(joined, w) {
+					t.Errorf("\n%s\nCreate(...): missing SQL substring %q:\n%s", tc.reason, w, joined)
+				}
+			}
+			for _, u := range tc.unwant {
+				if strings.Contains(joined, u) {
+					t.Errorf("\n%s\nCreate(...): forbidden SQL substring %q:\n%s", tc.reason, u, joined)
+				}
+			}
+		})
+	}
+}
+
+// TestUpdateJWTPurpose covers the PSE-Update branch that fires when Purpose is
+// JWT: key add/remove uses ALTER PSE ... ADD/DROP PUBLIC KEY (not CERTIFICATE)
+// and the SET PSE ... PURPOSE JWT FOR PROVIDER binding survives the switch.
+// nolint: contextcheck
+func TestUpdateJWTPurpose(t *testing.T) {
+	cases := map[string]struct {
+		reason       string
+		pseName      string
+		keysToAdd    []string
+		keysToRemove []string
+		providerName string
+		wantSQL      []string
+		unwant       []string
+	}{
+		"AddKeys": {
+			reason:    "Adding a public key emits ALTER PSE ... ADD PUBLIC KEY",
+			pseName:   testPSEName,
+			keysToAdd: []string{"KEY_A"},
+			wantSQL:   []string{"ALTER PSE test-pse ADD PUBLIC KEY KEY_A"},
+			unwant:    []string{"CERTIFICATE"},
+		},
+		"RemoveKeys": {
+			reason:       "Removing a public key emits ALTER PSE ... DROP PUBLIC KEY",
+			pseName:      testPSEName,
+			keysToRemove: []string{"KEY_A"},
+			wantSQL:      []string{"ALTER PSE test-pse DROP PUBLIC KEY KEY_A"},
+			unwant:       []string{"CERTIFICATE"},
+		},
+		"SetProvider": {
+			// Regression guard for the drift path exercised by the JWT-SSO
+			// e2e: rebind a JWT PSE to a (possibly new) provider name.
+			reason:       "Setting a provider name on a JWT PSE emits SET PSE ... PURPOSE JWT FOR PROVIDER",
+			pseName:      testPSEName,
+			providerName: "new-provider",
+			wantSQL:      []string{"SET PSE test-pse PURPOSE JWT FOR PROVIDER new-provider"},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var cap captureExec
+			c := Client{DB: cap.mock()}
+			// certsToAdd/certsToRemove are irrelevant on the JWT branch —
+			// pass nil so any accidental CERTIFICATE emission is a bug.
+			err := c.Update(context.Background(), tc.pseName, v1alpha1.PSEPurposeJWT, nil, nil, tc.keysToAdd, tc.keysToRemove, tc.providerName)
+			if err != nil {
+				t.Fatalf("%s: Update returned unexpected error: %v", tc.reason, err)
+			}
+			joined := strings.Join(cap.queries, "\n---\n")
+			for _, w := range tc.wantSQL {
+				if !strings.Contains(joined, w) {
+					t.Errorf("\n%s\nUpdate(...): missing SQL substring %q:\n%s", tc.reason, w, joined)
+				}
+			}
+			for _, u := range tc.unwant {
+				if strings.Contains(joined, u) {
+					t.Errorf("\n%s\nUpdate(...): forbidden SQL substring %q:\n%s", tc.reason, u, joined)
+				}
 			}
 		})
 	}
@@ -633,7 +793,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{
@@ -655,7 +815,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.PersonalSecurityEnvironmentParameters{
-					Name: "test-pse",
+					Name: testPSEName,
 				},
 			},
 			want: want{

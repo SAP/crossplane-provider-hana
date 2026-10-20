@@ -7,11 +7,12 @@ package usergroup
 import (
 	"context"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/usergroup"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 
 	"errors"
 	"fmt"
@@ -20,14 +21,15 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
 
 const (
@@ -44,14 +46,14 @@ const (
 )
 
 // Setup adds a controller that reconciles usergroup managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.UsergroupGroupKind)
 
 	log := o.Logger.WithValues("controller", name)
-	t := resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{})
+	t := resource.NewLegacyProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{})
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.UsergroupGroupVersionKind),
-		managed.WithExternalConnecter(&connector{
+		managed.WithExternalConnector(&connector{
 			kube:      mgr.GetClient(),
 			usage:     t,
 			newClient: usergroup.New,
@@ -60,7 +62,8 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 		}),
 		managed.WithLogger(log),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
+		features.ConfigureBetaManagementPolicies(o))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
@@ -72,10 +75,10 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 // is called.
 type connector struct {
 	kube      client.Client
-	usage     resource.Tracker
+	usage     resource.LegacyTracker
 	newClient func(xsql.DB) usergroup.Client
 	log       logging.Logger
-	db        xsql.DB
+	db        xsql.Connector
 }
 
 // Connect typically produces an ExternalClient by:
@@ -89,7 +92,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotUsergroup)
 	}
 
-	if err := c.usage.Track(ctx, mg); err != nil {
+	if err := c.usage.Track(ctx, cr); err != nil {
 		return nil, fmt.Errorf(errTrackPCUsage, err)
 	}
 
@@ -110,12 +113,13 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	c.log.Info("Connecting to usergroup resource", "name", cr.Name)
 
-	if err := c.db.Connect(ctx, s.Data); err != nil {
+	conn, err := c.db.Connect(ctx, s.Data)
+	if err != nil {
 		return nil, fmt.Errorf("cannot connect to HANA DB: %w", err)
 	}
 
 	return &external{
-		client: c.newClient(c.db),
+		client: c.newClient(conn),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil
@@ -141,11 +145,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	c.log.Info("Observing usergroup resource", "name", cr.Name)
 
-	parameters := &v1alpha1.UsergroupParameters{
-		UsergroupName:    cr.Spec.ForProvider.UsergroupName,
-		DisableUserAdmin: cr.Spec.ForProvider.DisableUserAdmin,
-		Parameters:       cr.Spec.ForProvider.Parameters,
-	}
+	parameters := buildDesiredParameters(cr)
 
 	observed, err := c.client.Read(ctx, parameters)
 
@@ -163,7 +163,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.DisableUserAdmin = observed.DisableUserAdmin
 	cr.Status.AtProvider.Parameters = observed.Parameters
 
-	cr.SetConditions(xpv1.Available())
+	cr.SetConditions(xpv2.Available())
 
 	isUpToDate := upToDate(observed, parameters)
 	c.log.Info("Observed usergroup resource",
@@ -182,17 +182,10 @@ func upToDate(observed *v1alpha1.UsergroupObservation, desired *v1alpha1.Usergro
 	if observed.DisableUserAdmin != desired.DisableUserAdmin {
 		return false
 	}
-	if !parametersConfigured(observed.Parameters, desired.Parameters) {
+	// Only check parameters that are specified in desired state (user-specified)
+	// to avoid triggering updates due to HANA default values
+	if parametersToUpdate := utils.MapDiffOnlyDesired(observed.Parameters, desired.Parameters); len(parametersToUpdate) > 0 {
 		return false
-	}
-	return true
-}
-
-func parametersConfigured(observed map[string]string, desired map[string]string) bool {
-	for key, value := range desired {
-		if observed[key] != value {
-			return false
-		}
 	}
 	return true
 }
@@ -205,15 +198,9 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Creating usergroup resource", "name", cr.Name, "usergroupName", cr.Spec.ForProvider.UsergroupName)
 
-	cr.SetConditions(xpv1.Creating())
+	cr.SetConditions(xpv2.Creating())
 
-	parameters := &v1alpha1.UsergroupParameters{
-		UsergroupName:      cr.Spec.ForProvider.UsergroupName,
-		DisableUserAdmin:   cr.Spec.ForProvider.DisableUserAdmin,
-		NoGrantToCreator:   cr.Spec.ForProvider.NoGrantToCreator,
-		Parameters:         cr.Spec.ForProvider.Parameters,
-		EnableParameterSet: cr.Spec.ForProvider.EnableParameterSet,
-	}
+	parameters := buildDesiredParameters(cr)
 
 	c.log.Info("Creating usergroup with parameters",
 		"usergroupName", parameters.UsergroupName,
@@ -247,11 +234,9 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating usergroup resource", "name", cr.Name, "usergroupName", cr.Spec.ForProvider.UsergroupName)
 
-	parameters := &v1alpha1.UsergroupParameters{
-		UsergroupName:    cr.Spec.ForProvider.UsergroupName,
-		DisableUserAdmin: cr.Spec.ForProvider.DisableUserAdmin,
-		Parameters:       cr.Spec.ForProvider.Parameters,
-	}
+	parameters := buildDesiredParameters(cr)
+	// usergroup.Client has additional functions not defined in global interface
+	ugClient, _ := c.client.(usergroup.Client)
 	if cr.Status.AtProvider.DisableUserAdmin != parameters.DisableUserAdmin {
 		c.log.Info("Updating DisableUserAdmin setting",
 			"name", cr.Name,
@@ -259,7 +244,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 			"current", cr.Status.AtProvider.DisableUserAdmin,
 			"desired", parameters.DisableUserAdmin)
 
-		err := c.client.UpdateDisableUserAdmin(ctx, parameters)
+		err := ugClient.UpdateDisableUserAdmin(ctx, parameters)
 		if err != nil {
 			c.log.Info("Error updating DisableUserAdmin", "name", cr.Name, "error", err)
 			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateUsergroup, err)
@@ -271,9 +256,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	observedParameters := cr.Status.AtProvider.Parameters
 	desiredParameters := parameters.Parameters
 
-	if !parametersConfigured(observedParameters, desiredParameters) {
-		parametersToUpdate := changedParameters(observedParameters, desiredParameters)
-		c.log.Info("Updating usergroup parameters",
+	// Only update parameters that are specified in desired state (user-specified)
+	// to avoid updating HANA default values that weren't set by the user
+	if parametersToUpdate := utils.MapDiffOnlyDesired(observedParameters, desiredParameters); len(parametersToUpdate) > 0 {
+		c.log.Debug("Updating usergroup parameters",
 			"name", cr.Name,
 			"usergroupName", parameters.UsergroupName,
 			"changedParams", parametersToUpdate)
@@ -291,21 +277,6 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	return managed.ExternalUpdate{}, nil
 }
 
-func changedParameters(observed map[string]string, desired map[string]string) map[string]string {
-	changed := make(map[string]string)
-
-	for key, value := range desired {
-		if observed[key] != value {
-			changed[key] = value
-		}
-	}
-
-	if len(changed) == 0 {
-		return nil
-	}
-	return changed
-}
-
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
 	cr, ok := mg.(*v1alpha1.Usergroup)
 	if !ok {
@@ -318,7 +289,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 		UsergroupName: cr.Spec.ForProvider.UsergroupName,
 	}
 
-	cr.SetConditions(xpv1.Deleting())
+	cr.SetConditions(xpv2.Deleting())
 
 	err := c.client.Delete(ctx, parameters)
 
@@ -329,4 +300,14 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Successfully deleted usergroup resource", "name", cr.Name, "usergroupName", parameters.UsergroupName)
 	return managed.ExternalDelete{}, err
+}
+
+func buildDesiredParameters(cr *v1alpha1.Usergroup) *v1alpha1.UsergroupParameters {
+	return &v1alpha1.UsergroupParameters{
+		UsergroupName:      cr.Spec.ForProvider.UsergroupName,
+		DisableUserAdmin:   cr.Spec.ForProvider.DisableUserAdmin,
+		NoGrantToCreator:   cr.Spec.ForProvider.NoGrantToCreator,
+		Parameters:         cr.Spec.ForProvider.Parameters,
+		EnableParameterSet: cr.Spec.ForProvider.EnableParameterSet,
+	}
 }

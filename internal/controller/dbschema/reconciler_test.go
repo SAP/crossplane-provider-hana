@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"testing"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,6 +24,8 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/dbschema"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 )
+
+const testSchemaName = "DEMO_SCHEMA"
 
 // MockLogger is a mock implementation of logging.Logger
 type MockLogger struct{}
@@ -60,7 +62,7 @@ func TestConnect(t *testing.T) {
 
 	type fields struct {
 		kube      client.Client
-		usage     resource.Tracker
+		usage     resource.LegacyTracker
 		newClient func(db xsql.DB) dbschema.Client
 	}
 
@@ -85,7 +87,7 @@ func TestConnect(t *testing.T) {
 		"ErrTrackProviderConfigUsage": {
 			reason: "An error should be returned if we can't track our ProviderConfig usage",
 			fields: fields{
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return errBoom }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return errBoom }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.DbSchema{},
@@ -98,13 +100,13 @@ func TestConnect(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(errBoom),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -120,13 +122,13 @@ func TestConnect(t *testing.T) {
 					// in a ProviderConfig with a nil connection secret.
 					MockGet: test.NewMockGetFn(nil),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -140,20 +142,20 @@ func TestConnect(t *testing.T) {
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						switch o := obj.(type) {
 						case *apisv1alpha1.ProviderConfig:
-							o.Spec.Credentials.ConnectionSecretRef = &xpv1.SecretReference{}
+							o.Spec.Credentials.ConnectionSecretRef = &xpv2.SecretReference{}
 						case *corev1.Secret:
 							return errBoom
 						}
 						return nil
 					}),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -220,7 +222,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -246,7 +248,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -318,7 +320,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -341,7 +343,7 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -412,7 +414,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -435,7 +437,7 @@ func TestDelete(t *testing.T) {
 				mg: &v1alpha1.DbSchema{
 					Spec: v1alpha1.DbSchemaSpec{
 						ForProvider: v1alpha1.DbSchemaParameters{
-							SchemaName: "DEMO_SCHEMA",
+							SchemaName: testSchemaName,
 						},
 					},
 				},
@@ -452,6 +454,171 @@ func TestDelete(t *testing.T) {
 			_, err := e.Delete(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Delete(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+func TestObserve_CaseSensitivity(t *testing.T) {
+	type fields struct {
+		client dbschema.DbSchemaClient
+		log    logging.Logger
+	}
+
+	type args struct {
+		ctx context.Context
+		mg  resource.Managed
+	}
+
+	type want struct {
+		c   managed.ExternalObservation
+		err error
+	}
+
+	cases := map[string]struct {
+		reason string
+		fields fields
+		args   args
+		want   want
+	}{
+		"LowercaseSchemaName_ShouldBeFound": {
+			reason: "A lowercase schema name should be found when the database returns the same lowercase name",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) (observed *v1alpha1.DbSchemaObservation, err error) {
+						// Simulate HANA returning the schema with lowercase name (as stored with double quotes)
+						return &v1alpha1.DbSchemaObservation{
+							SchemaName: "my_lowercase_schema",
+							Owner:      "SYSTEM",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.DbSchema{
+					Spec: v1alpha1.DbSchemaSpec{
+						ForProvider: v1alpha1.DbSchemaParameters{
+							SchemaName: "my_lowercase_schema",
+						},
+					},
+				},
+			},
+			want: want{
+				// Currently this will FAIL because Observe converts to uppercase
+				// and compares "MY_LOWERCASE_SCHEMA" != "my_lowercase_schema"
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+				err: nil,
+			},
+		},
+		"MixedCaseSchemaName_ShouldBeFound": {
+			reason: "A mixed-case schema name should be found when the database returns the same mixed-case name",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) (observed *v1alpha1.DbSchemaObservation, err error) {
+						return &v1alpha1.DbSchemaObservation{
+							SchemaName: "MyMixedCaseSchema",
+							Owner:      "SYSTEM",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.DbSchema{
+					Spec: v1alpha1.DbSchemaSpec{
+						ForProvider: v1alpha1.DbSchemaParameters{
+							SchemaName: "MyMixedCaseSchema",
+						},
+					},
+				},
+			},
+			want: want{
+				// Currently this will FAIL because Observe converts to uppercase
+				// and compares "MYMIXEDCASESCHEMA" != "MyMixedCaseSchema"
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+				err: nil,
+			},
+		},
+		"UppercaseSchemaName_ShouldBeFound": {
+			reason: "An uppercase schema name should still work correctly",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) (observed *v1alpha1.DbSchemaObservation, err error) {
+						return &v1alpha1.DbSchemaObservation{
+							SchemaName: "UPPERCASE_SCHEMA",
+							Owner:      "SYSTEM",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.DbSchema{
+					Spec: v1alpha1.DbSchemaSpec{
+						ForProvider: v1alpha1.DbSchemaParameters{
+							SchemaName: "UPPERCASE_SCHEMA",
+						},
+					},
+				},
+			},
+			want: want{
+				// This should pass because uppercase stays uppercase
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+				err: nil,
+			},
+		},
+		"SchemaNameWithSpecialChars_ShouldBeFound": {
+			reason: "A schema name with special characters (like colons) should be found",
+			fields: fields{
+				client: mockClient{
+					MockRead: func(ctx context.Context, parameters *v1alpha1.DbSchemaParameters) (observed *v1alpha1.DbSchemaObservation, err error) {
+						return &v1alpha1.DbSchemaObservation{
+							SchemaName: "sap.hana::my_schema",
+							Owner:      "SYSTEM",
+						}, nil
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.DbSchema{
+					Spec: v1alpha1.DbSchemaSpec{
+						ForProvider: v1alpha1.DbSchemaParameters{
+							SchemaName: "sap.hana::my_schema",
+						},
+					},
+				},
+			},
+			want: want{
+				// Currently this will FAIL because Observe converts to uppercase
+				c: managed.ExternalObservation{
+					ResourceExists:   true,
+					ResourceUpToDate: true,
+				},
+				err: nil,
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := external{client: tc.fields.client, log: tc.fields.log}
+			got, err := e.Observe(tc.args.ctx, tc.args.mg)
+			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+				t.Errorf("\n%s\ne.Observe(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+			if diff := cmp.Diff(tc.want.c, got); diff != "" {
+				t.Errorf("\n%s\ne.Observe(...): -want, +got:\n%s\n", tc.reason, diff)
 			}
 		})
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 )
 
 // UsergroupClient defines the interface for usergroup client operations
@@ -70,7 +71,7 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UsergroupParamete
 // Create creates a usergroup
 func (c Client) Create(ctx context.Context, parameters *v1alpha1.UsergroupParameters) error {
 
-	query := fmt.Sprintf("CREATE USERGROUP %s", parameters.UsergroupName)
+	query := fmt.Sprintf(`CREATE USERGROUP "%s"`, utils.EscapeDoubleQuotes(parameters.UsergroupName))
 
 	if parameters.DisableUserAdmin {
 		query += " DISABLE USER ADMIN"
@@ -83,7 +84,7 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.UsergroupParame
 	if len(parameters.Parameters) > 0 {
 		query += " SET PARAMETER"
 		for key, value := range parameters.Parameters {
-			query += fmt.Sprintf(" '%s' = '%s',", key, value)
+			query += fmt.Sprintf(" '%s' = '%s',", utils.EscapeSingleQuotes(key), utils.EscapeSingleQuotes(value))
 		}
 		query = strings.TrimSuffix(query, ",")
 	}
@@ -102,7 +103,7 @@ func (c Client) Create(ctx context.Context, parameters *v1alpha1.UsergroupParame
 // UpdateDisableUserAdmin updates the disableUserAdmin property of the usergroup
 func (c Client) UpdateDisableUserAdmin(ctx context.Context, parameters *v1alpha1.UsergroupParameters) error {
 
-	query := fmt.Sprintf("ALTER USERGROUP %s", parameters.UsergroupName)
+	query := fmt.Sprintf(`ALTER USERGROUP "%s"`, utils.EscapeDoubleQuotes(parameters.UsergroupName))
 
 	if parameters.DisableUserAdmin {
 		query += " DISABLE USER ADMIN"
@@ -120,7 +121,7 @@ func (c Client) UpdateDisableUserAdmin(ctx context.Context, parameters *v1alpha1
 // UpdateParameters updates the parameters of the usergroup
 func (c Client) UpdateParameters(ctx context.Context, parameters *v1alpha1.UsergroupParameters, changedParameters map[string]string) error {
 
-	query := fmt.Sprintf("ALTER USERGROUP %s", parameters.UsergroupName)
+	query := fmt.Sprintf(`ALTER USERGROUP "%s"`, utils.EscapeDoubleQuotes(parameters.UsergroupName))
 	query += " SET PARAMETER"
 	for key, value := range changedParameters {
 		query += fmt.Sprintf(" '%s' = '%s',", key, value)
@@ -136,7 +137,7 @@ func (c Client) UpdateParameters(ctx context.Context, parameters *v1alpha1.Userg
 // Delete deletes the usergroup
 func (c Client) Delete(ctx context.Context, parameters *v1alpha1.UsergroupParameters) error {
 
-	query := fmt.Sprintf("DROP USERGROUP %s", parameters.UsergroupName)
+	query := fmt.Sprintf(`DROP USERGROUP "%s"`, utils.EscapeDoubleQuotes(parameters.UsergroupName))
 
 	if _, err := c.ExecContext(ctx, query); err != nil {
 		return err

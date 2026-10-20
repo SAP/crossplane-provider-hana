@@ -7,7 +7,7 @@ package v1alpha1
 import (
 	"reflect"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -16,7 +16,6 @@ import (
 type UsergroupParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	// +kubebuilder:validation:Pattern:=`^[^",\$\.'\+\-<>|\[\]\{\}\(\)!%*,/:;=\?@\\^~\x60a-z]+$`
 	UsergroupName string `json:"usergroupName"`
 
 	DisableUserAdmin bool `json:"disableUserAdmin,omitempty"`
@@ -29,6 +28,7 @@ type UsergroupParameters struct {
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// +kubebuilder:validation:Enum:="";password policy
 	EnableParameterSet string `json:"enableParameterSet,omitempty"`
 }
 
@@ -44,14 +44,14 @@ type UsergroupObservation struct {
 
 // A UsergroupSpec defines the desired state of a Usergroup.
 type UsergroupSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       UsergroupParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     UsergroupParameters `json:"forProvider"`
 }
 
 // A UsergroupStatus represents the observed state of a Usergroup.
 type UsergroupStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          UsergroupObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 UsergroupObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

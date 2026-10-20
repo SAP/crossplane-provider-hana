@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
+	"strings"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
@@ -20,14 +22,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
 
 const (
@@ -50,14 +53,14 @@ const (
 )
 
 // Setup adds a controller that reconciles User managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.UserGroupKind)
 
 	log := o.Logger.WithValues("controller", name)
-	t := resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{})
+	t := resource.NewLegacyProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{})
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.UserGroupVersionKind),
-		managed.WithExternalConnecter(&connector{
+		managed.WithExternalConnector(&connector{
 			kube:      mgr.GetClient(),
 			usage:     t,
 			newClient: user.New,
@@ -66,7 +69,8 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 		}),
 		managed.WithLogger(log),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
+		features.ConfigureBetaManagementPolicies(o))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
@@ -117,9 +121,9 @@ func generateReconcileRequestsFromSecret(ctx context.Context, obj client.Object,
 // A connector is expected to produce an ExternalClient when its Connect method
 // is called.
 type connector struct {
-	db        xsql.DB
+	db        xsql.Connector
 	kube      client.Client
-	usage     resource.Tracker
+	usage     resource.LegacyTracker
 	newClient func(xsql.DB, string) user.Client
 	log       logging.Logger
 }
@@ -135,7 +139,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotUser)
 	}
 
-	if err := c.usage.Track(ctx, mg); err != nil {
+	if err := c.usage.Track(ctx, cr); err != nil {
 		return nil, fmt.Errorf(errTrackPCUsage, err)
 	}
 
@@ -156,14 +160,15 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	c.log.Info("Connecting to user resource", "name", cr.Name)
 
-	username := string(secret.Data[xpv1.ResourceCredentialsSecretUserKey])
+	username := string(secret.Data[xpv2.CredentialsSecretUserKey])
 
-	if err := c.db.Connect(ctx, secret.Data); err != nil {
+	conn, err := c.db.Connect(ctx, secret.Data)
+	if err != nil {
 		return nil, fmt.Errorf("cannot connect to HANA DB: %w", err)
 	}
 
 	return &external{
-		client: c.newClient(c.db, username),
+		client: c.newClient(conn, username),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil
@@ -181,6 +186,9 @@ func (c *external) Disconnect(ctx context.Context) error {
 	return nil
 }
 
+// resolution; branches map directly to the spec surface.
+//
+//nolint:gocyclo // Standard Crossplane Observe with per-authentication-mode
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
 	cr, ok := mg.(*v1alpha1.User)
 	if !ok {
@@ -192,12 +200,22 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	parameters := handleDefaults(cr)
 
+	if err := c.resolveJWTProviderNames(ctx, parameters); err != nil {
+		c.log.Info("Error resolving JWT provider references", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, err
+	}
+
 	var err error
 	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
-
 	if err != nil {
 		c.log.Info("Error converting privileges", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, fmt.Errorf("cannot convert privileges: %w", err)
+	}
+
+	parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles)
+	if err != nil {
+		c.log.Info("Error converting roles", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, fmt.Errorf("cannot convert roles: %w", err)
 	}
 
 	password, err := c.getPassword(ctx, cr)
@@ -220,7 +238,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}
 
 	observed, err = privilege.FilterManagedPrivileges(observed, parameters.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
-
 	if err != nil {
 		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, fmt.Errorf(errFilterPrivileges, err)
@@ -228,12 +245,11 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	cr.Status.AtProvider = *observed
 
-	// Set condition based on authentication errors or normal availability
-	if authError != nil {
-		cr.SetConditions(xpv1.Unavailable().WithMessage(authError.Error()))
-	} else {
-		cr.SetConditions(xpv1.Available())
+	if err := c.checkPrivilegeRoleOverlap(cr, parameters.Privileges, observed.Roles); err != nil {
+		return managed.ExternalObservation{}, err
 	}
+
+	setAvailabilityCondition(cr, authError)
 
 	isUpToDate := upToDate(observed, parameters)
 
@@ -248,14 +264,48 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}, nil
 }
 
+// setAvailabilityCondition sets Available or Unavailable condition depending on
+// whether an auth error was encountered during Read.
+func setAvailabilityCondition(cr *v1alpha1.User, authError error) {
+	if authError != nil {
+		cr.SetConditions(xpv2.Unavailable().WithMessage(authError.Error()))
+	} else {
+		cr.SetConditions(xpv2.Available())
+	}
+}
+
+// checkPrivilegeRoleOverlap detects role names mistakenly placed under
+// spec.forProvider.privileges. Returns a non-nil error naming the offending
+// entries when an overlap is found; the caller returns it from Observe so
+// crossplane-runtime records ReconcileError, emits a Warning event, and skips
+// the Update. Setting the condition inline and returning a nil error does not
+// work: the runtime overwrites the Synced condition with ReconcileSuccess on a
+// nil-error, up-to-date Observe (and emits no event), so the manual condition
+// would not survive.
+func (c *external) checkPrivilegeRoleOverlap(cr *v1alpha1.User, desiredPrivileges, observedRoles []string) error {
+	overlap := privilege.FindPrivilegeRoleOverlap(desiredPrivileges, observedRoles)
+	if len(overlap) == 0 {
+		return nil
+	}
+	c.log.Info("Misconfigured privileges detected", "name", cr.Name, "overlap", overlap)
+	return fmt.Errorf(
+		"privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
+}
+
+// dimensions is intentionally readable as a checklist.
+//
+//nolint:gocyclo // Composite drift check; flat && chain across independent
 func upToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
 	return isPasswordUpToDate(observed, desired) &&
 		isX509MappingsUpToDate(observed, desired) &&
+		isJWTMappingsUpToDate(observed, desired) &&
+		isJWTEnabledUpToDate(observed, desired) &&
+		isClientConnectUpToDate(observed, desired) &&
 		observed.Usergroup != nil &&
 		*observed.Usergroup == desired.Usergroup &&
 		observed.IsPasswordLifetimeCheckEnabled != nil &&
 		*observed.IsPasswordLifetimeCheckEnabled == desired.IsPasswordLifetimeCheckEnabled &&
-		utils.MapsEqual(observed.Parameters, desired.Parameters) &&
+		maps.Equal(observed.Parameters, desired.Parameters) &&
 		utils.ArraysEqual(observed.Privileges, desired.Privileges) &&
 		utils.ArraysEqual(observed.Roles, desired.Roles)
 }
@@ -274,6 +324,54 @@ func isX509MappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha
 	return len(observed.X509Providers) == 0
 }
 
+func isJWTMappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
+	desiredCount := len(desired.Authentication.JWTProviders)
+	observedCount := len(observed.JWTProviders)
+	if desiredCount != observedCount {
+		return false
+	}
+	if desiredCount == 0 {
+		return true
+	}
+	// Compare by (resolved provider name, external identity) ignoring order.
+	// `desired` must already have ProviderRef resolved to the HANA-side
+	// JWT_PROVIDER_NAME (done in Observe and buildDesiredParameters via
+	// resolveJWTProviderNames); without that step a spec using providerRef
+	// keeps Name="" and would never match the observed mapping, causing the
+	// controller to DROP+ADD the same identity on every reconcile.
+	in := func(m v1alpha1.JWTUserMapping, s []v1alpha1.JWTUserMapping) bool {
+		for _, x := range s {
+			if x.Name == m.Name && x.ExternalIdentity == m.ExternalIdentity {
+				return true
+			}
+		}
+		return false
+	}
+	for _, d := range desired.Authentication.JWTProviders {
+		if !in(d, observed.JWTProviders) {
+			return false
+		}
+	}
+	return true
+}
+
+func isJWTEnabledUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
+	wantEnabled := len(desired.Authentication.JWTProviders) > 0
+	if observed.IsJWTEnabled == nil {
+		return !wantEnabled
+	}
+	return *observed.IsJWTEnabled == wantEnabled
+}
+
+func isClientConnectUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
+	if observed.IsClientConnectEnabled == nil {
+		// Older HANA builds do not surface this column. Treat as up-to-date
+		// to avoid flapping; the toggle is idempotent if we do issue it.
+		return true
+	}
+	return *observed.IsClientConnectEnabled == desired.EnableClientConnect
+}
+
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
 	cr, ok := mg.(*v1alpha1.User)
 	if !ok {
@@ -282,7 +380,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Creating user resource", "name", cr.Name, "username", cr.Spec.ForProvider.Username)
 
-	cr.SetConditions(xpv1.Creating())
+	cr.SetConditions(xpv2.Creating())
 
 	parameters := &cr.Spec.ForProvider
 
@@ -305,7 +403,13 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, fmt.Errorf(errCreateUser, err)
 	}
 
-	if err := c.client.Create(ctx, parameters, password, providersToAdd); err != nil {
+	jwtProvidersToAdd, err := c.ResolveJWTUserMappings(ctx, parameters.Authentication.JWTProviders, cr.GetNamespace())
+	if err != nil {
+		c.log.Info("Error resolving user JWT providers", "name", cr.Name, "error", err)
+		return managed.ExternalCreation{}, fmt.Errorf(errCreateUser, err)
+	}
+
+	if err := c.client.Create(ctx, parameters, password, providersToAdd, jwtProvidersToAdd); err != nil {
 		c.log.Info("Error creating user", "name", cr.Name, "error", err)
 		return managed.ExternalCreation{}, fmt.Errorf(errCreateUser, err)
 	}
@@ -320,6 +424,9 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	}, nil
 }
 
+// reconciliation, one branch per dimension.
+//
+//nolint:gocyclo // Standard Crossplane Update: sequential attribute
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
 	cr, ok := mg.(*v1alpha1.User)
 	if !ok {
@@ -328,14 +435,9 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating user resource", "name", cr.Name, "username", cr.Spec.ForProvider.Username)
 
-	desired := buildDesiredParameters(cr)
-	observed := buildObservedParameters(cr)
-
-	observed, err := privilege.FilterManagedPrivileges(observed, cr.Spec.ForProvider.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
-
+	desired, observed, err := c.buildUpdateInputs(ctx, cr)
 	if err != nil {
-		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
-		return managed.ExternalUpdate{}, fmt.Errorf(errFilterPrivileges, err)
+		return managed.ExternalUpdate{}, err
 	}
 
 	if err := c.updatePrivileges(ctx, cr, desired, observed); err != nil {
@@ -358,6 +460,18 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, err
 	}
 
+	if err := c.updateJWTAuthentication(ctx, cr, desired, observed); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	if err := c.updateJWTProviders(ctx, cr, desired, observed); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	if err := c.updateClientConnect(ctx, cr, desired, observed); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
 	if err := c.updatePasswordLifetimeCheck(ctx, cr, desired, observed); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
@@ -370,12 +484,27 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	return managed.ExternalUpdate{}, nil
 }
 
+// buildUpdateInputs assembles the desired and observed states needed by every
+// step in Update.
+func (c *external) buildUpdateInputs(ctx context.Context, cr *v1alpha1.User) (*v1alpha1.UserParameters, *v1alpha1.UserObservation, error) {
+	desired, err := c.buildDesiredParameters(ctx, cr)
+	if err != nil {
+		c.log.Info("Error building desired parameters", "name", cr.Name, "error", err)
+		return nil, nil, err
+	}
+
+	observed := c.buildObservedParameters(cr)
+	observed, err = privilege.FilterManagedPrivileges(observed, cr.Spec.ForProvider.Privileges, cr.Status.AtProvider.Privileges, cr.Spec.PrivilegeManagementPolicy, c.client.GetDefaultSchema())
+	if err != nil {
+		c.log.Info("Error filtering managed privileges", "name", cr.Name, "error", err)
+		return nil, nil, fmt.Errorf(errFilterPrivileges, err)
+	}
+	return desired, observed, nil
+}
+
 func (c *external) updatePrivileges(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
 	// Update privileges if needed
-	if !utils.ArraysEqual(observed.Privileges, desired.Privileges) {
-		toGrant := utils.ArrayDiff(desired.Privileges, observed.Privileges)
-		toRevoke := utils.ArrayDiff(observed.Privileges, desired.Privileges)
-
+	if isEqual, toGrant, toRevoke := utils.ArraysBothDiff(desired.Privileges, observed.Privileges); !isEqual {
 		c.log.Info("Updating user privileges",
 			"name", cr.Name,
 			"username", desired.Username,
@@ -396,10 +525,7 @@ func (c *external) updatePrivileges(ctx context.Context, cr *v1alpha1.User, desi
 
 func (c *external) updateRoles(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
 	// Update roles if needed
-	if !utils.ArraysEqual(observed.Roles, desired.Roles) {
-		toGrant := utils.ArrayDiff(desired.Roles, observed.Roles)
-		toRevoke := utils.ArrayDiff(observed.Roles, desired.Roles)
-
+	if isEqual, toGrant, toRevoke := utils.ArraysBothDiff(desired.Roles, observed.Roles); !isEqual {
 		c.log.Info("Updating user roles",
 			"name", cr.Name,
 			"username", desired.Username,
@@ -421,10 +547,7 @@ func (c *external) updateRoles(ctx context.Context, cr *v1alpha1.User, desired *
 
 func (c *external) updateParameters(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
 	// Update parameters if needed
-	if !utils.MapsEqual(observed.Parameters, desired.Parameters) {
-		parametersToSet := utils.MapDiff(desired.Parameters, observed.Parameters)
-		parametersToClear := utils.MapDiff(observed.Parameters, desired.Parameters)
-
+	if isEqual, parametersToSet, parametersToClear := utils.MapsBothDiff(desired.Parameters, observed.Parameters); !isEqual {
 		c.log.Info("Updating user parameters",
 			"name", cr.Name,
 			"username", desired.Username,
@@ -466,19 +589,20 @@ func (c *external) updateX509Providers(ctx context.Context, cr *v1alpha1.User, d
 	desiredProviders := desired.Authentication.X509Providers
 	observedProviders := observed.X509Providers
 
-	providersToAdd, err := c.ResolveUserMappings(ctx, utils.ArrayDiff(desiredProviders, observedProviders), cr.GetNamespace())
+	isEqual, providerMappingsToAdd, providerMappingsToRemove := utils.ArraysBothDiff(desiredProviders, observedProviders)
+	providersToAdd, err := c.ResolveUserMappings(ctx, providerMappingsToAdd, cr.GetNamespace())
 	if err != nil {
 		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
 		return fmt.Errorf(errUpdateUser, err)
 	}
 
-	providersToRemove, err := c.ResolveUserMappings(ctx, utils.ArrayDiff(observedProviders, desiredProviders), cr.GetNamespace())
+	providersToRemove, err := c.ResolveUserMappings(ctx, providerMappingsToRemove, cr.GetNamespace())
 	if err != nil {
 		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
 		return fmt.Errorf(errUpdateUser, err)
 	}
 
-	if len(providersToAdd)+len(providersToRemove) > 0 {
+	if !isEqual {
 		c.log.Info("Updating user X.509 providers",
 			"name", cr.Name,
 			"username", desired.Username,
@@ -540,13 +664,72 @@ func (c *external) updatePassword(ctx context.Context, cr *v1alpha1.User, desire
 	return nil
 }
 
-func buildDesiredParameters(cr *v1alpha1.User) *v1alpha1.UserParameters {
-	parameters := handleDefaults(cr)
-	return parameters
+func (c *external) transformParameters(parameters map[string]string) map[string]string {
+	// Validate and format parameters
+	stringKeys := []string{
+		"CLIENT",
+		"LOCALE",
+		"TIME ZONE",
+		"EMAIL ADDRESS",
+	}
+	integerKeys := []string{
+		"STATEMENT MEMORY LIMIT",
+		"STATEMENT THREAD LIMIT",
+	}
+
+	filteredParameters := make(map[string]string, len(parameters))
+
+	for key, value := range parameters {
+		upperKey := strings.ToUpper(key)
+		isKnownIntegerKey := slices.Contains(integerKeys, upperKey)
+		isKnownStringKey := slices.Contains(stringKeys, upperKey)
+		if !isKnownIntegerKey && !isKnownStringKey {
+			c.log.Debug("Unknown parameter key, no specific validation applied", "key", upperKey)
+		}
+		if isKnownIntegerKey {
+			// Validate integer
+			if _, err := fmt.Sscanf(value, "%d", new(int)); err != nil {
+				c.log.Debug("Invalid integer parameter", "key", upperKey, "value", value)
+				continue
+			}
+		}
+		filteredParameters[upperKey] = value
+	}
+	return filteredParameters
 }
 
-func buildObservedParameters(cr *v1alpha1.User) *v1alpha1.UserObservation {
-	return cr.Status.AtProvider.DeepCopy()
+func (c *external) buildDesiredParameters(ctx context.Context, cr *v1alpha1.User) (*v1alpha1.UserParameters, error) {
+	parameters := handleDefaults(cr)
+
+	if err := c.resolveJWTProviderNames(ctx, parameters); err != nil {
+		return nil, err
+	}
+
+	// Normalize roles and privileges to the same canonical (quoted) form Observe()
+	// uses to populate cr.Status.AtProvider. Without this, updateRoles/updatePrivileges
+	// in Update() would diff unquoted desired against quoted observed and emit
+	// spurious GRANT/REVOKE statements (notably GRANT PUBLIC, which HANA rejects
+	// with SQL Error 258 and which then aborts every subsequent step in Update,
+	// including updatePassword). Mirrors the calls in Observe() at lines 201 and 208.
+	var err error
+	parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema())
+	if err != nil {
+		return nil, fmt.Errorf("cannot convert privileges: %w", err)
+	}
+	parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles)
+	if err != nil {
+		return nil, fmt.Errorf("cannot convert roles: %w", err)
+	}
+
+	parameters.Parameters = c.transformParameters(parameters.Parameters)
+	return parameters, nil
+}
+
+func (c *external) buildObservedParameters(cr *v1alpha1.User) *v1alpha1.UserObservation {
+	observed := cr.Status.AtProvider.DeepCopy()
+
+	observed.Parameters = c.transformParameters(observed.Parameters)
+	return observed
 }
 
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
@@ -561,10 +744,9 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 		Username: cr.Spec.ForProvider.Username,
 	}
 
-	cr.SetConditions(xpv1.Deleting())
+	cr.SetConditions(xpv2.Deleting())
 
 	err := c.client.Delete(ctx, parameters)
-
 	if err != nil {
 		c.log.Info("Error deleting user", "name", cr.Name, "error", err)
 		return managed.ExternalDelete{}, fmt.Errorf(errDropUser, err)
@@ -667,4 +849,144 @@ func (c *external) ResolveUserMappings(ctx context.Context, mappings []v1alpha1.
 		})
 	}
 	return resolved, nil
+}
+
+// ResolveJWTUserMappings turns spec-level JWTUserMapping entries (which may
+// use a Crossplane providerRef) into name+identity pairs usable in DDL.
+func (c *external) ResolveJWTUserMappings(ctx context.Context, mappings []v1alpha1.JWTUserMapping, namespace string) ([]user.ResolvedJWTUserMapping, error) {
+	resolved := make([]user.ResolvedJWTUserMapping, 0, len(mappings))
+	for _, mapping := range mappings {
+		name, err := c.resolveJWTProviderName(ctx, mapping)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, user.ResolvedJWTUserMapping{
+			Name:             name,
+			ExternalIdentity: mapping.ExternalIdentity,
+		})
+	}
+	return resolved, nil
+}
+
+// resolveJWTProviderName resolves a single JWTUserMapping's provider reference
+// to the HANA-side JWT_PROVIDER_NAME. Use the explicit Name when set;
+// otherwise fetch the referenced JWTProvider object and read its
+// spec.forProvider.name. JWTProvider is cluster-scoped, so no namespace is
+// needed to look it up.
+func (c *external) resolveJWTProviderName(ctx context.Context, mapping v1alpha1.JWTUserMapping) (string, error) {
+	switch {
+	case mapping.Name != "":
+		return mapping.Name, nil
+	case mapping.ProviderRef != nil:
+		obj := &v1alpha1.JWTProvider{}
+		if err := c.kube.Get(ctx, types.NamespacedName{Name: mapping.ProviderRef.Name}, obj); err != nil {
+			return "", fmt.Errorf("cannot resolve JWT provider reference: %w", err)
+		}
+		return obj.Spec.ForProvider.Name, nil
+	default:
+		return "", errors.New("cannot resolve JWT provider reference: no name or providerRef specified")
+	}
+}
+
+// resolveJWTProviderNames mutates params.Authentication.JWTProviders so each
+// entry's Name carries the HANA-side JWT_PROVIDER_NAME. Required before any
+// comparison against observed.JWTProviders (which always carries the resolved
+// name from SYS.JWT_USER_MAPPINGS); see isJWTMappingsUpToDate.
+func (c *external) resolveJWTProviderNames(ctx context.Context, params *v1alpha1.UserParameters) error {
+	for i := range params.Authentication.JWTProviders {
+		name, err := c.resolveJWTProviderName(ctx, params.Authentication.JWTProviders[i])
+		if err != nil {
+			return err
+		}
+		params.Authentication.JWTProviders[i].Name = name
+	}
+	return nil
+}
+
+func (c *external) updateJWTAuthentication(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
+	want := len(desired.Authentication.JWTProviders) > 0
+	current := observed.IsJWTEnabled != nil && *observed.IsJWTEnabled
+	if want == current {
+		return nil
+	}
+	c.log.Info("Toggling JWT authentication", "name", cr.Name, "username", desired.Username, "enable", want)
+	if err := c.client.ToggleJWTAuthentication(ctx, desired.Username, want); err != nil {
+		c.log.Info("Error toggling JWT authentication", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+	v := want
+	cr.Status.AtProvider.IsJWTEnabled = &v
+	return nil
+}
+
+// SYS.JWT_USER_MAPPINGS DDL and stay flat by design.
+//
+//nolint:gocyclo // Add/remove diffing over JWT mappings; branches mirror the
+func (c *external) updateJWTProviders(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
+	if isJWTMappingsUpToDate(observed, desired) {
+		return nil
+	}
+
+	in := func(m v1alpha1.JWTUserMapping, s []v1alpha1.JWTUserMapping) bool {
+		for _, x := range s {
+			if x.Name == m.Name && x.ExternalIdentity == m.ExternalIdentity {
+				return true
+			}
+		}
+		return false
+	}
+	var toAdd, toRemove []v1alpha1.JWTUserMapping
+	for _, d := range desired.Authentication.JWTProviders {
+		if !in(d, observed.JWTProviders) {
+			toAdd = append(toAdd, d)
+		}
+	}
+	for _, o := range observed.JWTProviders {
+		if !in(o, desired.Authentication.JWTProviders) {
+			toRemove = append(toRemove, o)
+		}
+	}
+
+	addResolved, err := c.ResolveJWTUserMappings(ctx, toAdd, cr.GetNamespace())
+	if err != nil {
+		return fmt.Errorf(errUpdateUser, err)
+	}
+	removeResolved, err := c.ResolveJWTUserMappings(ctx, toRemove, cr.GetNamespace())
+	if err != nil {
+		return fmt.Errorf(errUpdateUser, err)
+	}
+
+	c.log.Info("Updating JWT identity mappings",
+		"name", cr.Name,
+		"username", desired.Username,
+		"toAdd", addResolved,
+		"toRemove", removeResolved)
+	if err := c.client.UpdateJWTProviders(ctx, desired.Username, addResolved, removeResolved); err != nil {
+		c.log.Info("Error updating JWT identity mappings", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+	cr.Status.AtProvider.JWTProviders = desired.Authentication.JWTProviders
+	return nil
+}
+
+func (c *external) updateClientConnect(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
+	if observed.IsClientConnectEnabled == nil {
+		// HANA build without IS_CLIENT_CONNECT_ENABLED column. Best-effort
+		// noop to avoid issuing an ALTER we cannot verify.
+		return nil
+	}
+	if *observed.IsClientConnectEnabled == desired.EnableClientConnect {
+		return nil
+	}
+	c.log.Info("Toggling CLIENT CONNECT",
+		"name", cr.Name,
+		"username", desired.Username,
+		"enable", desired.EnableClientConnect)
+	if err := c.client.ToggleClientConnect(ctx, desired.Username, desired.EnableClientConnect); err != nil {
+		c.log.Info("Error toggling CLIENT CONNECT", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+	v := desired.EnableClientConnect
+	cr.Status.AtProvider.IsClientConnectEnabled = &v
+	return nil
 }

@@ -6,14 +6,14 @@ package role
 
 import (
 	"context"
-	"reflect"
-	"strings"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+	"github.com/SAP/crossplane-provider-hana/internal/utils"
 
+	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/role"
 
 	"errors"
@@ -23,14 +23,15 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
+	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
 )
 
 const (
@@ -47,14 +48,14 @@ const (
 )
 
 // Setup adds a controller that reconciles Role managed resources.
-func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
+func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.RoleGroupKind)
 
 	log := o.Logger.WithValues("controller", name)
-	t := resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{})
+	t := resource.NewLegacyProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{})
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.RoleGroupVersionKind),
-		managed.WithExternalConnecter(&connector{
+		managed.WithExternalConnector(&connector{
 			kube:      mgr.GetClient(),
 			usage:     t,
 			newClient: role.New,
@@ -63,7 +64,8 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 		}),
 		managed.WithLogger(log),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
+		features.ConfigureBetaManagementPolicies(o))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
@@ -75,10 +77,10 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.DB) error {
 // is called.
 type connector struct {
 	kube      client.Client
-	usage     resource.Tracker
+	usage     resource.LegacyTracker
 	newClient func(db xsql.DB, username string) role.Client
 	log       logging.Logger
-	db        xsql.DB
+	db        xsql.Connector
 }
 
 // Connect typically produces an ExternalClient by:
@@ -92,7 +94,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotRole)
 	}
 
-	if err := c.usage.Track(ctx, mg); err != nil {
+	if err := c.usage.Track(ctx, cr); err != nil {
 		return nil, fmt.Errorf(errTrackPCUsage, err)
 	}
 
@@ -113,14 +115,15 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	c.log.Info("Connecting to role resource", "name", cr.Name)
 
-	username := string(s.Data[xpv1.ResourceCredentialsSecretUserKey])
+	username := string(s.Data[xpv2.CredentialsSecretUserKey])
 
-	if err := c.db.Connect(ctx, s.Data); err != nil {
+	conn, err := c.db.Connect(ctx, s.Data)
+	if err != nil {
 		return nil, fmt.Errorf("cannot connect to HANA DB: %w", err)
 	}
 
 	return &external{
-		client: c.newClient(c.db, username),
+		client: c.newClient(conn, username),
 		kube:   c.kube,
 		log:    c.log,
 	}, nil
@@ -146,11 +149,15 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	c.log.Info("Observing role resource", "name", cr.Name)
 
-	parameters := &v1alpha1.RoleParameters{
-		RoleName:   strings.ToUpper(cr.Spec.ForProvider.RoleName),
-		Schema:     strings.ToUpper(cr.Spec.ForProvider.Schema),
-		Privileges: arrayToUpper(cr.Spec.ForProvider.Privileges),
-		LdapGroups: arrayToUpper(cr.Spec.ForProvider.LdapGroups),
+	parameters := buildDesiredParameters(cr)
+
+	// Normalize the desired privileges/roles to the same canonical form the
+	// catalog read returns, so upToDate compares like-for-like (see
+	// normalizeDesired). Without this an unquoted spec value never matches the
+	// quoted observed value and the controller re-grants every reconcile.
+	if err := c.normalizeDesired(parameters); err != nil {
+		c.log.Info("Error normalizing desired role parameters", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, fmt.Errorf(errSelectRole, err)
 	}
 
 	observed, err := c.client.Read(ctx, parameters)
@@ -168,9 +175,26 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.RoleName = observed.RoleName
 	cr.Status.AtProvider.Schema = observed.Schema
 	cr.Status.AtProvider.Privileges = observed.Privileges
+	cr.Status.AtProvider.Roles = observed.Roles
 	cr.Status.AtProvider.LdapGroups = observed.LdapGroups
+	cr.Status.AtProvider.Rolegroup = observed.Rolegroup
 
-	cr.SetConditions(xpv1.Available())
+	// A role name mistakenly placed under spec.forProvider.privileges can never
+	// reconcile: it is granted via GRANT ROLE and read back from GRANTED_ROLES,
+	// so it never appears in the observed privileges and the controller re-grants
+	// it every reconcile (grant thrash). Return an error rather than setting the
+	// condition inline and returning nil: crossplane-runtime overwrites the Synced
+	// condition with ReconcileSuccess on a nil-error, up-to-date Observe (and emits
+	// no event), so a manually-set ReconcileError would not survive. Returning the
+	// error makes the runtime record ReconcileError, emit a Warning event, and skip
+	// the Update, surfacing the misconfiguration to the operator.
+	if overlap := privilege.FindPrivilegeRoleOverlap(parameters.Privileges, observed.Roles); len(overlap) > 0 {
+		c.log.Info("Misconfigured privileges detected", "name", cr.Name, "overlap", overlap)
+		return managed.ExternalObservation{}, fmt.Errorf(
+			"privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
+	}
+
+	cr.SetConditions(xpv2.Available())
 
 	isUpToDate := upToDate(observed, parameters)
 	c.log.Info("Observed role resource",
@@ -185,40 +209,19 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 }
 
 func upToDate(observed *v1alpha1.RoleObservation, desired *v1alpha1.RoleParameters) bool {
-	if !equalArrays(observed.Privileges, desired.Privileges) {
+	if !utils.ArraysEqual(observed.Privileges, desired.Privileges) {
 		return false
 	}
-	if !equalArrays(observed.LdapGroups, desired.LdapGroups) {
+	if !utils.ArraysEqual(observed.Roles, desired.Roles) {
+		return false
+	}
+	if !utils.ArraysEqual(observed.LdapGroups, desired.LdapGroups) {
+		return false
+	}
+	if observed.Rolegroup != desired.Rolegroup {
 		return false
 	}
 	return true
-}
-
-func equalArrays(arr1, arr2 []string) bool {
-	if len(arr1) != len(arr2) {
-		return false
-	}
-
-	set1 := arrayToSet(arr1)
-	set2 := arrayToSet(arr2)
-
-	return reflect.DeepEqual(set1, set2)
-}
-
-func arrayToSet(arr []string) map[string]bool {
-	set := make(map[string]bool)
-	for _, item := range arr {
-		set[item] = true
-	}
-	return set
-}
-
-func arrayToUpper(arr []string) []string {
-	upperArr := make([]string, len(arr))
-	for i, item := range arr {
-		upperArr[i] = strings.ToUpper(item)
-	}
-	return upperArr
 }
 
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
@@ -229,20 +232,15 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Creating role resource", "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
 
-	cr.SetConditions(xpv1.Creating())
+	cr.SetConditions(xpv2.Creating())
 
-	parameters := &v1alpha1.RoleParameters{
-		RoleName:         cr.Spec.ForProvider.RoleName,
-		Schema:           cr.Spec.ForProvider.Schema,
-		Privileges:       cr.Spec.ForProvider.Privileges,
-		LdapGroups:       cr.Spec.ForProvider.LdapGroups,
-		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
-	}
+	parameters := buildDesiredParameters(cr)
 
 	c.log.Info("Creating role with parameters",
 		"roleName", parameters.RoleName,
 		"schema", parameters.Schema,
 		"privileges", parameters.Privileges,
+		"roles", parameters.Roles,
 		"ldapGroups", parameters.LdapGroups,
 		"noGrantToCreator", parameters.NoGrantToCreator)
 
@@ -253,11 +251,10 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, fmt.Errorf(errCreateRole, err)
 	}
 
-	cr.Status.AtProvider.RoleName = parameters.RoleName
-	cr.Status.AtProvider.Schema = parameters.Schema
-	cr.Status.AtProvider.Privileges = parameters.Privileges
-	cr.Status.AtProvider.LdapGroups = parameters.LdapGroups
-
+	// Note: status.atProvider is intentionally NOT written here. crossplane-runtime
+	// calls Observe immediately after a successful Create, and Observe populates every
+	// atProvider field from the real DB read. Stamping desired (spec) values here would
+	// make status reflect intent rather than observed state, masking real drift.
 	c.log.Info("Successfully created role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalCreation{
 		ConnectionDetails: managed.ConnectionDetails{},
@@ -272,77 +269,63 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Updating role resource", "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
 
-	parameters := &v1alpha1.RoleParameters{
-		RoleName:   strings.ToUpper(cr.Spec.ForProvider.RoleName),
-		Schema:     strings.ToUpper(cr.Spec.ForProvider.Schema),
-		Privileges: arrayToUpper(cr.Spec.ForProvider.Privileges),
-		LdapGroups: arrayToUpper(cr.Spec.ForProvider.LdapGroups),
+	parameters := buildDesiredParameters(cr)
+
+	// Same normalization as Observe, so the desired side matches the observed
+	// (catalog-canonical) values stored in status.atProvider and the grant/revoke
+	// diffs are computed like-for-like.
+	if err := c.normalizeDesired(parameters); err != nil {
+		c.log.Info("Error normalizing desired role parameters", "name", cr.Name, "error", err)
+		return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
 	}
 
 	observedLdapGroups := cr.Status.AtProvider.LdapGroups
-	desiredLdapGroups := parameters.LdapGroups
-
 	observedPrivileges := cr.Status.AtProvider.Privileges
-	desiredPrivileges := parameters.Privileges
+	observedRoles := cr.Status.AtProvider.Roles
 
-	if !equalArrays(observedLdapGroups, desiredLdapGroups) {
-		groupsToAdd := stringArrayDifference(desiredLdapGroups, observedLdapGroups)
-		groupsToRemove := stringArrayDifference(observedLdapGroups, desiredLdapGroups)
-
-		c.log.Info("Updating role LDAP groups",
-			"name", cr.Name,
-			"roleName", parameters.RoleName,
-			"groupsToAdd", groupsToAdd,
-			"groupsToRemove", groupsToRemove)
-
-		err := c.client.UpdateLdapGroups(ctx, parameters, groupsToAdd, groupsToRemove)
-		if err != nil {
-			c.log.Info("Error updating role LDAP groups", "name", cr.Name, "error", err)
-			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
-		}
-		cr.Status.AtProvider.LdapGroups = parameters.LdapGroups
-		c.log.Info("Updated role LDAP groups", "name", cr.Name, "roleName", parameters.RoleName)
+	if err := c.applyArrayUpdate(cr, "LDAP groups", parameters.LdapGroups, observedLdapGroups,
+		func(toAdd, toRemove []string) error {
+			return c.client.UpdateLdapGroups(ctx, parameters, toAdd, toRemove)
+		}); err != nil {
+		return managed.ExternalUpdate{}, err
 	}
 
-	if !equalArrays(observedPrivileges, desiredPrivileges) {
-		privilegesToAdd := stringArrayDifference(desiredPrivileges, observedPrivileges)
-		privilegesToRemove := stringArrayDifference(observedPrivileges, desiredPrivileges)
+	if err := c.applyArrayUpdate(cr, "privileges", parameters.Privileges, observedPrivileges,
+		func(toAdd, toRemove []string) error {
+			return c.client.UpdatePrivileges(ctx, parameters, toAdd, toRemove)
+		}); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
 
-		c.log.Info("Updating role privileges",
+	// Roles granted TO this role (e.g. HDI container roles like
+	// "CONTAINER"."ns::reader") live in the GRANTED_ROLES catalog and are
+	// managed via GRANT ROLE / REVOKE ROLE. They are strictly separate from
+	// direct privileges (GRANTED_PRIVILEGES) — a role granted to a role
+	// never appears in the privileges list — so a dedicated diff is required.
+	if err := c.applyArrayUpdate(cr, "roles", parameters.Roles, observedRoles,
+		func(toAdd, toRemove []string) error {
+			return c.client.UpdateRoles(ctx, parameters, toAdd, toRemove)
+		}); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	if cr.Status.AtProvider.Rolegroup != parameters.Rolegroup {
+		c.log.Info("Updating role rolegroup",
 			"name", cr.Name,
 			"roleName", parameters.RoleName,
-			"privilegesToAdd", privilegesToAdd,
-			"privilegesToRemove", privilegesToRemove)
+			"from", cr.Status.AtProvider.Rolegroup,
+			"to", parameters.Rolegroup)
 
-		err := c.client.UpdatePrivileges(ctx, parameters, privilegesToAdd, privilegesToRemove)
+		err := c.client.UpdateRolegroup(ctx, parameters)
 		if err != nil {
-			c.log.Info("Error updating role privileges", "name", cr.Name, "error", err)
+			c.log.Info("Error updating role rolegroup", "name", cr.Name, "error", err)
 			return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
 		}
-		cr.Status.AtProvider.Privileges = parameters.Privileges
-		c.log.Info("Updated role privileges", "name", cr.Name, "roleName", parameters.RoleName)
+		c.log.Info("Updated role rolegroup", "name", cr.Name, "roleName", parameters.RoleName)
 	}
 
 	c.log.Info("Successfully updated role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalUpdate{}, nil
-}
-
-func stringArrayDifference(arr1, arr2 []string) []string {
-	set := make(map[string]bool)
-
-	for _, item := range arr2 {
-		set[item] = true
-	}
-
-	var difference []string
-
-	for _, item := range arr1 {
-		if _, found := set[item]; !found {
-			difference = append(difference, item)
-		}
-	}
-
-	return difference
 }
 
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
@@ -353,20 +336,75 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	c.log.Info("Deleting role resource", "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
 
-	parameters := &v1alpha1.RoleParameters{
-		RoleName: cr.Spec.ForProvider.RoleName,
-		Schema:   cr.Spec.ForProvider.Schema,
-	}
+	parameters := buildDesiredParameters(cr)
 
-	cr.SetConditions(xpv1.Deleting())
+	cr.SetConditions(xpv2.Deleting())
 
 	err := c.client.Delete(ctx, parameters)
 
 	if err != nil {
-		c.log.Info("Error deleting role", "name", cr.Name, "error", err)
+		c.log.Debug("Error deleting role", "name", cr.Name, "error", err)
 		return managed.ExternalDelete{}, fmt.Errorf(errDropRole, err)
 	}
 
 	c.log.Info("Successfully deleted role resource", "name", cr.Name, "roleName", parameters.RoleName)
 	return managed.ExternalDelete{}, err
+}
+
+// applyArrayUpdate diffs a desired vs observed string slice and, when they
+// differ, invokes apply with the entries to add and remove. It centralizes the
+// diff/log/error-wrap boilerplate shared by the LDAP-group, privilege and role
+// updates so Update stays flat. A no-op (already equal) returns nil without
+// calling apply.
+func (c *external) applyArrayUpdate(cr *v1alpha1.Role, kind string, desired, observed []string, apply func(toAdd, toRemove []string) error) error {
+	isEqual, toAdd, toRemove := utils.ArraysBothDiff(desired, observed)
+	if isEqual {
+		return nil
+	}
+	c.log.Info("Updating role "+kind,
+		"name", cr.Name,
+		"roleName", cr.Spec.ForProvider.RoleName,
+		"toAdd", toAdd,
+		"toRemove", toRemove)
+	if err := apply(toAdd, toRemove); err != nil {
+		c.log.Info("Error updating role "+kind, "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateRole, err)
+	}
+	c.log.Info("Updated role "+kind, "name", cr.Name, "roleName", cr.Spec.ForProvider.RoleName)
+	return nil
+}
+
+// normalizeDesired rewrites the desired privileges/roles into the same
+// canonical, quoted form the catalog read returns, so upToDate and the Update
+// diff compare like-for-like. QueryRoles/QueryPrivileges emit quoted
+// identifiers, whereas a user writes the spec unquoted — without this they
+// never compare equal and the controller re-grants every reconcile (grant
+// thrash). Mirrors the user controller; only the in-memory comparison copy is
+// changed (spec and status are untouched).
+func (c *external) normalizeDesired(parameters *v1alpha1.RoleParameters) error {
+	var err error
+	if parameters.Privileges, err = privilege.FormatPrivilegeStrings(parameters.Privileges, c.client.GetDefaultSchema()); err != nil {
+		return fmt.Errorf("cannot convert privileges: %w", err)
+	}
+	if parameters.Roles, err = privilege.FormatRoleStrings(parameters.Roles); err != nil {
+		return fmt.Errorf("cannot convert roles: %w", err)
+	}
+	return nil
+}
+
+// buildDesiredParameters constructs the desired role parameters from the CR spec.
+// Note: We preserve the original case for all fields because:
+// - RoleName/Schema: HANA uses double-quoted identifiers which preserve case
+// - Privileges: May contain schema/object names that are case-sensitive
+// - LdapGroups: LDAP Distinguished Names are case-sensitive
+func buildDesiredParameters(cr *v1alpha1.Role) *v1alpha1.RoleParameters {
+	return &v1alpha1.RoleParameters{
+		RoleName:         cr.Spec.ForProvider.RoleName,
+		Schema:           cr.Spec.ForProvider.Schema,
+		Privileges:       cr.Spec.ForProvider.Privileges,
+		Roles:            cr.Spec.ForProvider.Roles,
+		LdapGroups:       cr.Spec.ForProvider.LdapGroups,
+		NoGrantToCreator: cr.Spec.ForProvider.NoGrantToCreator,
+		Rolegroup:        cr.Spec.ForProvider.Rolegroup,
+	}
 }

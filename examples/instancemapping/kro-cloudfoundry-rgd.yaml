@@ -1,0 +1,87 @@
+# KRO ResourceGraphDefinition for Cloud Foundry HANA Instance Mapping
+#
+# This example shows how to use KRO (Kubernetes Resource Orchestrator) to compose
+# CF Provider Organization/Space CRs with InstanceMapping, automatically extracting
+# GUIDs from the CF Provider resources.
+#
+# Prerequisites:
+# 1. KRO installed in your cluster (https://kro.run)
+# 2. CloudFoundry Crossplane Provider installed
+# 3. CF Provider Organization and Space CRs already created
+# 4. HANA Cloud Admin API credentials secret
+#
+# Note: The status field paths (status.atProvider.guid) depend on the CloudFoundry
+# Crossplane Provider's CRD schema. Adjust the CEL expressions accordingly.
+---
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: cf-hana-instance-mapping
+spec:
+  schema:
+    apiVersion: hana.example.com/v1alpha1
+    kind: CfHanaMapping
+    spec:
+      # User-friendly inputs
+      organizationRef: string      # Name of CF Provider Organization CR
+      spaceRef: string             # Name of CF Provider Space CR
+      serviceInstanceID: string
+      adminCredentialsSecretRef:
+        name: string
+        namespace: string
+        key: string
+      isDefault: boolean | default=false
+
+  # Reference existing CF Provider resources (created independently)
+  references:
+    - id: org
+      resource:
+        apiVersion: cloudfoundry.crossplane.io/v1alpha1
+        kind: Organization
+        name: ${schema.spec.organizationRef}
+
+    - id: space
+      resource:
+        apiVersion: cloudfoundry.crossplane.io/v1alpha1
+        kind: Space
+        name: ${schema.spec.spaceRef}
+
+  resources:
+    # Create InstanceMapping with GUIDs from referenced CF Provider resources
+    - id: instanceMapping
+      includeWhen:
+        - ${org.status.atProvider.guid != ""}
+        - ${space.status.atProvider.guid != ""}
+      template:
+        apiVersion: inventory.hana.orchestrate.cloud.sap/v1alpha1
+        kind: InstanceMapping
+        metadata:
+          name: ${schema.metadata.name}
+        spec:
+          forProvider:
+            serviceInstanceID: ${schema.spec.serviceInstanceID}
+            platform: "cloudfoundry"
+            primaryID: ${org.status.atProvider.guid}
+            secondaryID: ${space.status.atProvider.guid}
+            isDefault: ${schema.spec.isDefault}
+            adminCredentialsSecretRef:
+              name: ${schema.spec.adminCredentialsSecretRef.name}
+              namespace: ${schema.spec.adminCredentialsSecretRef.namespace}
+              key: ${schema.spec.adminCredentialsSecretRef.key}
+---
+# Example usage: Create a CfHanaMapping custom resource
+#
+# This creates an InstanceMapping that automatically extracts the org and space
+# GUIDs from the referenced CF Provider resources.
+apiVersion: hana.example.com/v1alpha1
+kind: CfHanaMapping
+metadata:
+  name: my-cf-hana-mapping
+spec:
+  organizationRef: my-cf-org        # Existing CF Provider Organization CR
+  spaceRef: my-cf-space             # Existing CF Provider Space CR
+  serviceInstanceID: "abc123-hana-instance-guid"
+  adminCredentialsSecretRef:
+    name: hana-admin-creds
+    namespace: crossplane-system
+    key: credentials
