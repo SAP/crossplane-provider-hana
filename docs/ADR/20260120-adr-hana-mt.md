@@ -305,8 +305,6 @@ This section formally defines the schema for each Custom Resource Type.
 - Used in subsequent PUT/DELETE requests via `If-Match` header for optimistic concurrency
 - Stored in status to ensure operator has latest version before mutation
 
-# TODO Create TAM Diagrams for etag handling
-
 **Conditions Pattern:**
 - All types use `.status.conditions[]` array for detailed status information
 - Supports multiple condition types tracking different aspects (Ready, OperationInProgress, etc.)
