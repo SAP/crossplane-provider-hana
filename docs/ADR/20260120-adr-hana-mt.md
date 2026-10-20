@@ -465,7 +465,7 @@ Synchronous reconciliation with async operation tracking via polling
 
 - **Status Tracking:**
   - Add field: `deletionTimestamp` (when soft deletion initiated)
-  - Add field: `recoveryDeadline` (14 days after deletion)
+  - Set `status.purgeTimestamp` (14 days after deletion)
   - Condition: `type: "Deleting"`, tracks deletion status
 
 **Deletion Failure Handling:**
