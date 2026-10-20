@@ -849,4 +849,4 @@ status:
 
 ### GitHub Issue
 
-- [GitHub Issue/Feature](https://github.tools.sap/cloud-orchestration/crossplane-provider-hana/issues/200)
+- [GitHub Issue/Feature](https://github.com/SAP/crossplane-provider-hana/issues/82#issuecomment-6291138133)
