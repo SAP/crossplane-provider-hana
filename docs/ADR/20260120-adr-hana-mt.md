@@ -845,7 +845,6 @@ status:
 ## References
 
 - [Tenant Management Service API in API Hub](https://api.sap.com/api/TenantAPI/overview)
-- [Feature Scope of SAP HANA Crossplane Provider](https://github.tools.sap/cloud-orchestration/crossplane-provider-hana/blob/35a912f572429969028d5338fee343fcae5d86ec/docs/ADR/20251128-adr-provider-feature-scope.md#context-and-problem-statement)
 
 ### GitHub Issue
 
