@@ -793,7 +793,7 @@ metadata:
     environment: temporary
     status: deleting
 spec:
-  guid: ""
+  guid: "48aa13f7-e00a-4f23-8b1a-7e3251148f52"
   apiCredentialsRef:
     name: hana-api-prod
   labels:
