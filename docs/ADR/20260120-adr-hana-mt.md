@@ -83,7 +83,7 @@ HanaTenant (aggregate root, parent)
   - Status: `phase` (Creating/Ready/Updating/Deleting), `containerRefs[]`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `environment: prod`, `team: platform`)
-    - `spec.labels` - Labels sent to HANA-MT API, stored in HANA system, used for API filtering and organization
+    - `spec.labels` - Labels sent to HANA-MT API, stored in HANA system, used for API filtering and organization. (HAHA API accepts an array of string. User specify this as a map in CR, the controller converts to array of strings before sending it to the API)
   - **GUID behavior:**
     - If `guid` IS NOT set: Operator creates a new tenant via HANA-MT API and uses resulting GUID from the API
     - If `guid` IS set: Operator assumes a tenant with given GUID exists, fetches current state from API (adoption/migration scenario)
@@ -97,7 +97,7 @@ HanaTenant (aggregate root, parent)
   - Status: `phase` (Creating/Ready/Updating/Deleting), `containerId`, `credentials[]`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `tenant: production-tenant`, `tier: database`)
-    - `spec.labels` - Labels sent to HANA-MT API, stored in HANA system, used for container filtering
+    - `spec.labels` - Labels sent to HANA-MT API, stored in HANA system, used for container filtering (HAHA API accepts an array of string. User specify this as a map in CR, the controller converts to array of strings before sending it to the API)
   - **GUID behavior:**
     - If `guid` IS NOT set: Operator creates a new container via HANA-MT API and uses resulting GUID from the API
     - If `guid` IS set: Operator assumes that a Container with given GUID exists in referenced Tenant, fetches current state from API (adoption/migration scenario)
