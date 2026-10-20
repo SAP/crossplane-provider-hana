@@ -33,7 +33,7 @@ The SAP Crossplane Provider community requires a HANA Operator that enables Kube
 
 #### Caching with ETag
 
-By sending an ETag along with a GET Operation, bandwith can save be saved as the result will only be transmitted if the Entity actually changed on the Server Side. 
+By sending an ETag along with a GET Operation, bandwith can be saved as the result will only be transmitted if the Entity actually changed on the Server Side. 
 
 <img src="./resources/HANA-Operator-caching.svg"/>
 
