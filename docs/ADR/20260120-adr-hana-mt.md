@@ -769,7 +769,8 @@ spec:
   containerRef:
     name: prod-container-1
     namespace: hana-system
-  secretRef: "hana-prod-container-1-readonly"
+  secretRef: 
+        name: hana-prod-container-1-readonly
   # No rotationPolicy - credentials managed manually
 status:
   phase: Ready
