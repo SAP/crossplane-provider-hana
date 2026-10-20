@@ -5,6 +5,7 @@ Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 package main
 
 import (
+	"crypto/fips140"
 	"os"
 	"path/filepath"
 	"time"
@@ -45,6 +46,11 @@ func main() {
 	log := logging.NewLogrLogger(ctrl.Log.WithName("provider-hana"))
 
 	log.Info("Starting provider-hana", "debug", *debug)
+
+	// Record FIPS 140-3 status at startup as runtime compliance evidence. When
+	// built with GOFIPS140=certified this reports the linked CMVP-validated Go
+	// Cryptographic Module version and approved-mode status.
+	log.Info("FIPS 140-3 mode", "enabled", fips140.Enabled(), "module", fips140.Version())
 
 	cfg, err := ctrl.GetConfig()
 	kingpin.FatalIfError(err, "Cannot get API server rest config")
