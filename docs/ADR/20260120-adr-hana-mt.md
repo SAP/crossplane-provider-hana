@@ -125,7 +125,7 @@ This section formally defines the schema for each Custom Resource Type.
 
 **Purpose:** Aggregate root representing a HANA tenant in the HANA-MT system.
 
-**API Version:** `hana.sap.com/v1`
+**API Version:** `admin.hana.sap.crossplane.io/v1alpha1`
 
 **Metadata:**
 - `name` (string): Kubernetes name for the tenant CR
@@ -185,7 +185,7 @@ This section formally defines the schema for each Custom Resource Type.
 
 **Purpose:** Child resource representing a HANA container (HDI or non-HDI schema) within a tenant.
 
-**API Version:** `hana.sap.com/v1`
+**API Version:** `admin.hana.sap.crossplane.io/v1alpha1`
 
 **Metadata:**
 - `name` (string): Kubernetes name for the container CR
@@ -242,7 +242,7 @@ This section formally defines the schema for each Custom Resource Type.
 
 **Purpose:** Child resource managing authentication credentials (username/password) for a specific container.
 
-**API Version:** `hana.sap.com/v1`
+**API Version:** `admin.hana.sap.crossplane.io/v1alpha1`
 
 **Metadata:**
 - `name` (string): Kubernetes name for the credentials CR
@@ -577,7 +577,7 @@ Synchronous reconciliation with async operation tracking via polling
 ### Example 1: New Tenant Creation (No GUID)
 
 ```yaml
-apiVersion: hana.sap.com/v1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: HanaTenant
 metadata:
   name: production-tenant
@@ -609,7 +609,7 @@ status:
 ### Example 2: Adopting Existing Tenant (With GUID)
 
 ```yaml
-apiVersion: hana.sap.com/v1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: HanaTenant
 metadata:
   name: legacy-tenant
@@ -643,7 +643,7 @@ status:
 ### Example 3: Adopting Existing Tenant with Cascade (Automatic Child Adoption)
 
 ```yaml
-apiVersion: hana.sap.com/v1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: HanaTenant
 metadata:
   name: auto-adopt-tenant
@@ -683,7 +683,7 @@ status:
 ### Example 4: New Container Creation
 
 ```yaml
-apiVersion: hana.sap.com/v1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: HanaContainer
 metadata:
   name: prod-container-1
@@ -722,7 +722,7 @@ status:
 ### Example 5: Adopting Existing Container (With GUID)
 
 ```yaml
-apiVersion: hana.sap.com/v1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: HanaContainer
 metadata:
   name: legacy-container-prod-1
@@ -755,7 +755,7 @@ status:
 ### Example 6: Creating Credentials
 
 ```yaml
-apiVersion: hana.sap.com/v1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: HanaCredential
 metadata:
   name: prod-container-readonly-creds
@@ -785,7 +785,7 @@ status:
 ### Example 7: Soft Delete (14-day Retention)
 
 ```yaml
-apiVersion: hana.sap.com/v1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: HanaTenant
 metadata:
   name: temporary-tenant
@@ -814,7 +814,7 @@ status:
 ### Example 8: Deletion Failure - Unmanaged Children Exist
 
 ```yaml
-apiVersion: hana.sap.com/v1
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
 kind: HanaTenant
 metadata:
   name: tenant-with-unmanaged-children
