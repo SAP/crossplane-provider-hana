@@ -367,6 +367,11 @@ spec:
                     type: boolean
                   isPasswordLifetimeCheckEnabled:
                     type: boolean
+                  isX509Enabled:
+                    description: |-
+                      IsX509Enabled reflects whether `ALTER USER ... ENABLE X509` has been
+                      applied to the user.
+                    type: boolean
                   jwtProviders:
                     items:
                       description: |-
