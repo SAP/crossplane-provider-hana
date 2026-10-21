@@ -194,6 +194,12 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 	}
 	observed.IsJWTEnabled = &isJWTEnabled
 
+	isX509Enabled, err := c.queryX509Enabled(ctx, parameters.Username)
+	if err != nil {
+		return observed, err
+	}
+	observed.IsX509Enabled = &isX509Enabled
+
 	return observed, err
 }
 
@@ -240,6 +246,24 @@ func (c Client) queryJWTEnabled(ctx context.Context, username string) (bool, err
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to query jwt enabled flag: %w", err)
+	}
+	return enabled, nil
+}
+
+// queryX509Enabled reports whether the user has X.509 authentication enabled.
+// Mirrors queryJWTEnabled: treats a missing column as "false" for compatibility
+// with older HANA builds.
+func (c Client) queryX509Enabled(ctx context.Context, username string) (bool, error) {
+	const query = "SELECT IS_X509_ENABLED FROM SYS.USERS WHERE USER_NAME = ?"
+	var enabled bool
+	if err := c.QueryRowContext(ctx, query, username).Scan(&enabled); err != nil {
+		if xsql.IsNoRows(err) {
+			return false, nil
+		}
+		if strings.Contains(err.Error(), "expected") || strings.Contains(err.Error(), "invalid column") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to query x509 enabled flag: %w", err)
 	}
 	return enabled, nil
 }

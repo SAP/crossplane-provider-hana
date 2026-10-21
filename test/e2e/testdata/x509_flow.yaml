@@ -1,0 +1,32 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: X509Provider
+metadata:
+  name: e2e-x509-provider
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    name: E2EX509PROVIDER
+    issuer: "CN=E2E CA, O=E2E Test Org, C=US"
+    matchingRules:
+      - "CN=*"
+  providerConfigRef:
+    name: example
+---
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: e2e-x509-user
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    username: E2EX509USER
+    restrictedUser: true
+    isPasswordLifetimeCheckEnabled: false
+    enableClientConnect: true
+    authentication:
+      x509Providers:
+        - providerRef:
+            name: e2e-x509-provider
+          subjectName: "ANY"
+  providerConfigRef:
+    name: example

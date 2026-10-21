@@ -182,6 +182,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -233,6 +234,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -283,6 +285,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -346,6 +349,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              new(false),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
@@ -418,6 +422,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              new(true),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
@@ -474,6 +479,61 @@ func TestRead(t *testing.T) {
 					IsClientConnectEnabled:         new(true),
 				},
 				err: fmt.Errorf("failed to query x509 providers: %w", errBoom),
+			},
+		},
+		"ErrQueryX509Enabled": {
+			reason: "Should return error when IS_X509_ENABLED query fails with a non-shape-mismatch error",
+			fields: fields{
+				db: fake.MockDB{
+					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
+						// Fail specifically on the IS_X509_ENABLED query; all other
+						// QueryRowContext calls (main user row, IS_JWT_ENABLED) return
+						// the normal 8-column row which hits the shape-mismatch fallback.
+						if strings.Contains(query, "IS_X509_ENABLED") {
+							db, mock, _ := sqlmock.New()
+							mock.ExpectQuery("SELECT").WillReturnError(errBoom)
+							return db.QueryRowContext(context.Background(), "SELECT")
+						}
+						db, mock, _ := sqlmock.New()
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
+							AddRow("ERROR_USER", "", testTime.Time, testTime.Time, false, false, true, true)
+						mock.ExpectQuery("SELECT").WillReturnRows(rows)
+						return db.QueryRowContext(context.Background(), "SELECT")
+					},
+					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+						return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{})), nil
+					},
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						return nil, nil
+					},
+				},
+			},
+			args: args{
+				parameters: &v1alpha1.UserParameters{
+					Username: "ERROR_USER",
+				},
+			},
+			want: want{
+				// queryX509Enabled is the last call in Read; by the time it fails,
+				// all prior fields (including IsJWTEnabled) have already been set.
+				// X509Providers and JWTProviders use append without pre-allocation,
+				// so they are nil (not an empty slice) when no rows are returned.
+				observed: &v1alpha1.UserObservation{
+					Username:                       new("ERROR_USER"),
+					RestrictedUser:                 new(false),
+					LastPasswordChangeTime:         testTime,
+					CreatedAt:                      testTime,
+					Privileges:                     make([]string, 0),
+					Roles:                          make([]string, 0),
+					Parameters:                     make(map[string]string),
+					Usergroup:                      new(""),
+					PasswordUpToDate:               new(false),
+					IsPasswordLifetimeCheckEnabled: new(false),
+					IsPasswordEnabled:              new(true),
+					IsClientConnectEnabled:         new(true),
+					IsJWTEnabled:                   new(false),
+				},
+				err: fmt.Errorf("failed to query x509 enabled flag: %w", errBoom),
 			},
 		},
 	}
