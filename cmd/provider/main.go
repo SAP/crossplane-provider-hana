@@ -51,6 +51,9 @@ func main() {
 	// built with GOFIPS140=certified this reports the linked CMVP-validated Go
 	// Cryptographic Module version and approved-mode status.
 	log.Info("FIPS 140-3 mode", "enabled", fips140.Enabled(), "module", fips140.Version())
+	if !fips140.Enabled() {
+		kingpin.Fatalf("FIPS 140-3 approved mode is not enabled; this binary must be built with GOFIPS140=certified and must not be run with GODEBUG=fips140=off")
+	}
 
 	cfg, err := ctrl.GetConfig()
 	kingpin.FatalIfError(err, "Cannot get API server rest config")
