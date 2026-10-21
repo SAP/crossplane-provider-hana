@@ -25,6 +25,13 @@ GO_STATIC_PACKAGES = $(GO_PROJECT)/cmd/provider
 GO_LDFLAGS += -X $(GO_PROJECT)/internal/version.Version=$(VERSION)
 GO_SUBDIRS += cmd internal apis
 GO111MODULE = on
+
+# FIPS 140-3: build with the latest CMVP-certified Go Cryptographic Module
+# (cert #5247) and enable approved mode by default. Exported so the makelib
+# `go build`/`go test` recipes inherit it. Override with GOFIPS140=off locally.
+GOFIPS140 ?= certified
+export GOFIPS140
+
 -include build/makelib/golang.mk
 
 # kind-related versions
