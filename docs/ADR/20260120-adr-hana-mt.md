@@ -665,6 +665,7 @@ The following topics are deliberately **not** covered by this ADR and are tracke
 ## References
 
 - [Tenant Management Service API in API Hub](https://api.sap.com/api/TenantAPI/overview)
+- [Create a Database Tenant Using the Tenant Management Service REST API](https://help.sap.com/docs/HANA_CLOUD/68afa2153a734bdb8b3198fcecc628e7/4e62ef49b3894410bbdfaca376fb2c38.html)
 
 ### GitHub Issue
 
