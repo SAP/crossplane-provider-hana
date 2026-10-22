@@ -479,6 +479,16 @@ Synchronous reconciliation with async operation tracking via polling
 
 Adoption of pre-existing HANA tenants, containers, and credentials that were created outside the operator is **out of scope for this ADR** and will be addressed in a follow-up. See [Out of Scope / Follow-ups](#out-of-scope--follow-ups).
 
+## Alternatives Considered
+
+### Managing HDI Containers via `crossplane-provider-btp` (ServiceInstance / ServiceBinding)
+
+Instead of modeling HANA tenants, containers, and credentials in a dedicated HANA provider, HDI containers could be managed through the existing `crossplane-provider-btp` using `ServiceInstance` (plan: `hdi-shared`) and `ServiceBinding` resources. See [SAP/crossplane-provider-btp#1107](https://github.com/SAP/crossplane-provider-btp/issues/1107).
+
+**Rejected because:**
+- Only covers the HDI container path; does not expose tenant- or credential-level operations provided by the HANA-MT API (soft/hard delete with retention, tenant-level labels, data encryption modes, credential rotation, etc.).
+- Routes provisioning through the Service Manager / service broker rather than directly against the HANA-MT API, so capabilities not surfaced by the broker are inaccessible.
+
 ## Example Custom Resources
 
 ### Example 1: New Tenant Creation
