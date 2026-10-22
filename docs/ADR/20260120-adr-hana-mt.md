@@ -93,12 +93,12 @@ HanaTenant (aggregate root, parent)
   
 - **HanaCredential** (Child of Container)
   - Manages authentication credentials for a specific container
-  - Spec: `containerRef` (reference to parent HanaContainer), `secretRef` (name of K8s Secret to create), `permissions` (optional, [HDI only](https://api.sap.com/api/TenantAPI/path/post_tenants_v2_tenants__tenantID__containers__containerID__credentials)), `roles` (optional, [HDI only](https://api.sap.com/api/TenantAPI/path/post_tenants_v2_tenants__tenantID__containers__containerID__credentials))
+  - Spec: `containerRef` (reference to parent HanaContainer), `secretRef` (reference to K8s Secret to create), `permissions` (optional, [HDI only](https://api.sap.com/api/TenantAPI/path/post_tenants_v2_tenants__tenantID__containers__containerID__credentials)), `roles` (optional, [HDI only](https://api.sap.com/api/TenantAPI/path/post_tenants_v2_tenants__tenantID__containers__containerID__credentials))
   - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `secretName`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `container: prod-container-1`, `credentialType: admin`)
     - No `spec.labels` - Credentials are not labeled in HANA-MT API (identified by guid/credentialID)
-  - User controls secret name via `secretRef` parameter in spec (e.g., "my-hana-prod-creds")
+  - User controls secret name via `secretRef.name` in spec (e.g., `{name: "my-hana-prod-creds"}`)
   - Operator creates/updates the specified K8s Secret with username/password in the namespace
   - Credential-Rotation: TBD
 
