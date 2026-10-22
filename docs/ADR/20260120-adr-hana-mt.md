@@ -77,7 +77,7 @@ HanaTenant (aggregate root, parent)
 
 - **HanaTenant** (Aggregate Root)
   - Represents the top-level HANA tenant resource
-  - Spec: `apiCredentialsRef` (optional, defaults to `hana-mt-api-credentials`), `labels` (optional)
+  - Spec: `serviceInstanceID` (required), `apiCredentialsRef` (optional, defaults to `hana-mt-api-credentials`), `labels` (optional)
   - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `containerRefs[]`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `environment: prod`, `team: platform`)
@@ -126,8 +126,9 @@ This section formally defines the schema for each Custom Resource Type.
   - `hana.sap.com/immediate-delete: "true"` - hard delete (permanent) instead of soft delete
 
 **Spec (Provisioning Parameters):**
-- `serviceInstanceID` (string, required): HANA Cloud service instance ID where tenant will be created
-  - Must reference an existing service instance
+- `serviceInstanceID` (string, required): GUID of the HANA Cloud instance where the tenant will be created
+  - Matches the convention used by `InstanceMapping` and other CRDs in this provider; sourced from the BTP `ServiceInstance.status.atProvider.id` of the HANA Cloud offering
+  - Not to be confused with `apiCredentialsRef`, which points to a Secret with HANA-MT API OAuth2 credentials
   - API returns 400 Bad Request if invalid
 - `dataEncryption` (object, optional): Data encryption configuration
   - `mode` (string, required if object present): Encryption mode
@@ -506,6 +507,7 @@ metadata:
     environment: production
     team: platform
 spec:
+  serviceInstanceID: "7f3b9c2e-1a8d-4c5f-9b0e-6a2d8f3c4b1a"
   apiCredentialsRef:
     name: hana-api-prod
     namespace: hana-system
