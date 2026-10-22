@@ -286,6 +286,11 @@ This section formally defines the schema for each Custom Resource Type.
 - Supports multiple condition types tracking different aspects (Ready, OperationInProgress, etc.)
 - Enables rich monitoring and alerting on resource status
 
+**API Credential Resolution:**
+- `apiCredentialsRef` is defined on HanaTenant only
+- HanaContainer and HanaCredential controllers inherit credentials by walking the parent chain: `containerRef` -> HanaContainer -> `tenantRef` -> HanaTenant -> `apiCredentialsRef`
+- User configures API credentials once per tenant tree; child CRs do not duplicate the reference
+
 ### 1.2 HANA-MT API Integration Patterns
 
 **Async Processing with Polling:**
