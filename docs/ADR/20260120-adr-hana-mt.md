@@ -86,7 +86,7 @@ HanaTenant (aggregate root, parent)
 - **HanaContainer** (Child of Tenant)
   - Models a HANA container within a tenant
   - Spec: `tenantRef` (reference to parent HanaTenant), `type` (required, `hdi` | `schema`), `containerName` (string), `labels` (optional)
-  - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `containerId`, `credentials[]`, `conditions[]`
+  - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `credentials[]`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `tenant: production-tenant`, `tier: database`)
     - `spec.labels` - Labels sent to HANA-MT API, stored in HANA system, used for container filtering (HAHA API accepts an array of string. User specify this as a map in CR, the controller converts to array of strings before sending it to the API)
