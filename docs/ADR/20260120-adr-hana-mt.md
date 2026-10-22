@@ -93,7 +93,7 @@ HanaTenant (aggregate root, parent)
   
 - **HanaCredential** (Child of Container)
   - Manages authentication credentials for a specific container
-  - Spec: `containerRef` (reference to parent HanaContainer), `secretRef` (name of K8s Secret to create)
+  - Spec: `containerRef` (reference to parent HanaContainer), `secretRef` (name of K8s Secret to create), `permissions` (optional, [HDI only](https://api.sap.com/api/TenantAPI/path/post_tenants_v2_tenants__tenantID__containers__containerID__credentials)), `roles` (optional, [HDI only](https://api.sap.com/api/TenantAPI/path/post_tenants_v2_tenants__tenantID__containers__containerID__credentials))
   - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `secretName`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `container: prod-container-1`, `credentialType: admin`)
