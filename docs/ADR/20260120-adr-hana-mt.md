@@ -489,6 +489,8 @@ Instead of modeling HANA tenants, containers, and credentials in a dedicated HAN
 - Only covers the HDI container path; does not expose tenant- or credential-level operations provided by the HANA-MT API (soft/hard delete with retention, tenant-level labels, data encryption modes, credential rotation, etc.).
 - Routes provisioning through the Service Manager / service broker rather than directly against the HANA-MT API, so capabilities not surfaced by the broker are inaccessible.
 
+Rejection here only refers to this alternative not fulfilling the scope of this ADR - it is not a judgement on the alternative itself. The two approaches can coexist: the HANA provider defined in this ADR covers the full `Tenant -> Container -> Credential` surface against the HANA-MT API, while the broker-based path remains valid for users who only need HDI containers and already operate `crossplane-provider-btp`.
+
 ## Example Custom Resources
 
 ### Example 1: New Tenant Creation
