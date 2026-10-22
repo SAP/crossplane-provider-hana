@@ -85,7 +85,7 @@ HanaTenant (aggregate root, parent)
 
 - **HanaContainer** (Child of Tenant)
   - Models a HANA container within a tenant
-  - Spec: `tenantRef` (reference to parent HanaTenant), `type` (required, `hdi` | `schema`), `containerName` (string), `labels` (optional)
+  - Spec: `tenantRef` (reference to parent HanaTenant), `type` (required, `hdi` | `schema`), `containerName` (string), `labels` (optional), `sourceInstanceID` / `sourceContainerName` (optional, mutually exclusive, migration source)
   - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `credentialRefs[]`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `tenant: production-tenant`, `tier: database`)
@@ -192,13 +192,9 @@ This section formally defines the schema for each Custom Resource Type.
 - `makeUniqueName` (boolean, optional): Whether to auto-append numerical suffix for uniqueness
   - If `true`: operator appends `_1`, `_2`, etc. to ensure uniqueness
   - Returned in response with actual unique name used
-- `sourceInstanceID` (string, optional): HANA service instance ID to copy container schema from
-  - Used for creating container by reusing schema from another service instance
-  - Operator fetches schema information and creates new container in target tenant
-  - Alternative to `sourceContainerName` when service instance ID is known
-- `sourceContainerName` (string, optional): Container name to copy schema from (when sourceInstanceID unavailable)
-  - Used when customer doesn't have source service instance ID
-  - `type` parameter determines which container type to reuse
+- `sourceInstanceID` (string, optional): Migration source - ID of a BTP ServiceInstance of plan `hana > schema` or `hana > hdi-shared` whose underlying schema or HDI container will be migrated into this tenant (non-destructive, in-place). Forwarded verbatim to `POST /containers`. The HANA-MT API also uses this field to recover orphan database objects that have drifted out of TMS management. Primary of the two migration parameters per the SAP Help [migration guide](https://help.sap.com/docs/HANA_CLOUD/68afa2153a734bdb8b3198fcecc628e7/704a5d7745b94f089e2200ef9a8a4ab2.html).
+- `sourceContainerName` (string, optional): Migration source - fallback when `sourceInstanceID` is unavailable (e.g., after a point-in-time recovery where the source instance has been deleted). Forwarded verbatim to `POST /containers`.
+- **Mutual exclusivity:** `sourceInstanceID` and `sourceContainerName` are mutually exclusive; setting both is rejected by the API. Omitting both creates an empty container (the default create path). The CRD validation enforces this xor at admission to fail fast rather than letting the API return 400.
 - `labels` (array of strings, optional): HANA-MT API labels for container organization
   - Array of `key=value` format strings (e.g., `["workload=transactional", "region=eu-10"]`)
   - Maximum 3 labels per container
