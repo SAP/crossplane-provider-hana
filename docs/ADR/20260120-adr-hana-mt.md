@@ -51,7 +51,6 @@ By sending the ETag along with an "unsafe" Method (a Method which alters the ser
 3. Implement optimistic concurrency control using ETags
 4. Support soft/hard delete semantics
 5. Mirror hierarchical REST API structure in CRDs
-6. Support migration of existing tenants created outside the operator
 
 ### Business Drivers
 - Consistency: Standardize HANA resource management across teams
@@ -78,34 +77,24 @@ HanaTenant (aggregate root, parent)
 
 - **HanaTenant** (Aggregate Root)
   - Represents the top-level HANA tenant resource
-  - Spec: `guid` (optional), `apiCredentialsRef` (optional, defaults to `hana-mt-api-credentials`), `labels` (optional)
-  - Annotations: `hana.sap.com/cascade-adopt: "true"` (optional, enables automatic child adoption)
-  - Status: `phase` (Creating/Ready/Updating/Deleting), `containerRefs[]`, `conditions[]`
+  - Spec: `apiCredentialsRef` (optional, defaults to `hana-mt-api-credentials`), `labels` (optional)
+  - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `containerRefs[]`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `environment: prod`, `team: platform`)
     - `spec.labels` - Labels sent to HANA-MT API, stored in HANA system, used for API filtering and organization. (HAHA API accepts an array of string. User specify this as a map in CR, the controller converts to array of strings before sending it to the API)
-  - **GUID behavior:**
-    - If `guid` IS NOT set: Operator creates a new tenant via HANA-MT API and uses resulting GUID from the API
-    - If `guid` IS set: Operator assumes a tenant with given GUID exists, fetches current state from API (adoption/migration scenario)
-  - **Cascade Adoption:**
-    - Without annotation: Operator fetches existing containers/credentials from API but does NOT create CRs (safe, explicit control)
-    - With `cascade-adopt: "true"`: Operator automatically generates HanaContainer and HanaCredentials CRs for all existing children
 
 - **HanaContainer** (Child of Tenant)
   - Models a HANA container within a tenant
-  - Spec: `tenantRef` (reference to parent HanaTenant), `guid` (optional), `containerName` (string), `labels` (optional)
-  - Status: `phase` (Creating/Ready/Updating/Deleting), `containerId`, `credentials[]`, `conditions[]`
+  - Spec: `tenantRef` (reference to parent HanaTenant), `containerName` (string), `labels` (optional)
+  - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `containerId`, `credentials[]`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `tenant: production-tenant`, `tier: database`)
     - `spec.labels` - Labels sent to HANA-MT API, stored in HANA system, used for container filtering (HAHA API accepts an array of string. User specify this as a map in CR, the controller converts to array of strings before sending it to the API)
-  - **GUID behavior:**
-    - If `guid` IS NOT set: Operator creates a new container via HANA-MT API and uses resulting GUID from the API
-    - If `guid` IS set: Operator assumes that a Container with given GUID exists in referenced Tenant, fetches current state from API (adoption/migration scenario)
   
 - **HanaCredential** (Child of Container)
   - Manages authentication credentials for a specific container
-  - Spec: `containerRef` (reference to parent HanaContainer), `guid` (optional), `secretRef` (name of K8s Secret to create)
-  - Status: `phase` (Creating/Ready/Updating/Deleting), `secretName`, `conditions[]`
+  - Spec: `containerRef` (reference to parent HanaContainer), `secretRef` (name of K8s Secret to create)
+  - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `secretName`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `container: prod-container-1`, `credentialType: admin`)
     - No `spec.labels` - Credentials are not labeled in HANA-MT API (identified by guid/credentialID)
@@ -134,7 +123,6 @@ This section formally defines the schema for each Custom Resource Type.
   - User-defined, not sent to HANA-MT API
   - Used for Kubernetes resource selection, cross-cutting concerns
 - `annotations` (map): Kubernetes annotations for CR behavior configuration
-  - `hana.sap.com/cascade-adopt: "true"` - enable automatic child CR generation during adoption
   - `hana.sap.com/immediate-delete: "true"` - hard delete (permanent) instead of soft delete
 
 **Spec (Provisioning Parameters):**
@@ -151,9 +139,6 @@ This section formally defines the schema for each Custom Resource Type.
   - Maximum 3 labels per tenant
   - Each key and value: max 64 bytes, alphanumeric + '-', '_', '.'
   - Case-sensitive
-- `guid` (string, optional): GUID of existing tenant to adopt
-  - If absent: operator creates new tenant via HANA-MT API and captures resulting GUID
-  - If present: operator assumes tenant exists, fetches and adopts it (adoption/migration scenario)
 - `apiCredentialsRef` (object, optional): Reference to K8s Secret containing HANA-MT API credentials
   - `name` (string): Secret name
   - `namespace` (string, optional): Secret namespace (defaults to CR namespace)
@@ -169,9 +154,6 @@ This section formally defines the schema for each Custom Resource Type.
 - `containerRefs` (array of objects): List of child containers managed by operator
   - `name` (string): HanaContainer CR name
   - `guid` (string): HANA container GUID
-  - Canonical inventory: populated in all modes (creation and adoption)
-  - In explicit adoption mode: populated as user creates HanaContainer CRs
-  - In cascade adoption mode: populated automatically as operator generates CRs for discovered containers
 - `conditions` (array): Status conditions for detailed phase information
   - `type` (string): Condition category (e.g., `Ready`, `OperationInProgress`, `DeletionFailed`)
   - `status` (string): `True`, `False`, `Unknown`
@@ -202,7 +184,6 @@ This section formally defines the schema for each Custom Resource Type.
 - `type` (string, required): Container type
   - `hdi` - HDI (HANA Deployment Infrastructure) container
   - `schema` - Standard database schema
-  - Used when creating new container; preserved in adoption scenarios
 - `containerName` (string, required): Human-readable name for container in HANA system
   - Must be unique within parent tenant
   - Example: `hdi-container-prod-01`
@@ -210,9 +191,6 @@ This section formally defines the schema for each Custom Resource Type.
 - `makeUniqueName` (boolean, optional): Whether to auto-append numerical suffix for uniqueness
   - If `true`: operator appends `_1`, `_2`, etc. to ensure uniqueness
   - Returned in response with actual unique name used
-- `guid` (string, optional): GUID of existing container to adopt
-  - If absent: operator creates new container via HANA-MT API
-  - If present: operator adopts existing container from API (migration/adoption scenario)
 - `sourceInstanceID` (string, optional): HANA service instance ID to copy container schema from
   - Used for creating container by reusing schema from another service instance
   - Operator fetches schema information and creates new container in target tenant
@@ -256,9 +234,6 @@ This section formally defines the schema for each Custom Resource Type.
   - `name` (string): Parent HanaContainer CR name
   - `namespace` (string, optional): Parent namespace (defaults to CR namespace)
   - Constraint: Parent must be in Ready phase
-- `guid` (string, optional): GUID of existing credential to adopt
-  - If absent: operator creates new credential (username/password pair) via HANA-MT API
-  - If present: operator adopts existing credential from API (adoption scenario)
 - `secretRef` (object, optional): Reference to K8s Secret to create/update with credential data
   - `name` (string): Name of Secret to create/update in same namespace
   - Example: `my-hana-prod-admin`
@@ -500,79 +475,13 @@ Synchronous reconciliation with async operation tracking via polling
    - Operator handles 404 Not Found gracefully (already deleted = success)
    - Proceeds with parent deletion
 
-### 5.0 Migration Strategy
+### 5.0 Migration & Adoption Strategy
 
-**Chosen Approach:** Hybrid adoption strategy - explicit control with optional automation
-
-**Adoption Modes:**
-
-**Mode 1: Explicit (Default) - Safe, Gradual Migration**
-- User creates HanaTenant CR with existing tenant's `guid` in spec
-- **No cascade annotation** set
-- Operator:
-  1. Fetches existing tenant and all its containers/credentials from API
-  2. Does NOT automatically create HanaContainer or HanaCredentials CRs
-  3. Status phase: Creating → Adopted → Ready
-- User then explicitly creates HanaContainer CRs with GUID for containers to adopt
-- User explicitly creates HanaCredential CRs with GUID for credentials to adopt
-- Enables fine-grained adoption: adopt only critical containers, leave others manual
-- Supports gradual migration: adopt one container per deployment cycle
-
-**Mode 2: Cascade (Optional) - Fast Full Adoption**
-- User adds annotation to HanaTenant: `hana.sap.com/cascade-adopt: "true"`
-- Operator:
-  1. Fetches existing tenant and all containers/credentials from API
-  2. Automatically generates HanaContainer CRs with GUID for each container
-  3. Automatically generates HanaCredential CRs with GUID for each credential
-  4. CRs created in same namespace with labels linking back to parent Tenant
-  5. Status phase: Creating → Adopted → Ready
-- One-shot adoption: all containers and credentials immediately managed
-- All children transition to Ready phase once tenant is Ready
-- Better for simpler deployments or teams comfortable with full automation
-
-**Container/Credential Reconciliation**
-- In both modes: once HanaContainer/HanaCredential CRs exist, operator:
-  1. Fetches state with `$expand=credentials`
-  2. Reconciles CR spec against API state using ETag-based concurrency
-  3. Establishes bidirectional sync: CR state ↔ API state
-  4. On conflict (409): log warning, defer update to next cycle
-
-**Mixed Management Scenario** (Explicit Mode Only)
-- Some containers managed by operator (HanaContainer CR exists)
-- Other containers managed manually via API (no CR exists)
-- Operator ignores unmanaged containers
-- User can adopt more containers later by creating new CRs
-
-**Adoption Decision Points:**
-- **Tenant Level:** User decides when to adopt (no rush, safe coexistence)
-- **Cascade Mode:** User chooses full automation (`cascade-adopt: "true"`) or explicit control (default)
-- **Container Level (Explicit only):** User can adopt specific containers and leave others unmanaged
-- **Credential Level (Explicit only):** User can adopt credentials for rotation, leave others unmanaged
-
-## Alternatives Considered
-
-### Adoption Strategy Alternatives
-
-**Alternative 1: Full Cascade Adoption (Automatic)**
-- When tenant with GUID is created, operator automatically generates all child CRs
-- All containers and credentials immediately managed
-- **Rejected because:** Loses user control, creates many CRs at once (overwhelming for large tenants), prevents selective/gradual adoption, cannot keep some resources unmanaged
-
-**Alternative 2: Full Manual Adoption (Separate)**
-- User must explicitly create every HanaContainer and HanaCredentials CR with GUID
-- Complete control, no automation
-- **Rejected because:** Too much manual work, slow migration process, error-prone (forgetting containers)
-
-**Chosen: Hybrid Adoption (Configurable)**
-- **Default:** Explicit adoption (safe, gradual, selective)
-- **Opt-in:** Cascade adoption via annotation (fast for simple cases)
-- Combines benefits: automation for teams that want it, control for teams that need it
-- Supports mixed management: some containers automated, some manual
-- Enables incremental adoption over time
+Adoption of pre-existing HANA tenants, containers, and credentials that were created outside the operator is **out of scope for this ADR** and will be addressed in a follow-up. See [Out of Scope / Follow-ups](#out-of-scope--follow-ups).
 
 ## Example Custom Resources
 
-### Example 1: New Tenant Creation (No GUID)
+### Example 1: New Tenant Creation
 
 ```yaml
 apiVersion: admin.hana.sap.crossplane.io/v1alpha1
@@ -585,7 +494,6 @@ metadata:
     environment: production
     team: platform
 spec:
-  # No guid - operator will create new tenant via HANA-MT API
   apiCredentialsRef:
     name: hana-api-prod
     namespace: hana-system
@@ -604,81 +512,7 @@ status:
     message: "Creating tenant via HANA-MT API"
 ```
 
-### Example 2: Adopting Existing Tenant (With GUID)
-
-```yaml
-apiVersion: admin.hana.sap.crossplane.io/v1alpha1
-kind: HanaTenant
-metadata:
-  name: legacy-tenant
-  namespace: hana-system
-  # Kubernetes labels
-  labels:
-    environment: production
-    team: legacy-systems
-    adoption-wave: "1"
-spec:
-  # GUID provided - operator will adopt existing tenant
-  guid: "a1b2c3d4-e5f6-47a8-9b0c-1d2e3f4a5b6c"
-  apiCredentialsRef:
-    name: hana-api-prod
-  # API labels - may differ from API's actual labels for existing tenant
-  labels:
-    cost-center: "cc-12345"
-    department: "infrastructure"
-status:
-  phase: Ready
-  guid: "a1b2c3d4-e5f6-47a8-9b0c-1d2e3f4a5b6c"
-  # Inventory of containers managed by operator
-  containerRefs: []
-  conditions:
-  - type: Ready
-    status: "True"
-    reason: Adopted
-    message: "Tenant adopted successfully"
-```
-
-### Example 3: Adopting Existing Tenant with Cascade (Automatic Child Adoption)
-
-```yaml
-apiVersion: admin.hana.sap.crossplane.io/v1alpha1
-kind: HanaTenant
-metadata:
-  name: auto-adopt-tenant
-  namespace: hana-system
-  # Kubernetes annotation (not sent to API)
-  annotations:
-    hana.sap.com/cascade-adopt: "true"  # Enable automatic child CR generation
-  # Kubernetes labels
-  labels:
-    environment: staging
-spec:
-  guid: "e7f8a9b0-c1d2-43e4-c5f6-07a8b9cad0e2"
-  apiCredentialsRef:
-    name: hana-api-staging
-  # API labels
-  labels:
-    cost-center: "cc-67890"
-    environment: "staging"
-status:
-  phase: Ready
-  guid: "e7f8a9b0-c1d2-43e4-c5f6-07a8b9cad0e2"
-  # Operator automatically creates child CRs for discovered containers/credentials
-  containerRefs:
-  - name: "auto-adopt-container-1"
-    guid: "c5d6e7f8-9a0b-41c2-a3d4-e5f6a7b8c9d0"
-  - name: "auto-adopt-container-2"
-    guid: "d6e7f8a9-0b1c-42d3-b4e5-f6a7b8c9d0e1"
-  conditions:
-  - type: Ready
-    status: "True"
-    reason: CascadeAdoptionCompleted
-    message: "All containers and credentials adopted"
-  - type: OperationInProgress
-    status: "False"
-```
-
-### Example 4: New Container Creation
+### Example 2: New Container Creation
 
 ```yaml
 apiVersion: admin.hana.sap.crossplane.io/v1alpha1
@@ -695,7 +529,6 @@ spec:
   tenantRef:
     name: production-tenant
     namespace: hana-system
-  # No guid - operator will create new container
   containerName: "hdi-container-prod-01"
   # API labels - sent to HANA-MT API for container organization
   labels:
@@ -717,40 +550,7 @@ status:
     operationId: "op-789xyz"  # Polling operation ID
 ```
 
-### Example 5: Adopting Existing Container (With GUID)
-
-```yaml
-apiVersion: admin.hana.sap.crossplane.io/v1alpha1
-kind: HanaContainer
-metadata:
-  name: legacy-container-prod-1
-  namespace: hana-system
-  # Kubernetes labels
-  labels:
-    tenant: legacy-tenant
-    adoptionPhase: "1"
-spec:
-  tenantRef:
-    name: legacy-tenant
-    namespace: hana-system
-  guid: "c5d6e7f8-9a0b-41c2-a3d4-e5f6a7b8c9d0"  # GUID of existing container
-  containerName: "hdi-container-legacy-01"
-  # API labels - what we're asserting for this container
-  labels:
-    tier: database
-    workload: legacy
-status:
-  phase: Ready
-  guid: "c5d6e7f8-9a0b-41c2-a3d4-e5f6a7b8c9d0"
-  credentialRefs: []
-  conditions:
-  - type: Ready
-    status: "True"
-    reason: Ready
-    message: "Container ready and operational"
-```
-
-### Example 6: Creating Credentials
+### Example 3: Creating Credentials
 
 ```yaml
 apiVersion: admin.hana.sap.crossplane.io/v1alpha1
@@ -780,7 +580,7 @@ status:
     message: "Read-only credentials ready"
 ```
 
-### Example 7: Soft Delete (14-day Retention)
+### Example 4: Soft Delete (14-day Retention)
 
 ```yaml
 apiVersion: admin.hana.sap.crossplane.io/v1alpha1
@@ -793,13 +593,13 @@ metadata:
     environment: temporary
     status: deleting
 spec:
-  guid: "48aa13f7-e00a-4f23-8b1a-7e3251148f52"
   apiCredentialsRef:
     name: hana-api-prod
   labels:
     temporary: "true"
 status:
   phase: FailedDelete  # OR Deleting + DELETED after API confirms
+  guid: "48aa13f7-e00a-4f23-8b1a-7e3251148f52"
   deletionTimestamp: "2026-01-31T15:00:00Z"
   purgeTimestamp: "2026-02-14T15:00:00Z"  # 14 days later
   conditions:
@@ -809,7 +609,7 @@ status:
     message: "Tenant soft-deleted, recovery available until 2026-02-14"
 ```
 
-### Example 8: Deletion Failure - Unmanaged Children Exist
+### Example 5: Deletion Failure - Unmanaged Children Exist
 
 ```yaml
 apiVersion: admin.hana.sap.crossplane.io/v1alpha1
@@ -822,13 +622,13 @@ metadata:
     environment: production
     status: deletion-failed
 spec:
-  guid: "f8a9b0c1-d2e3-44f5-d6e7-18b9cadbe1f3"
   apiCredentialsRef:
     name: hana-api-prod
   labels:
     environment: production
 status:
   phase: FailedDelete
+  guid: "f8a9b0c1-d2e3-44f5-d6e7-18b9cadbe1f3"
   deletionTimestamp: "2026-01-31T15:00:00Z"
   conditions:
   - type: DeletionFailed
@@ -841,6 +641,12 @@ status:
       - guid: e7f8a9b0-c1d2-43e4-c5f6-07a8b9cad0e2 (name: legacy-container-3)
       Action: Delete these containers via HANA-MT API, then retry tenant deletion.
 ```
+
+## Out of Scope / Follow-ups
+
+The following topics are deliberately **not** covered by this ADR and are tracked as follow-ups:
+
+- **Adoption of pre-existing HANA resources (brownfield scenario):** Taking over tenants, containers, or credentials that were created outside the operator (e.g., manually via the HANA-MT API or by another tool). The approach is still under discussion and must align with Crossplane's own conventions for managed-resource adoption. Related discussion: [SAP/crossplane-provider-btp#813](https://github.com/SAP/crossplane-provider-btp/discussions/813).
 
 ## References
 
