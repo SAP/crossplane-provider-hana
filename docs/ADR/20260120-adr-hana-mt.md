@@ -77,7 +77,7 @@ HanaTenant (aggregate root, parent)
 
 - **HanaTenant** (Aggregate Root)
   - Represents the top-level HANA tenant resource
-  - Spec: `serviceInstanceID` (required), `apiCredentialsRef` (optional, defaults to `hana-mt-api-credentials`), `labels` (optional)
+  - Spec: `serviceInstanceID` (required), `apiCredentialsRef` (optional, defaults to `hana-mt-api-credentials`), `dataEncryption` (optional), `labels` (optional)
   - Status: `phase` (Creating/Ready/Updating/Deleting), `guid` (assigned by API after creation), `containerRefs[]`, `conditions[]`
   - **Label Types:**
     - `metadata.labels` - Kubernetes labels for CR selection/filtering (e.g., `environment: prod`, `team: platform`)
