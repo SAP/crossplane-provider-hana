@@ -562,7 +562,6 @@ status:
   - type: OperationInProgress
     status: "True"
     reason: Polling
-    operationId: "op-789xyz"  # Polling operation ID
 ```
 
 ### Example 3: Creating Credentials
