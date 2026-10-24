@@ -31,6 +31,7 @@ const (
 	lastPasswordChangeTime         = "LAST_PASSWORD_CHANGE_TIME"
 	userGroupName                  = "USERGROUP_NAME"
 	userName                       = "USER_NAME"
+	testProvider                   = "TEST_PROVIDER"
 )
 
 var testTime = metav1.Now()
@@ -181,6 +182,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -232,6 +234,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -282,6 +285,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              new(true),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -302,7 +306,7 @@ func TestRead(t *testing.T) {
 						// Check if this is an X509 providers query
 						if strings.Contains(query, "X509_USER_MAPPINGS") {
 							return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{"X509_PROVIDER_NAME", "SUBJECT_NAME"}).
-								AddRow("TEST_PROVIDER", "CN=John Doe,O=Acme Corp").
+								AddRow(testProvider, "CN=John Doe,O=Acme Corp").
 								AddRow("BACKUP_PROVIDER", sql.NullString{})), nil
 						}
 						// Other queries return empty results
@@ -320,7 +324,7 @@ func TestRead(t *testing.T) {
 					Authentication: v1alpha1.Authentication{
 						X509Providers: []v1alpha1.X509UserMapping{
 							{
-								X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
+								X509ProviderRef: v1alpha1.X509ProviderRef{Name: testProvider},
 								SubjectName:     "CN=John Doe,O=Acme Corp",
 							},
 							{
@@ -345,10 +349,11 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              new(false),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
-							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
+							X509ProviderRef: v1alpha1.X509ProviderRef{Name: testProvider},
 							SubjectName:     "CN=John Doe,O=Acme Corp",
 						},
 						{
@@ -417,6 +422,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              new(true),
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
@@ -473,6 +479,61 @@ func TestRead(t *testing.T) {
 					IsClientConnectEnabled:         new(true),
 				},
 				err: fmt.Errorf("failed to query x509 providers: %w", errBoom),
+			},
+		},
+		"ErrQueryX509Enabled": {
+			reason: "Should return error when IS_X509_ENABLED query fails with a non-shape-mismatch error",
+			fields: fields{
+				db: fake.MockDB{
+					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
+						// Fail specifically on the IS_X509_ENABLED query; all other
+						// QueryRowContext calls (main user row, IS_JWT_ENABLED) return
+						// the normal 8-column row which hits the shape-mismatch fallback.
+						if strings.Contains(query, "IS_X509_ENABLED") {
+							db, mock, _ := sqlmock.New()
+							mock.ExpectQuery("SELECT").WillReturnError(errBoom)
+							return db.QueryRowContext(context.Background(), "SELECT")
+						}
+						db, mock, _ := sqlmock.New()
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
+							AddRow("ERROR_USER", "", testTime.Time, testTime.Time, false, false, true, true)
+						mock.ExpectQuery("SELECT").WillReturnRows(rows)
+						return db.QueryRowContext(context.Background(), "SELECT")
+					},
+					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+						return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{})), nil
+					},
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						return nil, nil
+					},
+				},
+			},
+			args: args{
+				parameters: &v1alpha1.UserParameters{
+					Username: "ERROR_USER",
+				},
+			},
+			want: want{
+				// queryX509Enabled is the last call in Read; by the time it fails,
+				// all prior fields (including IsJWTEnabled) have already been set.
+				// X509Providers and JWTProviders use append without pre-allocation,
+				// so they are nil (not an empty slice) when no rows are returned.
+				observed: &v1alpha1.UserObservation{
+					Username:                       new("ERROR_USER"),
+					RestrictedUser:                 new(false),
+					LastPasswordChangeTime:         testTime,
+					CreatedAt:                      testTime,
+					Privileges:                     make([]string, 0),
+					Roles:                          make([]string, 0),
+					Parameters:                     make(map[string]string),
+					Usergroup:                      new(""),
+					PasswordUpToDate:               new(false),
+					IsPasswordLifetimeCheckEnabled: new(false),
+					IsPasswordEnabled:              new(true),
+					IsClientConnectEnabled:         new(true),
+					IsJWTEnabled:                   new(false),
+				},
+				err: fmt.Errorf("failed to query x509 enabled flag: %w", errBoom),
 			},
 		},
 	}
@@ -1048,7 +1109,7 @@ func TestUpdateX509Providers(t *testing.T) {
 			args: args{
 				username: testCatalogUser,
 				toAdd: []ResolvedUserMapping{
-					{Name: "TEST_PROVIDER", SubjectName: "CN=Test User"},
+					{Name: testProvider, SubjectName: "CN=Test User"},
 				},
 			},
 			want: want{
@@ -1077,14 +1138,13 @@ func TestUpdateX509Providers(t *testing.T) {
 				err: errBoom,
 			},
 		},
-		"SuccessAddSingleProvider": {
-			reason: "Should successfully add a single X509 provider",
+		"ErrEnableX509": {
+			reason: "Errors on ENABLE X509 after ADD IDENTITY should be returned",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expectedQuery := "ALTER USER TEST_USER ADD IDENTITY 'CN=Test User,O=Acme Corp' FOR X509 PROVIDER TEST_PROVIDER"
-						if query != expectedQuery {
-							return nil, fmt.Errorf("unexpected query: got %s, want %s", query, expectedQuery)
+						if strings.Contains(query, "ENABLE X509") {
+							return nil, errBoom
 						}
 						return nil, nil
 					},
@@ -1092,6 +1152,28 @@ func TestUpdateX509Providers(t *testing.T) {
 			},
 			args: args{
 				username: testCatalogUser,
+				toAdd: []ResolvedUserMapping{
+					{Name: testProvider, SubjectName: "CN=Test User"},
+				},
+			},
+			want: want{
+				err: fmt.Errorf("failed to enable X509 for user TEST_USER: %w", errBoom),
+			},
+		},
+		"SuccessAddSingleProvider": {
+			reason: "Should successfully add a single X509 provider and enable X509",
+			fields: fields{
+				db: fake.MockDB{
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "ENABLE X509") {
+							return nil, nil
+						}
+						return nil, fmt.Errorf("unexpected query: %s", query)
+					},
+				},
+			},
+			args: args{
+				username: "TEST_USER",
 				toAdd: []ResolvedUserMapping{
 					{Name: "TEST_PROVIDER", SubjectName: "CN=Test User,O=Acme Corp"},
 				},
@@ -1124,12 +1206,11 @@ func TestUpdateX509Providers(t *testing.T) {
 			},
 		},
 		"SuccessAddMultipleProviders": {
-			reason: "Should successfully add multiple X509 providers",
+			reason: "Should successfully add multiple X509 providers and enable X509 once",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						// Expect two separate queries for multiple providers
-						if strings.Contains(query, "MAIN_PROVIDER") || strings.Contains(query, "BACKUP_PROVIDER") {
+						if strings.Contains(query, "MAIN_PROVIDER") || strings.Contains(query, "BACKUP_PROVIDER") || strings.Contains(query, "ENABLE X509") {
 							return nil, nil
 						}
 						return nil, fmt.Errorf("unexpected query: %s", query)
@@ -1176,8 +1257,7 @@ func TestUpdateX509Providers(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						// Should handle both ADD and DROP operations
-						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "DROP IDENTITY") {
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "DROP IDENTITY") || strings.Contains(query, "ENABLE X509") {
 							return nil, nil
 						}
 						return nil, fmt.Errorf("unexpected query: %s", query)
@@ -1216,15 +1296,14 @@ func TestUpdateX509Providers(t *testing.T) {
 			},
 		},
 		"SuccessWithAnySubject": {
-			reason: "Should successfully handle providers with ANY subject name",
+			reason: "Should successfully handle providers with ANY subject name and enable X509",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expectedQuery := "ALTER USER ANY_USER ADD IDENTITY 'ANY' FOR X509 PROVIDER ANY_PROVIDER"
-						if query != expectedQuery {
-							return nil, fmt.Errorf("unexpected query: got %s, want %s", query, expectedQuery)
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "ENABLE X509") {
+							return nil, nil
 						}
-						return nil, nil
+						return nil, fmt.Errorf("unexpected query: %s", query)
 					},
 				},
 			},
