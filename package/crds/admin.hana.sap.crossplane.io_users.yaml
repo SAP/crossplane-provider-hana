@@ -90,7 +90,6 @@ spec:
                               minLength: 1
                               type: string
                             name:
-                              default: ""
                               type: string
                             providerRef:
                               description: A Reference to a named object.
@@ -129,6 +128,13 @@ spec:
                           required:
                           - externalIdentity
                           type: object
+                          x-kubernetes-validations:
+                          - message: exactly one of name or providerRef must be set
+                              and non-empty
+                            rule: (has(self.name) && size(self.name) > 0 && !has(self.providerRef))
+                              || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name)
+                              > 0)
+                        maxItems: 256
                         type: array
                       password:
                         description: Password authentication type
@@ -160,7 +166,6 @@ spec:
                             certificate to a database user
                           properties:
                             name:
-                              default: ""
                               type: string
                             providerRef:
                               description: A Reference to a named object.
@@ -201,6 +206,13 @@ spec:
                                 identity
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                          - message: exactly one of name or providerRef must be set
+                              and non-empty
+                            rule: (has(self.name) && size(self.name) > 0 && !has(self.providerRef))
+                              || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name)
+                              > 0)
+                        maxItems: 256
                         type: array
                     type: object
                   enableClientConnect:
@@ -380,7 +392,6 @@ spec:
                           minLength: 1
                           type: string
                         name:
-                          default: ""
                           type: string
                         providerRef:
                           description: A Reference to a named object.
@@ -419,6 +430,13 @@ spec:
                       required:
                       - externalIdentity
                       type: object
+                      x-kubernetes-validations:
+                      - message: exactly one of name or providerRef must be set and
+                          non-empty
+                        rule: (has(self.name) && size(self.name) > 0 && !has(self.providerRef))
+                          || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name)
+                          > 0)
+                    maxItems: 256
                     type: array
                   lastPasswordChangeTime:
                     format: date-time
@@ -449,7 +467,6 @@ spec:
                         certificate to a database user
                       properties:
                         name:
-                          default: ""
                           type: string
                         providerRef:
                           description: A Reference to a named object.
@@ -489,6 +506,13 @@ spec:
                           description: Subject distinguished name to be used as identity
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: exactly one of name or providerRef must be set and
+                          non-empty
+                        rule: (has(self.name) && size(self.name) > 0 && !has(self.providerRef))
+                          || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name)
+                          > 0)
+                    maxItems: 256
                     type: array
                 type: object
               conditions:
