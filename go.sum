@@ -10,8 +10,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/SAP/go-hdb v1.19.2 h1:uX8stqEsQXNaYF+LJdNvBlokaRqcg+pgncaAOLQR87Y=
 github.com/SAP/go-hdb v1.19.2/go.mod h1:DsrQeuuYLdhwIrvGlqrOan9pIfizUxuk/GBROCsigsI=
-github.com/SAP/sap-btp-service-operator v0.12.3 h1:EQ70qYmTZ/UxQ6lYtZwT//SCwIgBCk25hT23c86eBiQ=
-github.com/SAP/sap-btp-service-operator v0.12.3/go.mod h1:tL4kH8i7saW/aSz1banKvygobOwCuXSJjT+y7nswCPw=
+github.com/SAP/sap-btp-service-operator v0.12.4 h1:yoluU4kQkrrytrHBfF1v5M9d5rc0OOnW3GGWIv9fkTs=
+github.com/SAP/sap-btp-service-operator v0.12.4/go.mod h1:eDHWmVvb40kJyHt8TBUqyCakyg+mSIl6GGj/auxP8R8=
 github.com/alecthomas/kingpin/v2 v2.4.0 h1:f48lwail6p8zpO1bC4TxtqACaGqHYA22qkHjHpqDjYY=
 github.com/alecthomas/kingpin/v2 v2.4.0/go.mod h1:0gyi0zQnjuFk8xrkNKamJoyUo382HRL7ATRpFZCw6tE=
 github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b h1:mimo19zliBX/vSQ6PWWSL9lK8qwHozUj03+zLoEB8O0=
