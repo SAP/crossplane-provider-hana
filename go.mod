@@ -1,13 +1,13 @@
 module github.com/SAP/crossplane-provider-hana
 
-go 1.27.1
+go 1.27.3
 
 tool golang.org/x/tools/cmd/goimports
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/SAP/go-hdb v1.19.2
-	github.com/SAP/sap-btp-service-operator v0.12.3
+	github.com/SAP/sap-btp-service-operator v0.12.4
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/crossplane-contrib/xp-testing v1.10.1
 	github.com/crossplane/crossplane-runtime/v2 v2.4.2
