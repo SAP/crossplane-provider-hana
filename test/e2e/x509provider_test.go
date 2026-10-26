@@ -241,38 +241,64 @@ func (c *X509FlowTestConfig) assessObservationShape(ctx context.Context, t *test
 	return ctx
 }
 
-// assessNoDrift verifies that the identity mapping ASSIGN_TIME in
-// SYS.X509_USER_MAPPINGS does not change across reconcile cycles. Before the
-// drift fix, the controller continuously re-issued DROP IDENTITY + ADD IDENTITY
-// because isX509MappingsUpToDate compared the unresolved providerRef name
-// against the resolved HANA name, so they never matched.
+// assessNoDrift verifies that the X.509 identity mapping and IS_X509_ENABLED
+// remain stable across reconcile cycles. SYS.X509_USER_MAPPINGS has no
+// timestamp column, so we check observability directly: confirm the row still
+// exists and IS_X509_ENABLED is still true after waiting for at least two
+// reconcile poll intervals to fire. The root-cause fix (resolving providerRef
+// before comparing desired vs observed names) is covered at the unit-test
+// level by TestResolveX509ProviderNames.
 func (c *X509FlowTestConfig) assessNoDrift(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-	// Record the ASSIGN_TIME after the initial reconcile has settled.
-	var assignTimeBefore string
-	row := c.conn.QueryRowContext(ctx,
-		"SELECT TO_VARCHAR(ASSIGN_TIME, 'YYYY-MM-DD HH24:MI:SS') FROM SYS.X509_USER_MAPPINGS WHERE USER_NAME = ?",
-		c.UserName,
-	)
-	if err := row.Scan(&assignTimeBefore); err != nil {
-		t.Fatalf("failed to read ASSIGN_TIME before drift window: %v", err)
+	countRows := func(label string) int {
+		rows, err := c.conn.QueryContext(ctx,
+			"SELECT COUNT(*) FROM SYS.X509_USER_MAPPINGS WHERE USER_NAME = ? AND X509_PROVIDER_NAME = ?",
+			c.UserName, c.X509ProviderName,
+		)
+		if err != nil {
+			t.Errorf("failed to count X509 mappings (%s): %v", label, err)
+			return -1
+		}
+		defer rows.Close() //nolint:errcheck
+		var n int
+		if rows.Next() {
+			if err := rows.Scan(&n); err != nil {
+				t.Errorf("failed to scan count (%s): %v", label, err)
+				return -1
+			}
+		}
+		return n
 	}
-	t.Logf("X509 ASSIGN_TIME before drift window: %s", assignTimeBefore)
 
-	// Wait two poll intervals so at least one extra reconcile fires.
+	checkX509Enabled := func(label string) bool {
+		var enabled bool
+		row := c.conn.QueryRowContext(ctx,
+			"SELECT IS_X509_ENABLED FROM SYS.USERS WHERE USER_NAME = ?",
+			c.UserName,
+		)
+		if err := row.Scan(&enabled); err != nil {
+			t.Errorf("failed to read IS_X509_ENABLED (%s): %v", label, err)
+			return false
+		}
+		return enabled
+	}
+
+	countBefore := countRows("before")
+	enabledBefore := checkX509Enabled("before")
+	t.Logf("drift window start: mapping_count=%d IS_X509_ENABLED=%v", countBefore, enabledBefore)
+
+	// Wait two reconcile poll intervals so the controller has a chance to
+	// re-reconcile and, if drift were present, drop and re-add the identity.
 	time.Sleep(30 * time.Second)
 
-	var assignTimeAfter string
-	row = c.conn.QueryRowContext(ctx,
-		"SELECT TO_VARCHAR(ASSIGN_TIME, 'YYYY-MM-DD HH24:MI:SS') FROM SYS.X509_USER_MAPPINGS WHERE USER_NAME = ?",
-		c.UserName,
-	)
-	if err := row.Scan(&assignTimeAfter); err != nil {
-		t.Fatalf("failed to read ASSIGN_TIME after drift window: %v", err)
-	}
-	t.Logf("X509 ASSIGN_TIME after drift window:  %s", assignTimeAfter)
+	countAfter := countRows("after")
+	enabledAfter := checkX509Enabled("after")
+	t.Logf("drift window end:   mapping_count=%d IS_X509_ENABLED=%v", countAfter, enabledAfter)
 
-	if assignTimeBefore != assignTimeAfter {
-		t.Errorf("ASSIGN_TIME changed (%s → %s): controller is continuously re-applying the X.509 identity mapping (drift bug)", assignTimeBefore, assignTimeAfter)
+	if countBefore != 1 || countAfter != 1 {
+		t.Errorf("X509 mapping row count unstable: before=%d after=%d (expected 1 throughout)", countBefore, countAfter)
+	}
+	if !enabledBefore || !enabledAfter {
+		t.Errorf("IS_X509_ENABLED went false during drift window: before=%v after=%v", enabledBefore, enabledAfter)
 	}
 	return ctx
 }
