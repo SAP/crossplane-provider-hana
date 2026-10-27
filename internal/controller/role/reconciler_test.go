@@ -772,9 +772,6 @@ func TestUpdate(t *testing.T) {
 // TestObserveLaxPolicy verifies that Observe returns ResourceUpToDate:true when the
 // role has externally-granted privileges that are not in the spec, under lax policy.
 func TestObserveLaxPolicy(t *testing.T) {
-	sortStrings := cmpopts.SortSlices(func(a, b string) bool { return a < b })
-	_ = sortStrings
-
 	// DB has SPARQL UPDATE (external) + CREATE ANY (in spec).
 	// Under lax, SPARQL UPDATE is filtered → observed == spec → upToDate.
 	cr := &v1alpha1.Role{
