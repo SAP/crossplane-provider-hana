@@ -303,6 +303,7 @@ func (c *external) checkPrivilegeRoleOverlap(cr *v1alpha1.User, desiredPrivilege
 func upToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
 	return isPasswordUpToDate(observed, desired) &&
 		isX509MappingsUpToDate(observed, desired) &&
+		isX509EnabledUpToDate(observed, desired) &&
 		isJWTMappingsUpToDate(observed, desired) &&
 		isJWTEnabledUpToDate(observed, desired) &&
 		isClientConnectUpToDate(observed, desired) &&
@@ -328,6 +329,14 @@ func isX509MappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha
 	}
 	toAdd, toRemove := diffX509Mappings(desired.Authentication.X509Providers, observed.X509Providers)
 	return len(toAdd) == 0 && len(toRemove) == 0
+}
+
+func isX509EnabledUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
+	wantEnabled := len(desired.Authentication.X509Providers) > 0
+	if observed.IsX509Enabled == nil {
+		return !wantEnabled
+	}
+	return *observed.IsX509Enabled == wantEnabled
 }
 
 // diffX509Mappings returns the X.509 mappings that need to be added (present in
@@ -490,6 +499,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 
 	if err := c.updateX509Providers(ctx, cr, desired, observed); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	if err := c.updateX509Authentication(ctx, cr, desired, observed); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
 
@@ -976,6 +989,22 @@ func (c *external) updateJWTAuthentication(ctx context.Context, cr *v1alpha1.Use
 	}
 	v := want
 	cr.Status.AtProvider.IsJWTEnabled = &v
+	return nil
+}
+
+func (c *external) updateX509Authentication(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
+	want := len(desired.Authentication.X509Providers) > 0
+	current := observed.IsX509Enabled != nil && *observed.IsX509Enabled
+	if want == current {
+		return nil
+	}
+	c.log.Info("Toggling X.509 authentication", "name", cr.Name, "username", desired.Username, "enable", want)
+	if err := c.client.ToggleX509Authentication(ctx, desired.Username, want); err != nil {
+		c.log.Info("Error toggling X.509 authentication", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+	v := want
+	cr.Status.AtProvider.IsX509Enabled = &v
 	return nil
 }
 

@@ -35,6 +35,7 @@ const (
 	ErrUpdateUserUsergroup             = "cannot update user usergroup: %w"
 	ErrUpdateUserPasswordLifetimeCheck = "cannot update user password lifetime check: %w"
 	ErrUpdateUserX509Providers         = "cannot update user X.509 providers: %w"
+	ErrUpdateUserX509Enabled           = "cannot toggle X.509 authentication: %w"
 	ErrUpdateUserJWTProviders          = "cannot update user JWT providers: %w"
 	ErrUpdateUserJWTEnabled            = "cannot toggle JWT authentication: %w"
 	ErrUpdateUserClientConnect         = "cannot toggle client connect: %w"
@@ -82,6 +83,7 @@ type UserClient interface {
 	UpdatePasswordLifetimeCheck(ctx context.Context, username string, isPasswordLifetimeCheckEnabled bool) error
 	UpdateX509Providers(ctx context.Context, username string, toAdd, toRemove []ResolvedUserMapping) error
 	UpdateJWTProviders(ctx context.Context, username string, toAdd, toRemove []ResolvedJWTUserMapping) error
+	ToggleX509Authentication(ctx context.Context, username string, enable bool) error
 	ToggleJWTAuthentication(ctx context.Context, username string, enable bool) error
 	ToggleClientConnect(ctx context.Context, username string, enable bool) error
 	TogglePasswordAuthentication(ctx context.Context, username string, isPasswordEnabled bool) error
@@ -615,6 +617,19 @@ func (c Client) ToggleJWTAuthentication(ctx context.Context, username string, en
 	query := fmt.Sprintf("ALTER USER %s %s JWT", username, verb)
 	if _, err := c.ExecContext(ctx, query); err != nil {
 		return fmt.Errorf(ErrUpdateUserJWTEnabled, err)
+	}
+	return nil
+}
+
+// ToggleX509Authentication flips `ENABLE/DISABLE X509` on the user.
+func (c Client) ToggleX509Authentication(ctx context.Context, username string, enable bool) error {
+	verb := "DISABLE"
+	if enable {
+		verb = "ENABLE"
+	}
+	query := fmt.Sprintf("ALTER USER %s %s X509", username, verb)
+	if _, err := c.ExecContext(ctx, query); err != nil {
+		return fmt.Errorf(ErrUpdateUserX509Enabled, err)
 	}
 	return nil
 }

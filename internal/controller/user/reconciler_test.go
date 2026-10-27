@@ -119,6 +119,10 @@ func (m mockUserClient) UpdateX509Providers(ctx context.Context, username string
 	return nil
 }
 
+func (m mockUserClient) ToggleX509Authentication(ctx context.Context, username string, enable bool) error {
+	return nil
+}
+
 func (m mockUserClient) UpdateJWTProviders(ctx context.Context, username string, toAdd, toRemove []user.ResolvedJWTUserMapping) error {
 	return nil
 }

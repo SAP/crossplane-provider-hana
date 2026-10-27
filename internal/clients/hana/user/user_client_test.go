@@ -1649,6 +1649,60 @@ func TestToggleJWTAuthentication(t *testing.T) {
 	}
 }
 
+// TestToggleX509Authentication covers the ENABLE/DISABLE X509 DDL. If someone
+// manually runs ALTER USER ... DISABLE X509, the controller must re-issue
+// ENABLE X509 to restore the desired state — verified by isX509EnabledUpToDate
+// returning false and updateX509Authentication calling ToggleX509Authentication.
+// nolint: contextcheck
+func TestToggleX509Authentication(t *testing.T) {
+	errBoom := errors.New("boom")
+	cases := map[string]struct {
+		reason  string
+		enable  bool
+		driver  error
+		wantSQL string
+		wantErr string
+	}{
+		"Enable":  {reason: "enable=true emits ENABLE X509", enable: true, wantSQL: "ALTER USER U ENABLE X509"},
+		"Disable": {reason: "enable=false emits DISABLE X509", enable: false, wantSQL: "ALTER USER U DISABLE X509"},
+		"DriverError": {
+			reason:  "Driver failure wraps with ErrUpdateUserX509Enabled",
+			enable:  true,
+			driver:  errBoom,
+			wantErr: "cannot toggle X.509 authentication",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var db fake.MockDB
+			var cap jwtCaptureExec
+			if tc.driver != nil {
+				db = fake.MockDB{
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						return nil, tc.driver
+					},
+				}
+			} else {
+				db = cap.mock()
+			}
+			c := Client{DB: db}
+			err := c.ToggleX509Authentication(context.Background(), "U", tc.enable)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("\n%s\nToggleX509Authentication(...): want error containing %q, got: %v", tc.reason, tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.reason, err)
+			}
+			if !strings.Contains(strings.Join(cap.queries, "\n"), tc.wantSQL) {
+				t.Errorf("\n%s\nToggleX509Authentication(...): missing SQL %q, got: %v", tc.reason, tc.wantSQL, cap.queries)
+			}
+		})
+	}
+}
+
 // TestQueryJWTProviders covers the SYS.JWT_USER_MAPPINGS row-parse path fed
 // into UserObservation.JWTProviders. Empty result, single mapping, and multi-
 // mapping cases; ensures the JWTProviderRef.Name and ExternalIdentity fields
