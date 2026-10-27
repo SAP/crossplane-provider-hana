@@ -43,6 +43,13 @@ type RoleParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	NoGrantToCreator bool `json:"noGrantToCreator,omitempty"`
+
+	// +kubebuilder:validation:Enum=strict;lax
+	// +kubebuilder:default:=strict
+	// PrivilegeManagementPolicy defines how crossplane manages privileges on this role.
+	// 'strict' (default) means all privileges are managed by crossplane; privileges not in the spec are revoked.
+	// 'lax' means crossplane only manages privileges listed in the spec; externally-granted privileges are never revoked.
+	PrivilegeManagementPolicy string `json:"privilegeManagementPolicy,omitempty"`
 }
 
 // RoleObservation are the observable fields of a Role.

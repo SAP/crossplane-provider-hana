@@ -194,6 +194,15 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			"privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
 	}
 
+	// Under lax policy, filter observed privileges to only those in the spec before
+	// computing upToDate. This prevents externally-granted privileges (e.g. schema
+	// grants from another system) from being seen as drift.
+	filteredPrivileges, err := privilege.FilterRolePrivileges(observed.Privileges, parameters.Privileges, cr.Spec.ForProvider.PrivilegeManagementPolicy)
+	if err != nil {
+		return managed.ExternalObservation{}, fmt.Errorf(errSelectRole, err)
+	}
+	observed.Privileges = filteredPrivileges
+
 	cr.SetConditions(xpv2.Available())
 
 	isUpToDate := upToDate(observed, parameters)
@@ -282,6 +291,14 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	observedLdapGroups := cr.Status.AtProvider.LdapGroups
 	observedPrivileges := cr.Status.AtProvider.Privileges
 	observedRoles := cr.Status.AtProvider.Roles
+
+	// Under lax policy, filter observed privileges to only those in the spec so the
+	// diff never produces a toRemove entry for externally-granted privileges.
+	filteredPrivileges, err := privilege.FilterRolePrivileges(observedPrivileges, parameters.Privileges, cr.Spec.ForProvider.PrivilegeManagementPolicy)
+	if err != nil {
+		return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
+	}
+	observedPrivileges = filteredPrivileges
 
 	if err := c.applyArrayUpdate(cr, "LDAP groups", parameters.LdapGroups, observedLdapGroups,
 		func(toAdd, toRemove []string) error {

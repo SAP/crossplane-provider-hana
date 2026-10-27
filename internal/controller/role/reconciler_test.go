@@ -768,3 +768,86 @@ func TestUpdate(t *testing.T) {
 		t.Errorf("Update(...) must not mutate status.atProvider from spec: -want, +got:\n%s", diff)
 	}
 }
+
+// TestObserveLaxPolicy verifies that Observe returns ResourceUpToDate:true when the
+// role has externally-granted privileges that are not in the spec, under lax policy.
+func TestObserveLaxPolicy(t *testing.T) {
+	sortStrings := cmpopts.SortSlices(func(a, b string) bool { return a < b })
+	_ = sortStrings
+
+	// DB has SPARQL UPDATE (external) + CREATE ANY (in spec).
+	// Under lax, SPARQL UPDATE is filtered → observed == spec → upToDate.
+	cr := &v1alpha1.Role{
+		Spec: v1alpha1.RoleSpec{
+			ForProvider: v1alpha1.RoleParameters{
+				RoleName:                  testRoleName,
+				Privileges:                []string{createAnyPrivilege},
+				PrivilegeManagementPolicy: "lax",
+			},
+		},
+	}
+
+	mc := mockClient{
+		MockRead: func(_ context.Context, _ *v1alpha1.RoleParameters) (*v1alpha1.RoleObservation, error) {
+			return &v1alpha1.RoleObservation{
+				RoleName:   testRoleName,
+				Privileges: []string{createAnyPrivilege, "SPARQL UPDATE"},
+			}, nil
+		},
+	}
+
+	e := external{client: mc, log: &MockLogger{}}
+	obs, err := e.Observe(context.Background(), cr)
+	if err != nil {
+		t.Fatalf("Observe(...) unexpected error: %v", err)
+	}
+	if !obs.ResourceExists {
+		t.Error("Observe(...) ResourceExists: want true, got false")
+	}
+	if !obs.ResourceUpToDate {
+		t.Error("Observe(...) ResourceUpToDate: want true under lax policy with only external extra privileges, got false")
+	}
+}
+
+// TestUpdateLaxPolicyNoRevoke verifies that Update never revokes externally-granted
+// privileges (privileges in status.atProvider but not in the spec) under lax policy.
+func TestUpdateLaxPolicyNoRevoke(t *testing.T) {
+	// status.atProvider reflects DB state: spec privilege + external privilege.
+	// Under lax policy, only the spec privilege should appear in toRevoke calc —
+	// so MockUpdatePrivileges must receive an empty revoke list.
+	cr := &v1alpha1.Role{
+		Spec: v1alpha1.RoleSpec{
+			ForProvider: v1alpha1.RoleParameters{
+				RoleName:                  testRoleName,
+				Privileges:                []string{createAnyPrivilege},
+				PrivilegeManagementPolicy: "lax",
+			},
+		},
+	}
+	cr.Status.AtProvider = v1alpha1.RoleObservation{
+		RoleName:   testRoleName,
+		Privileges: []string{createAnyPrivilege, "SPARQL UPDATE"},
+	}
+
+	var gotGrant, gotRevoke []string
+	mc := mockClient{
+		MockUpdatePrivileges: func(_ context.Context, _ *v1alpha1.RoleParameters, grant, revoke []string) error {
+			gotGrant, gotRevoke = grant, revoke
+			return nil
+		},
+	}
+
+	e := external{client: mc, log: &MockLogger{}}
+	if _, err := e.Update(context.Background(), cr); err != nil {
+		t.Fatalf("Update(...) unexpected error: %v", err)
+	}
+
+	// createAnyPrivilege is already observed → not in grant list.
+	// SPARQL UPDATE is external → must not appear in revoke list.
+	if len(gotGrant) != 0 {
+		t.Errorf("Update(...) privileges to grant: want [], got %v", gotGrant)
+	}
+	if len(gotRevoke) != 0 {
+		t.Errorf("Update(...) privileges to revoke: want [] (external privilege must not be revoked under lax), got %v", gotRevoke)
+	}
+}
