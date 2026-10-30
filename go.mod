@@ -6,7 +6,7 @@ tool golang.org/x/tools/cmd/goimports
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/SAP/go-hdb v1.19.2
+	github.com/SAP/go-hdb v1.20.2
 	github.com/SAP/sap-btp-service-operator v0.12.3
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/crossplane-contrib/xp-testing v1.10.1
