@@ -48,7 +48,7 @@ type RoleParameters struct {
 	// +kubebuilder:default:=strict
 	// PrivilegeManagementPolicy defines how crossplane manages privileges on this role.
 	// 'strict' (default) means all privileges are managed by crossplane; privileges not in the spec are revoked.
-	// 'lax' means crossplane only manages privileges listed in the spec; externally-granted privileges are never revoked.
+	// 'lax' manages current and previously managed privileges; privileges removed from the spec are revoked, while external privileges are preserved.
 	PrivilegeManagementPolicy string `json:"privilegeManagementPolicy,omitempty"`
 }
 
@@ -81,6 +81,11 @@ type RoleSpec struct {
 type RoleStatus struct {
 	xpv2.ManagedResourceStatus `json:",inline"`
 	AtProvider                 RoleObservation `json:"atProvider,omitempty"`
+
+	// ManagedPrivileges tracks observed privileges managed by this resource, so lax
+	// reconciliation can revoke removed spec entries without adopting external grants.
+	// +kubebuilder:validation:Optional
+	ManagedPrivileges []string `json:"managedPrivileges,omitempty"`
 }
 
 // +kubebuilder:object:root=true

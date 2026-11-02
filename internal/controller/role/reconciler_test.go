@@ -848,3 +848,86 @@ func TestUpdateLaxPolicyNoRevoke(t *testing.T) {
 		t.Errorf("Update(...) privileges to revoke: want [] (external privilege must not be revoked under lax), got %v", gotRevoke)
 	}
 }
+
+// Exercise persisted ownership across reconciliations, including a failed revoke.
+func TestLaxPrivilegeOwnershipLifecycle(t *testing.T) {
+	cr := &v1alpha1.Role{Spec: v1alpha1.RoleSpec{ForProvider: v1alpha1.RoleParameters{
+		RoleName: testRoleName, Privileges: []string{createAnyPrivilege}, PrivilegeManagementPolicy: "lax",
+	}}}
+	database := []string{"SPARQL UPDATE"}
+	var grants, revokes []string
+	failRevoke := false
+	e := external{log: &MockLogger{}, client: mockClient{
+		MockRead: func(context.Context, *v1alpha1.RoleParameters) (*v1alpha1.RoleObservation, error) {
+			return &v1alpha1.RoleObservation{RoleName: testRoleName, Privileges: append([]string(nil), database...)}, nil
+		},
+		MockUpdatePrivileges: func(_ context.Context, _ *v1alpha1.RoleParameters, grant, revoke []string) error {
+			grants, revokes = grant, revoke
+			if failRevoke {
+				return errors.New("revoke failed")
+			}
+			for _, p := range grant {
+				database = append(database, p)
+			}
+			for _, p := range revoke {
+				for i, observed := range database {
+					if p == observed {
+						database = append(database[:i], database[i+1:]...)
+						break
+					}
+				}
+			}
+			return nil
+		},
+	}}
+	observe := func(wantUpToDate bool, wantManaged []string) {
+		t.Helper()
+		obs, err := e.Observe(context.Background(), cr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if obs.ResourceUpToDate != wantUpToDate {
+			t.Fatalf("upToDate = %v, want %v", obs.ResourceUpToDate, wantUpToDate)
+		}
+		if diff := cmp.Diff(wantManaged, cr.Status.ManagedPrivileges, cmpopts.EquateEmpty()); diff != "" {
+			t.Fatalf("managed privileges (-want +got): %s", diff)
+		}
+		if diff := cmp.Diff(database, cr.Status.AtProvider.Privileges); diff != "" {
+			t.Fatalf("full catalog snapshot lost: %s", diff)
+		}
+	}
+	observe(false, nil)
+	if _, err := e.Update(context.Background(), cr); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]string{createAnyPrivilege}, grants); diff != "" {
+		t.Fatalf("grants: %s", diff)
+	}
+	if len(revokes) != 0 {
+		t.Fatalf("external privilege revoked: %v", revokes)
+	}
+	observe(true, []string{createAnyPrivilege})
+	// Ownership must survive a status deepcopy, as it does across API round trips.
+	cr = cr.DeepCopy()
+	cr.Spec.ForProvider.Privileges = nil
+	observe(false, []string{createAnyPrivilege})
+	failRevoke = true
+	if _, err := e.Update(context.Background(), cr); err == nil {
+		t.Fatal("expected revoke failure")
+	}
+	observe(false, []string{createAnyPrivilege})
+	failRevoke = false
+	if _, err := e.Update(context.Background(), cr); err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 0 {
+		t.Fatalf("unexpected grants: %v", grants)
+	}
+	if diff := cmp.Diff([]string{createAnyPrivilege}, revokes); diff != "" {
+		t.Fatalf("revokes: %s", diff)
+	}
+	observe(true, nil)
+	if diff := cmp.Diff([]string{"SPARQL UPDATE"}, database); diff != "" {
+		t.Fatalf("external privilege was not preserved: %s", diff)
+	}
+}

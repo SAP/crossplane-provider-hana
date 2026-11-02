@@ -1884,9 +1884,10 @@ func TestFindPrivilegeRoleOverlap(t *testing.T) {
 
 func TestFilterRolePrivileges(t *testing.T) {
 	type args struct {
-		observed []string
-		spec     []string
-		policy   string
+		previouslyManaged []string
+		observed          []string
+		spec              []string
+		policy            string
 	}
 	type want struct {
 		result []string
@@ -1898,6 +1899,26 @@ func TestFilterRolePrivileges(t *testing.T) {
 		args   args
 		want   want
 	}{
+
+		"LaxRetainsRemovedManagedPrivilege": {
+			reason: "removed managed privileges remain in the diff, external grants do not",
+			args: args{
+				observed:          []string{selectPrivilege, insertPrivilege, updatePrivilege},
+				spec:              []string{insertPrivilege},
+				previouslyManaged: []string{selectPrivilege},
+				policy:            laxPolicy,
+			},
+			want: want{result: []string{selectPrivilege, insertPrivilege}},
+		},
+		"LaxForgetsRevokedPrivileges": {
+			reason: "ownership is cleared after the privilege disappears from HANA",
+			args: args{
+				observed:          []string{updatePrivilege},
+				previouslyManaged: []string{selectPrivilege},
+				policy:            laxPolicy,
+			},
+			want: want{result: []string{}},
+		},
 		"StrictPolicyNoOp": {
 			reason: "strict policy returns observed unchanged even when it contains extra privileges",
 			args: args{
@@ -1980,7 +2001,7 @@ func TestFilterRolePrivileges(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			got, err := FilterRolePrivileges(tc.args.observed, tc.args.spec, tc.args.policy)
+			got, err := FilterRolePrivileges(tc.args.observed, tc.args.spec, tc.args.previouslyManaged, tc.args.policy)
 			if tc.want.err != nil {
 				if err == nil {
 					t.Errorf("\n%s\nFilterRolePrivileges(...): expected error %v, got nil", tc.reason, tc.want.err)

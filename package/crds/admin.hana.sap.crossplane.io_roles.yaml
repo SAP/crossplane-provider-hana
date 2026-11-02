@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.23.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: roles.admin.hana.sap.crossplane.io
 spec:
   group: admin.hana.sap.crossplane.io
@@ -88,7 +88,7 @@ spec:
                     description: |-
                       PrivilegeManagementPolicy defines how crossplane manages privileges on this role.
                       'strict' (default) means all privileges are managed by crossplane; privileges not in the spec are revoked.
-                      'lax' means crossplane only manages privileges listed in the spec; externally-granted privileges are never revoked.
+                      'lax' manages current and previously managed privileges; privileges removed from the spec are revoked, while external privileges are preserved.
                     enum:
                     - strict
                     - lax
@@ -289,6 +289,13 @@ spec:
                   processed. Users can compare this to the annotation to determine
                   whether a reconcile request has been handled.
                 type: string
+              managedPrivileges:
+                description: |-
+                  ManagedPrivileges tracks observed privileges managed by this resource, so lax
+                  reconciliation can revoke removed spec entries without adopting external grants.
+                items:
+                  type: string
+                type: array
               observedGeneration:
                 description: |-
                   ObservedGeneration is the latest metadata.generation

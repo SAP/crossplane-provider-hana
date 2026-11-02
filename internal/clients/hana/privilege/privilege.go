@@ -668,17 +668,17 @@ func GetDefaultPrivilege(defaultSchema string) string {
 }
 
 // FilterRolePrivileges filters observed privileges for a Role based on the management policy.
-// Under 'lax', only privileges present in specPrivileges are retained in the observed list,
+// Under 'lax', current and previously managed privileges are retained in the observed list,
 // so the diff engine never computes a toRemove entry for externally-granted privileges.
 // Under 'strict' (default), the full observed list is returned unchanged.
-func FilterRolePrivileges(observedPrivileges []string, specPrivileges []string, policy string) ([]string, error) {
+func FilterRolePrivileges(observedPrivileges []string, specPrivileges, previouslyManaged []string, policy string) ([]string, error) {
 	switch policy {
 	case "strict", "":
 		return observedPrivileges, nil
 	case "lax":
 		managed := make([]string, 0, len(specPrivileges))
 		for _, p := range observedPrivileges {
-			if slices.Contains(specPrivileges, p) {
+			if slices.Contains(specPrivileges, p) || slices.Contains(previouslyManaged, p) {
 				managed = append(managed, p)
 			}
 		}
