@@ -1881,3 +1881,139 @@ func TestFindPrivilegeRoleOverlap(t *testing.T) {
 		})
 	}
 }
+
+func TestFilterRolePrivileges(t *testing.T) {
+	type args struct {
+		previouslyManaged []string
+		observed          []string
+		spec              []string
+		policy            string
+	}
+	type want struct {
+		result []string
+		err    error
+	}
+
+	cases := map[string]struct {
+		reason string
+		args   args
+		want   want
+	}{
+
+		"LaxRetainsRemovedManagedPrivilege": {
+			reason: "removed managed privileges remain in the diff, external grants do not",
+			args: args{
+				observed:          []string{selectPrivilege, insertPrivilege, updatePrivilege},
+				spec:              []string{insertPrivilege},
+				previouslyManaged: []string{selectPrivilege},
+				policy:            laxPolicy,
+			},
+			want: want{result: []string{selectPrivilege, insertPrivilege}},
+		},
+		"LaxForgetsRevokedPrivileges": {
+			reason: "ownership is cleared after the privilege disappears from HANA",
+			args: args{
+				observed:          []string{updatePrivilege},
+				previouslyManaged: []string{selectPrivilege},
+				policy:            laxPolicy,
+			},
+			want: want{result: []string{}},
+		},
+		"StrictPolicyNoOp": {
+			reason: "strict policy returns observed unchanged even when it contains extra privileges",
+			args: args{
+				observed: []string{selectPrivilege, insertPrivilege, updatePrivilege},
+				spec:     []string{selectPrivilege},
+				policy:   "strict",
+			},
+			want: want{
+				result: []string{selectPrivilege, insertPrivilege, updatePrivilege},
+			},
+		},
+		"EmptyPolicyActsAsStrict": {
+			reason: "empty policy string is treated as strict",
+			args: args{
+				observed: []string{selectPrivilege, insertPrivilege},
+				spec:     []string{selectPrivilege},
+				policy:   "",
+			},
+			want: want{
+				result: []string{selectPrivilege, insertPrivilege},
+			},
+		},
+		"LaxPolicyFiltersToSpec": {
+			reason: "lax policy keeps only observed privileges that are also in the spec",
+			args: args{
+				observed: []string{selectPrivilege, insertPrivilege, updatePrivilege},
+				spec:     []string{selectPrivilege, insertPrivilege},
+				policy:   laxPolicy,
+			},
+			want: want{
+				result: []string{selectPrivilege, insertPrivilege},
+			},
+		},
+		"LaxPolicyExternalPrivilegeDropped": {
+			reason: "lax policy drops privileges not in spec (externally granted)",
+			args: args{
+				observed: []string{selectPrivilege, "SPARQL UPDATE", "SPARQL QUERY"},
+				spec:     []string{selectPrivilege},
+				policy:   laxPolicy,
+			},
+			want: want{
+				result: []string{selectPrivilege},
+			},
+		},
+		"LaxPolicyAllExternal": {
+			reason: "lax policy returns empty slice when no observed privilege is in the spec",
+			args: args{
+				observed: []string{"SPARQL UPDATE", "SPARQL QUERY"},
+				spec:     []string{selectPrivilege},
+				policy:   laxPolicy,
+			},
+			want: want{
+				result: []string{},
+			},
+		},
+		"LaxPolicyNilObserved": {
+			reason: "lax policy returns nil when observed is nil",
+			args: args{
+				observed: nil,
+				spec:     []string{selectPrivilege},
+				policy:   laxPolicy,
+			},
+			want: want{
+				result: []string{},
+			},
+		},
+		"UnknownPolicyReturnsError": {
+			reason: "unknown policy returns original observed and an error",
+			args: args{
+				observed: []string{selectPrivilege},
+				spec:     []string{selectPrivilege},
+				policy:   "bogus",
+			},
+			want: want{
+				result: []string{selectPrivilege},
+				err:    fmt.Errorf(ErrUnknownPrivilegeManagementPolicy, "bogus"),
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := FilterRolePrivileges(tc.args.observed, tc.args.spec, tc.args.previouslyManaged, tc.args.policy)
+			if tc.want.err != nil {
+				if err == nil {
+					t.Errorf("\n%s\nFilterRolePrivileges(...): expected error %v, got nil", tc.reason, tc.want.err)
+				} else if err.Error() != tc.want.err.Error() {
+					t.Errorf("\n%s\nFilterRolePrivileges(...): expected error %v, got %v", tc.reason, tc.want.err, err)
+				}
+			} else if err != nil {
+				t.Errorf("\n%s\nFilterRolePrivileges(...): unexpected error: %v", tc.reason, err)
+			}
+			if diff := cmp.Diff(tc.want.result, got, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("\n%s\nFilterRolePrivileges(...): -want, +got:\n%s", tc.reason, diff)
+			}
+		})
+	}
+}

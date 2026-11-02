@@ -768,3 +768,166 @@ func TestUpdate(t *testing.T) {
 		t.Errorf("Update(...) must not mutate status.atProvider from spec: -want, +got:\n%s", diff)
 	}
 }
+
+// TestObserveLaxPolicy verifies that Observe returns ResourceUpToDate:true when the
+// role has externally-granted privileges that are not in the spec, under lax policy.
+func TestObserveLaxPolicy(t *testing.T) {
+	// DB has SPARQL UPDATE (external) + CREATE ANY (in spec).
+	// Under lax, SPARQL UPDATE is filtered → observed == spec → upToDate.
+	cr := &v1alpha1.Role{
+		Spec: v1alpha1.RoleSpec{
+			ForProvider: v1alpha1.RoleParameters{
+				RoleName:                  testRoleName,
+				Privileges:                []string{createAnyPrivilege},
+				PrivilegeManagementPolicy: "lax",
+			},
+		},
+	}
+
+	mc := mockClient{
+		MockRead: func(_ context.Context, _ *v1alpha1.RoleParameters) (*v1alpha1.RoleObservation, error) {
+			return &v1alpha1.RoleObservation{
+				RoleName:   testRoleName,
+				Privileges: []string{createAnyPrivilege, "SPARQL UPDATE"},
+			}, nil
+		},
+	}
+
+	e := external{client: mc, log: &MockLogger{}}
+	obs, err := e.Observe(context.Background(), cr)
+	if err != nil {
+		t.Fatalf("Observe(...) unexpected error: %v", err)
+	}
+	if !obs.ResourceExists {
+		t.Error("Observe(...) ResourceExists: want true, got false")
+	}
+	if !obs.ResourceUpToDate {
+		t.Error("Observe(...) ResourceUpToDate: want true under lax policy with only external extra privileges, got false")
+	}
+}
+
+// TestUpdateLaxPolicyNoRevoke verifies that Update never revokes externally-granted
+// privileges (privileges in status.atProvider but not in the spec) under lax policy.
+func TestUpdateLaxPolicyNoRevoke(t *testing.T) {
+	// status.atProvider reflects DB state: spec privilege + external privilege.
+	// Under lax policy, only the spec privilege should appear in toRevoke calc —
+	// so MockUpdatePrivileges must receive an empty revoke list.
+	cr := &v1alpha1.Role{
+		Spec: v1alpha1.RoleSpec{
+			ForProvider: v1alpha1.RoleParameters{
+				RoleName:                  testRoleName,
+				Privileges:                []string{createAnyPrivilege},
+				PrivilegeManagementPolicy: "lax",
+			},
+		},
+	}
+	cr.Status.AtProvider = v1alpha1.RoleObservation{
+		RoleName:   testRoleName,
+		Privileges: []string{createAnyPrivilege, "SPARQL UPDATE"},
+	}
+
+	var gotGrant, gotRevoke []string
+	mc := mockClient{
+		MockUpdatePrivileges: func(_ context.Context, _ *v1alpha1.RoleParameters, grant, revoke []string) error {
+			gotGrant, gotRevoke = grant, revoke
+			return nil
+		},
+	}
+
+	e := external{client: mc, log: &MockLogger{}}
+	if _, err := e.Update(context.Background(), cr); err != nil {
+		t.Fatalf("Update(...) unexpected error: %v", err)
+	}
+
+	// createAnyPrivilege is already observed → not in grant list.
+	// SPARQL UPDATE is external → must not appear in revoke list.
+	if len(gotGrant) != 0 {
+		t.Errorf("Update(...) privileges to grant: want [], got %v", gotGrant)
+	}
+	if len(gotRevoke) != 0 {
+		t.Errorf("Update(...) privileges to revoke: want [] (external privilege must not be revoked under lax), got %v", gotRevoke)
+	}
+}
+
+// Exercise persisted ownership across reconciliations, including a failed revoke.
+func TestLaxPrivilegeOwnershipLifecycle(t *testing.T) {
+	cr := &v1alpha1.Role{Spec: v1alpha1.RoleSpec{ForProvider: v1alpha1.RoleParameters{
+		RoleName: testRoleName, Privileges: []string{createAnyPrivilege}, PrivilegeManagementPolicy: "lax",
+	}}}
+	database := []string{"SPARQL UPDATE"}
+	var grants, revokes []string
+	failRevoke := false
+	e := external{log: &MockLogger{}, client: mockClient{
+		MockRead: func(context.Context, *v1alpha1.RoleParameters) (*v1alpha1.RoleObservation, error) {
+			return &v1alpha1.RoleObservation{RoleName: testRoleName, Privileges: append([]string(nil), database...)}, nil
+		},
+		MockUpdatePrivileges: func(_ context.Context, _ *v1alpha1.RoleParameters, grant, revoke []string) error {
+			grants, revokes = grant, revoke
+			if failRevoke {
+				return errors.New("revoke failed")
+			}
+			for _, p := range grant {
+				database = append(database, p)
+			}
+			for _, p := range revoke {
+				for i, observed := range database {
+					if p == observed {
+						database = append(database[:i], database[i+1:]...)
+						break
+					}
+				}
+			}
+			return nil
+		},
+	}}
+	observe := func(wantUpToDate bool, wantManaged []string) {
+		t.Helper()
+		obs, err := e.Observe(context.Background(), cr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if obs.ResourceUpToDate != wantUpToDate {
+			t.Fatalf("upToDate = %v, want %v", obs.ResourceUpToDate, wantUpToDate)
+		}
+		if diff := cmp.Diff(wantManaged, cr.Status.ManagedPrivileges, cmpopts.EquateEmpty()); diff != "" {
+			t.Fatalf("managed privileges (-want +got): %s", diff)
+		}
+		if diff := cmp.Diff(database, cr.Status.AtProvider.Privileges); diff != "" {
+			t.Fatalf("full catalog snapshot lost: %s", diff)
+		}
+	}
+	observe(false, nil)
+	if _, err := e.Update(context.Background(), cr); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]string{createAnyPrivilege}, grants); diff != "" {
+		t.Fatalf("grants: %s", diff)
+	}
+	if len(revokes) != 0 {
+		t.Fatalf("external privilege revoked: %v", revokes)
+	}
+	observe(true, []string{createAnyPrivilege})
+	// Ownership must survive a status deepcopy, as it does across API round trips.
+	cr = cr.DeepCopy()
+	cr.Spec.ForProvider.Privileges = nil
+	observe(false, []string{createAnyPrivilege})
+	failRevoke = true
+	if _, err := e.Update(context.Background(), cr); err == nil {
+		t.Fatal("expected revoke failure")
+	}
+	observe(false, []string{createAnyPrivilege})
+	failRevoke = false
+	if _, err := e.Update(context.Background(), cr); err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 0 {
+		t.Fatalf("unexpected grants: %v", grants)
+	}
+	if diff := cmp.Diff([]string{createAnyPrivilege}, revokes); diff != "" {
+		t.Fatalf("revokes: %s", diff)
+	}
+	observe(true, nil)
+	if diff := cmp.Diff([]string{"SPARQL UPDATE"}, database); diff != "" {
+		t.Fatalf("external privilege was not preserved: %s", diff)
+	}
+}

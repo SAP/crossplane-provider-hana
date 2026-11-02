@@ -194,6 +194,17 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			"privileges contains role name(s) that must be moved to spec.forProvider.roles: %v", overlap)
 	}
 
+	// Under lax policy, retain current and previously managed privileges before
+	// computing upToDate. This prevents externally-granted privileges (e.g. schema
+	// grants from another system) from being seen as drift.
+	filteredPrivileges, err := privilege.FilterRolePrivileges(observed.Privileges, parameters.Privileges, cr.Status.ManagedPrivileges, cr.Spec.ForProvider.PrivilegeManagementPolicy)
+	if err != nil {
+		return managed.ExternalObservation{}, fmt.Errorf(errSelectRole, err)
+	}
+	// Track ownership separately from the full catalog snapshot in atProvider.
+	cr.Status.ManagedPrivileges, _ = privilege.FilterRolePrivileges(observed.Privileges, parameters.Privileges, cr.Status.ManagedPrivileges, "lax")
+	observed.Privileges = filteredPrivileges
+
 	cr.SetConditions(xpv2.Available())
 
 	isUpToDate := upToDate(observed, parameters)
@@ -282,6 +293,14 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	observedLdapGroups := cr.Status.AtProvider.LdapGroups
 	observedPrivileges := cr.Status.AtProvider.Privileges
 	observedRoles := cr.Status.AtProvider.Roles
+
+	// Under lax policy, retain previously managed privileges so removed spec
+	// entries are revoked while external grants stay outside the diff.
+	filteredPrivileges, err := privilege.FilterRolePrivileges(observedPrivileges, parameters.Privileges, cr.Status.ManagedPrivileges, cr.Spec.ForProvider.PrivilegeManagementPolicy)
+	if err != nil {
+		return managed.ExternalUpdate{}, fmt.Errorf(errUpdateRole, err)
+	}
+	observedPrivileges = filteredPrivileges
 
 	if err := c.applyArrayUpdate(cr, "LDAP groups", parameters.LdapGroups, observedLdapGroups,
 		func(toAdd, toRemove []string) error {

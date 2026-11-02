@@ -667,6 +667,27 @@ func GetDefaultPrivilege(defaultSchema string) string {
 	return fmt.Sprintf(`CREATE ANY ON SCHEMA "%s" WITH GRANT OPTION`, defaultSchema)
 }
 
+// FilterRolePrivileges filters observed privileges for a Role based on the management policy.
+// Under 'lax', current and previously managed privileges are retained in the observed list,
+// so the diff engine never computes a toRemove entry for externally-granted privileges.
+// Under 'strict' (default), the full observed list is returned unchanged.
+func FilterRolePrivileges(observedPrivileges []string, specPrivileges, previouslyManaged []string, policy string) ([]string, error) {
+	switch policy {
+	case "strict", "":
+		return observedPrivileges, nil
+	case "lax":
+		managed := make([]string, 0, len(specPrivileges))
+		for _, p := range observedPrivileges {
+			if slices.Contains(specPrivileges, p) || slices.Contains(previouslyManaged, p) {
+				managed = append(managed, p)
+			}
+		}
+		return managed, nil
+	default:
+		return observedPrivileges, fmt.Errorf(ErrUnknownPrivilegeManagementPolicy, policy)
+	}
+}
+
 // FilterManagedPrivileges filters the observed privileges based on the management policy
 func FilterManagedPrivileges(observed *v1alpha1.UserObservation, specPrivileges []string, prevPrivileges []string, policy, defaultSchema string) (*v1alpha1.UserObservation, error) {
 	if observed == nil {
