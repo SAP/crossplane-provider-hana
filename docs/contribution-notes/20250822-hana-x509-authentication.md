@@ -1,4 +1,4 @@
-# X.509 Certificate-Based User Authentication for SAP HANA Crossplane Provider
+## X.509 Certificate-Based User Authentication for SAP HANA Crossplane Provider
 
 - Status: implemented
 - Date: 2025-08-22
