@@ -50,11 +50,17 @@ const (
 
 	msgNotValidSecret = "Object is not a valid secret"
 	msgListFailed     = "Failed to list users"
+
+	passwordSecretRefIndex = "spec.forProvider.authentication.password.passwordSecretRef"
 )
 
 // Setup adds a controller that reconciles User managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.UserGroupKind)
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.User{}, passwordSecretRefIndex, indexPasswordSecretRef); err != nil {
+		return fmt.Errorf("cannot index User password Secret references: %w", err)
+	}
 
 	log := o.Logger.WithValues("controller", name)
 	t := resource.NewLegacyProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{})
@@ -84,7 +90,18 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 		Complete(r)
 }
 
-func generateReconcileRequestsFromSecret(ctx context.Context, obj client.Object, kube client.Client, log logging.Logger) []reconcile.Request {
+func indexPasswordSecretRef(obj client.Object) []string {
+	cr := obj.(*v1alpha1.User)
+	password := cr.Spec.ForProvider.Authentication.Password
+	if password == nil || password.PasswordSecretRef == nil {
+		return nil
+	}
+
+	ref := password.PasswordSecretRef
+	return []string{types.NamespacedName{Namespace: ref.Namespace, Name: ref.Name}.String()}
+}
+
+func generateReconcileRequestsFromSecret(ctx context.Context, obj client.Object, kube client.Reader, log logging.Logger) []reconcile.Request {
 	log.Info("Enqueueing requests from secret")
 	secret, ok := obj.(*corev1.Secret)
 	if !ok {
@@ -93,26 +110,19 @@ func generateReconcileRequestsFromSecret(ctx context.Context, obj client.Object,
 	}
 
 	users := &v1alpha1.UserList{}
-	if err := kube.List(ctx, users); err != nil {
+	if err := kube.List(ctx, users, client.MatchingFields{
+		passwordSecretRefIndex: client.ObjectKeyFromObject(secret).String(),
+	}); err != nil {
 		log.Info(msgListFailed, "error", err)
 		return []reconcile.Request{}
 	}
 
-	requests := []reconcile.Request{}
-	for _, user := range users.Items {
-		if passwordObj := user.Spec.ForProvider.Authentication.Password; passwordObj != nil {
-			if secretRef := passwordObj.PasswordSecretRef; secretRef != nil &&
-				secretRef.Namespace == secret.GetNamespace() &&
-				secretRef.Name == secret.GetName() {
-				log.Info("Secret for user changed", "user", user.GetName(), "secret", secret.GetName())
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Name: user.Name,
-					},
-				},
-				)
-			}
-		}
+	requests := make([]reconcile.Request, 0, len(users.Items))
+	for i := range users.Items {
+		log.Info("Secret for user changed", "user", users.Items[i].Name, "secret", secret.GetName())
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: users.Items[i].Name},
+		})
 	}
 
 	return requests

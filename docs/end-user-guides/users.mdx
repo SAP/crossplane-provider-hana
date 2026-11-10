@@ -122,6 +122,18 @@ As a result, the privileges on the HANA Cloud will be updated accordingly.
 Adding an item to the list of privileges has an effect of granting a privilege.
 Likewise, removing one from the list has an effect of revoking it.
 
+## Password Secret changes
+
+The provider watches Secrets and queues reconciliation for Users whose
+`passwordSecretRef` references the affected Secret. References are indexed by
+Secret namespace and name, avoiding a scan of all Users for each Secret event,
+including the initial events during provider startup.
+
+Multiple Users can reference the same Secret, including different keys within
+that Secret. An event for the Secret queues all of those Users. Updating a User's
+Secret reference automatically updates the index. Password changes are applied
+according to the User's management policies.
+
 ## ⁉ FAQs
 
 No FAQs yet. Got a question? [Open a GitHub issue](https://github.com/SAP/crossplane-provider-hana/issues/new/choose) and help us build this section.
