@@ -18,8 +18,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
@@ -862,6 +864,16 @@ func TestDelete(t *testing.T) {
 }
 
 func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	newClient := func(objects ...client.Object) client.Client {
+		return fake.NewClientBuilder().WithScheme(scheme).
+			WithIndex(&v1alpha1.User{}, passwordSecretRefIndex, indexPasswordSecretRef).
+			WithObjects(objects...).Build()
+	}
+
 	user1 := &v1alpha1.User{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testUserName1",
@@ -958,13 +970,9 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 		"EmptyUserList": {
 			reason: "An empty list of Users should return an empty request",
 			args: args{
-				kube: &test.MockClient{
-					MockList: test.NewMockListFn(nil, func(obj client.ObjectList) error {
-						return nil
-					}),
-				},
-				log: &MockLogger{},
-				obj: secret,
+				kube: newClient(),
+				log:  &MockLogger{},
+				obj:  secret,
 			},
 			want: want{
 				request: []reconcile.Request{},
@@ -973,15 +981,9 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 		"OneUser": {
 			reason: "A single User should return a request for that User",
 			args: args{
-				kube: &test.MockClient{
-					MockList: test.NewMockListFn(nil, func(obj client.ObjectList) error {
-						users := obj.(*v1alpha1.UserList)
-						users.Items = append(users.Items, *user1, *user2)
-						return nil
-					}),
-				},
-				log: &MockLogger{},
-				obj: secret,
+				kube: newClient(user1, user2),
+				log:  &MockLogger{},
+				obj:  secret,
 			},
 			want: want{
 				request: []reconcile.Request{
@@ -996,15 +998,9 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 		"WrongUser": {
 			reason: "A User with a different secret name should not return a request",
 			args: args{
-				kube: &test.MockClient{
-					MockList: test.NewMockListFn(nil, func(obj client.ObjectList) error {
-						users := obj.(*v1alpha1.UserList)
-						users.Items = append(users.Items, *user2)
-						return nil
-					}),
-				},
-				log: &MockLogger{},
-				obj: secret,
+				kube: newClient(user2),
+				log:  &MockLogger{},
+				obj:  secret,
 			},
 			want: want{
 				request: []reconcile.Request{},
