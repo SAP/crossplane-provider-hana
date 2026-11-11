@@ -30,6 +30,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
+	controlleroptions "github.com/SAP/crossplane-provider-hana/internal/controller/options"
 )
 
 const (
@@ -65,10 +66,12 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
 		features.ConfigureBetaManagementPolicies(o))
 
+	co := controlleroptions.ForManagedController(name, o, r)
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
+		WithOptions(co.RuntimeOptions).
 		For(&v1alpha1.Usergroup{}).
-		Complete(r)
+		Complete(co.Reconciler)
 }
 
 // A connector is expected to produce an ExternalClient when its Connect method

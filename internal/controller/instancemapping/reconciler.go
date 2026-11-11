@@ -25,6 +25,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud"
 	imclient "github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud/instancemapping"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
+	controlleroptions "github.com/SAP/crossplane-provider-hana/internal/controller/options"
 )
 
 const (
@@ -64,10 +65,12 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		features.ConfigureBetaManagementPolicies(o),
 	)
 
+	co := controlleroptions.ForManagedController(name, o, r)
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
+		WithOptions(co.RuntimeOptions).
 		For(&v1alpha1.InstanceMapping{}).
-		Complete(r)
+		Complete(co.Reconciler)
 }
 
 // Connector produces an ExternalClient when its Connect method is called.
