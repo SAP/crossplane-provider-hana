@@ -103,7 +103,6 @@ spec:
                       is JWT.
                     properties:
                       name:
-                        default: ""
                         type: string
                       providerRef:
                         description: A Reference to a named object.
@@ -140,6 +139,12 @@ spec:
                         - name
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of name or providerRef must be set and
+                        non-empty
+                      rule: (has(self.name) && size(self.name) > 0 && !has(self.providerRef))
+                        || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name)
+                        > 0)
                   name:
                     description: Name for the PSE
                     type: string
@@ -154,7 +159,6 @@ spec:
                         Crossplane reference to a PublicKey managed resource.
                       properties:
                         name:
-                          default: ""
                           type: string
                         providerRef:
                           description: A Reference to a named object.
@@ -191,6 +195,13 @@ spec:
                           - name
                           type: object
                       type: object
+                      x-kubernetes-validations:
+                      - message: exactly one of name or providerRef must be set and
+                          non-empty
+                        rule: (has(self.name) && size(self.name) > 0 && !has(self.providerRef))
+                          || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name)
+                          > 0)
+                    maxItems: 256
                     type: array
                   purpose:
                     default: X509
@@ -206,7 +217,6 @@ spec:
                       is X509.
                     properties:
                       name:
-                        default: ""
                         type: string
                       providerRef:
                         description: A Reference to a named object.
@@ -243,6 +253,12 @@ spec:
                         - name
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of name or providerRef must be set and
+                        non-empty
+                      rule: (has(self.name) && size(self.name) > 0 && !has(self.providerRef))
+                        || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name)
+                        > 0)
                 required:
                 - name
                 type: object
