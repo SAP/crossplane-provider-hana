@@ -43,6 +43,13 @@ type RoleParameters struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	NoGrantToCreator bool `json:"noGrantToCreator,omitempty"`
+
+	// +kubebuilder:validation:Enum=strict;lax
+	// +kubebuilder:default:=strict
+	// PrivilegeManagementPolicy defines how crossplane manages privileges on this role.
+	// 'strict' (default) means all privileges are managed by crossplane; privileges not in the spec are revoked.
+	// 'lax' manages current and previously managed privileges; privileges removed from the spec are revoked, while external privileges are preserved.
+	PrivilegeManagementPolicy string `json:"privilegeManagementPolicy,omitempty"`
 }
 
 // RoleObservation are the observable fields of a Role.
@@ -74,6 +81,11 @@ type RoleSpec struct {
 type RoleStatus struct {
 	xpv2.ManagedResourceStatus `json:",inline"`
 	AtProvider                 RoleObservation `json:"atProvider,omitempty"`
+
+	// ManagedPrivileges tracks observed privileges managed by this resource, so lax
+	// reconciliation can revoke removed spec entries without adopting external grants.
+	// +kubebuilder:validation:Optional
+	ManagedPrivileges []string `json:"managedPrivileges,omitempty"`
 }
 
 // +kubebuilder:object:root=true
