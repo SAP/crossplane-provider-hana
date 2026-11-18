@@ -70,6 +70,21 @@ spec:
 Adding an item to a list has the effect of granting it; removing one has the effect of revoking it.
 To grant or revoke, patch the `Role` resource by updating the corresponding list.
 
+### Sharing privilege management
+
+Set `spec.forProvider.privilegeManagementPolicy` to `lax` when another system also grants
+privileges to the same role. The default, `strict`, revokes any privilege absent from the spec.
+
+In lax mode, the provider grants missing spec privileges and tracks the ones it observes in
+`status.managedPrivileges`. Removing a tracked privilege from the spec revokes it. Privileges
+never listed in the spec are preserved. A privilege already present in HANA becomes managed
+when it is listed in the spec, regardless of which system originally granted it.
+
+Existing resources start tracking on their first reconciliation with this provider version.
+Let that reconciliation complete before removing spec privileges; privileges removed before
+tracking begins cannot be distinguished from external grants. The full catalog snapshot remains
+available in `status.atProvider.privileges`. Role grants and LDAP groups retain strict reconciliation.
+
 :::danger Put role names under `roles`, not `privileges`
 
 HANA's `GRANT <name> TO <grantee>` statement is **syntactically identical** for a system
