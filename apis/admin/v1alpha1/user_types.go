@@ -15,9 +15,11 @@ import (
 
 // Authentication includes different authentication methods
 type Authentication struct {
-	Password      *Password         `json:"password,omitempty"`
+	Password *Password `json:"password,omitempty"`
+	// +kubebuilder:validation:MaxItems:=256
 	X509Providers []X509UserMapping `json:"x509Providers,omitempty"`
-	JWTProviders  []JWTUserMapping  `json:"jwtProviders,omitempty"`
+	// +kubebuilder:validation:MaxItems:=256
+	JWTProviders []JWTUserMapping `json:"jwtProviders,omitempty"`
 }
 
 // Password authentication type
@@ -76,9 +78,11 @@ type UserObservation struct {
 	RestrictedUser *bool `json:"restrictedUser,omitempty"`
 
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems:=256
 	X509Providers []X509UserMapping `json:"x509Providers,omitempty"`
 
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems:=256
 	JWTProviders []JWTUserMapping `json:"jwtProviders,omitempty"`
 
 	// +kubebuilder:validation:Optional

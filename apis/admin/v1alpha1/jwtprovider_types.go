@@ -138,9 +138,9 @@ type JWTProviderList struct {
 
 // JWTProviderRef references a JWT provider, either by HANA name or via a
 // Crossplane reference to a JWTProvider managed resource.
+// +kubebuilder:validation:XValidation:rule="(has(self.name) && size(self.name) > 0 && !has(self.providerRef)) || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name) > 0)",message="exactly one of name or providerRef must be set and non-empty"
 type JWTProviderRef struct {
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default:=""
 	Name string `json:"name,omitempty"`
 
 	// +kubebuilder:validation:Optional

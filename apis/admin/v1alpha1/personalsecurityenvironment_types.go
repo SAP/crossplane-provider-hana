@@ -38,10 +38,11 @@ type X509UserMapping struct {
 	SubjectName string `json:"subjectName,omitempty"`
 }
 
-// X509ProviderRef references X.509 providers
+// X509ProviderRef references an X.509 provider, either by HANA name or via a
+// Crossplane reference to an X509Provider managed resource.
+// +kubebuilder:validation:XValidation:rule="(has(self.name) && size(self.name) > 0 && !has(self.providerRef)) || (!has(self.name) && has(self.providerRef) && size(self.providerRef.name) > 0)",message="exactly one of name or providerRef must be set and non-empty"
 type X509ProviderRef struct {
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default:=""
 	Name string `json:"name,omitempty"`
 
 	// +kubebuilder:validation:Optional
@@ -92,6 +93,7 @@ type PersonalSecurityEnvironmentParameters struct {
 	// `ALTER PSE <name> ADD PUBLIC KEY <key>`. Only meaningful when Purpose
 	// is JWT.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems:=256
 	PublicKeyRefs []PublicKeyRef `json:"publicKeyRefs,omitempty"`
 }
 
