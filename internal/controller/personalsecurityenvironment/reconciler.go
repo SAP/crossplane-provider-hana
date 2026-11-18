@@ -19,7 +19,6 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/meta"
-	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/personalsecurityenvironment"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
+	controlleroptions "github.com/SAP/crossplane-provider-hana/internal/controller/options"
 )
 
 const (
@@ -59,11 +59,12 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
 		features.ConfigureBetaManagementPolicies(o))
 
+	co := controlleroptions.ForManagedController(name, o, r)
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
-		WithOptions(o.ForControllerRuntime()).
+		WithOptions(co.RuntimeOptions).
 		For(&adminv1alpha1.PersonalSecurityEnvironment{}).
-		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
+		Complete(co.Reconciler)
 }
 
 // A connector is expected to produce an ExternalClient when its Connect method
