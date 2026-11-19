@@ -106,7 +106,7 @@ type UserObservation struct {
 	IsPasswordLifetimeCheckEnabled *bool `json:"isPasswordLifetimeCheckEnabled,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	IsPasswordEnabled *bool `json:"isPasswordEnabled,omitempty"`
+	IsPasswordEnabled bool `json:"isPasswordEnabled,omitempty"`
 
 	// IsClientConnectEnabled reflects whether the user is permitted to open
 	// external client connections.
