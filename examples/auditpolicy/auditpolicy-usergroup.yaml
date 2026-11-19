@@ -1,0 +1,25 @@
+apiVersion: admin.hana.sap.crossplane.io/v1alpha1
+kind: AuditPolicy
+metadata:
+  name: example-auditpolicy-usergroup
+spec:
+  forProvider:
+    # Renders to:
+    # CREATE AUDIT POLICY AUDIT_USERGROUP_CONNECT AUDITING SUCCESSFUL CONNECT FOR PRINCIPALS
+    # USERGROUP TECHNICAL_USER_GROUP, USER USER1 LEVEL INFO TRAIL TYPE TABLE RETENTION 180
+    policyName: AUDIT_USERGROUP_CONNECT
+    auditStatus: SUCCESSFUL
+    auditActions:
+      - CONNECT
+    # Restrict the policy to the members of a user group.
+    auditPrincipals:
+      - type: USERGROUP
+        name: technical_user_group
+      - type: USER
+        name: USER1
+    auditLevel: INFO
+    auditTrailRetention: 180
+    enabled: true
+  providerConfigRef:
+    name: example
+

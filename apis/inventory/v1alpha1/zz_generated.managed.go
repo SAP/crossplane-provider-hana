@@ -5,124 +5,104 @@ Copyright 2026 SAP SE or an SAP affiliate company and contributors.
 
 package v1alpha1
 
-import xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+import xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 
 // GetCondition of this InstanceMapping.
-func (mg *InstanceMapping) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *InstanceMapping) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this InstanceMapping.
-func (mg *InstanceMapping) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *InstanceMapping) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this InstanceMapping.
-func (mg *InstanceMapping) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *InstanceMapping) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this InstanceMapping.
-func (mg *InstanceMapping) GetProviderConfigReference() *xpv1.Reference {
+func (mg *InstanceMapping) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this InstanceMapping.
-func (mg *InstanceMapping) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this InstanceMapping.
-func (mg *InstanceMapping) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *InstanceMapping) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this InstanceMapping.
-func (mg *InstanceMapping) SetConditions(c ...xpv1.Condition) {
+func (mg *InstanceMapping) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this InstanceMapping.
-func (mg *InstanceMapping) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *InstanceMapping) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this InstanceMapping.
-func (mg *InstanceMapping) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *InstanceMapping) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this InstanceMapping.
-func (mg *InstanceMapping) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *InstanceMapping) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this InstanceMapping.
-func (mg *InstanceMapping) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this InstanceMapping.
-func (mg *InstanceMapping) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *InstanceMapping) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *KymaInstanceMapping) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *KymaInstanceMapping) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *KymaInstanceMapping) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) GetProviderConfigReference() *xpv1.Reference {
+func (mg *KymaInstanceMapping) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *KymaInstanceMapping) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) SetConditions(c ...xpv1.Condition) {
+func (mg *KymaInstanceMapping) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *KymaInstanceMapping) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *KymaInstanceMapping) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *KymaInstanceMapping) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this KymaInstanceMapping.
-func (mg *KymaInstanceMapping) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *KymaInstanceMapping) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }

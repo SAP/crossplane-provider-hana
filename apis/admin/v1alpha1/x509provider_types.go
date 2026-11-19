@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // X509ProviderParameters are the configurable fields of a X509Provider.
@@ -56,14 +56,14 @@ type X509ProviderObservation struct {
 
 // A X509ProviderSpec defines the desired state of a X509Provider.
 type X509ProviderSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       X509ProviderParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     X509ProviderParameters `json:"forProvider"`
 }
 
 // A X509ProviderStatus represents the observed state of a X509Provider.
 type X509ProviderStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          X509ProviderObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 X509ProviderObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

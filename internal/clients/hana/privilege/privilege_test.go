@@ -18,6 +18,30 @@ import (
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 )
 
+const (
+	selectPrivilege                  = "SELECT"
+	insertPrivilege                  = "INSERT"
+	updatePrivilege                  = "UPDATE"
+	isGrantableColumn                = "IS_GRANTABLE"
+	createAnyTablePrivilege          = "CREATE ANY TABLE"
+	createAnyPrivilege               = "CREATE ANY"
+	pseReferencePrivilege            = "REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY"
+	referencesPrivilege              = "REFERENCES"
+	deletePrivilege                  = "DELETE"
+	laxPolicy                        = "lax"
+	publicRole                       = "PUBLIC"
+	testRole                         = "ROLE1"
+	testNamespacedRole               = "data::access_g"
+	lowercaseSelectPrivilege         = "select"
+	lowercaseReferencesPrivilege     = "references"
+	quotedUsergroupOperatorPrivilege = `"USERGROUP OPERATOR ON USERGROUP DEFAULT"`
+	normalizedUsergroupPrivilege     = `USERGROUP OPERATOR ON USERGROUP "DEFAULT"`
+	testGrantee                      = "TESTUSER"
+	quotedExternalAccessGrantRole    = `"data::external_access_g" WITH ADMIN OPTION`
+	quotedExternalAccessRole         = `"data::external_access" WITH ADMIN OPTION`
+	quotedPublicRole                 = `"` + publicRole + `"`
+)
+
 func TestPrivilegeClient_Grant(t *testing.T) {
 	errBoom := errors.New("boom")
 	cases := map[string]struct {
@@ -31,7 +55,7 @@ func TestPrivilegeClient_Grant(t *testing.T) {
 			db: fake.MockDB{
 				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) { return nil, errBoom },
 			},
-			input:   []string{"SELECT"},
+			input:   []string{selectPrivilege},
 			wantErr: errBoom,
 		},
 		"GrantSuccess": {
@@ -39,7 +63,7 @@ func TestPrivilegeClient_Grant(t *testing.T) {
 			db: fake.MockDB{
 				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) { return nil, nil },
 			},
-			input:   []string{"SELECT"},
+			input:   []string{selectPrivilege},
 			wantErr: nil,
 		},
 		"GrantMultiplePrivileges": {
@@ -47,7 +71,7 @@ func TestPrivilegeClient_Grant(t *testing.T) {
 			db: fake.MockDB{
 				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) { return nil, nil },
 			},
-			input:   []string{"SELECT", "INSERT", "UPDATE"},
+			input:   []string{selectPrivilege, insertPrivilege, updatePrivilege},
 			wantErr: nil,
 		},
 		"GrantMixedPrivilegeTypes": {
@@ -55,7 +79,7 @@ func TestPrivilegeClient_Grant(t *testing.T) {
 			db: fake.MockDB{
 				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) { return nil, nil },
 			},
-			input:   []string{"SELECT", "SELECT ON SCHEMA myschema", "SELECT ON mytable", "LINKED DATABASE ON REMOTE SOURCE myremotesys", "USERGROUP OPERATOR ON USERGROUP mygroup"},
+			input:   []string{selectPrivilege, "SELECT ON SCHEMA myschema", "SELECT ON mytable", "LINKED DATABASE ON REMOTE SOURCE myremotesys", "USERGROUP OPERATOR ON USERGROUP mygroup"},
 			wantErr: nil,
 		},
 		"GrantEmptyList": {
@@ -93,7 +117,7 @@ func TestPrivilegeClient_Revoke(t *testing.T) {
 			db: fake.MockDB{
 				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) { return nil, errBoom },
 			},
-			input:   []string{"SELECT"},
+			input:   []string{selectPrivilege},
 			wantErr: errBoom,
 		},
 		"RevokeSuccess": {
@@ -101,7 +125,7 @@ func TestPrivilegeClient_Revoke(t *testing.T) {
 			db: fake.MockDB{
 				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) { return nil, nil },
 			},
-			input:   []string{"SELECT"},
+			input:   []string{selectPrivilege},
 			wantErr: nil,
 		},
 		"RevokeMultiplePrivileges": {
@@ -109,7 +133,7 @@ func TestPrivilegeClient_Revoke(t *testing.T) {
 			db: fake.MockDB{
 				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) { return nil, nil },
 			},
-			input:   []string{"SELECT", "INSERT", "UPDATE"},
+			input:   []string{selectPrivilege, insertPrivilege, updatePrivilege},
 			wantErr: nil,
 		},
 		"RevokeMixedPrivilegeTypes": {
@@ -117,7 +141,7 @@ func TestPrivilegeClient_Revoke(t *testing.T) {
 			db: fake.MockDB{
 				MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) { return nil, nil },
 			},
-			input:   []string{"SELECT", "SELECT ON SCHEMA myschema", "SELECT ON mytable", "LINKED DATABASE ON REMOTE SOURCE myremotesys", "USERGROUP OPERATOR ON USERGROUP mygroup"},
+			input:   []string{selectPrivilege, "SELECT ON SCHEMA myschema", "SELECT ON mytable", "LINKED DATABASE ON REMOTE SOURCE myremotesys", "USERGROUP OPERATOR ON USERGROUP mygroup"},
 			wantErr: nil,
 		},
 		"RevokeEmptyList": {
@@ -152,31 +176,31 @@ func TestPrivilegeClient_QueryPrivileges(t *testing.T) {
 	}{
 		"NoRows": {
 			reason:   "Should return empty slice when user has no privileges",
-			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", "IS_GRANTABLE"}),
+			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", isGrantableColumn}),
 			want:     []string{},
 			wantErr:  false,
 		},
 		"SystemPrivileges": {
 			reason: "Should correctly format system privileges and include admin option when grantable",
-			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", "IS_GRANTABLE"}).
-				AddRow("SYSTEMPRIVILEGE", "SELECT", sql.NullString{Valid: false}, sql.NullString{Valid: false}, true).
-				AddRow("SYSTEMPRIVILEGE", "INSERT", sql.NullString{Valid: false}, sql.NullString{Valid: false}, false),
-			want:    []string{"SELECT WITH ADMIN OPTION", "INSERT"},
+			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", isGrantableColumn}).
+				AddRow("SYSTEMPRIVILEGE", selectPrivilege, sql.NullString{Valid: false}, sql.NullString{Valid: false}, true).
+				AddRow("SYSTEMPRIVILEGE", insertPrivilege, sql.NullString{Valid: false}, sql.NullString{Valid: false}, false),
+			want:    []string{"SELECT WITH ADMIN OPTION", insertPrivilege},
 			wantErr: false,
 		},
 		"ObjectPrivileges": {
 			reason: "Should correctly format object privileges and include grant option when grantable",
-			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", "IS_GRANTABLE"}).
-				AddRow("TABLE", "SELECT", sql.NullString{String: "SCHEMA1", Valid: true}, sql.NullString{String: "OBJ1", Valid: true}, true).
-				AddRow("TABLE", "UPDATE", sql.NullString{String: "SCHEMA2", Valid: true}, sql.NullString{String: "OBJ2", Valid: true}, false).
+			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", isGrantableColumn}).
+				AddRow("TABLE", selectPrivilege, sql.NullString{String: "SCHEMA1", Valid: true}, sql.NullString{String: "OBJ1", Valid: true}, true).
+				AddRow("TABLE", updatePrivilege, sql.NullString{String: "SCHEMA2", Valid: true}, sql.NullString{String: "OBJ2", Valid: true}, false).
 				AddRow("USERGROUP", "OPERATOR", sql.NullString{Valid: false}, sql.NullString{String: "mygroup", Valid: true}, true),
 			want:    []string{"SELECT ON \"SCHEMA1\".\"OBJ1\" WITH GRANT OPTION", "UPDATE ON \"SCHEMA2\".\"OBJ2\"", "USERGROUP OPERATOR ON USERGROUP \"mygroup\" WITH GRANT OPTION"},
 			wantErr: false,
 		},
 		"SchemaAndSourcePrivileges": {
 			reason: "Should correctly format schema and source privileges with grant options",
-			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", "IS_GRANTABLE"}).
-				AddRow("SCHEMA", "SELECT", sql.NullString{String: "SCHEMA1", Valid: true}, sql.NullString{Valid: false}, true).
+			mockRows: sqlmock.NewRows([]string{"OBJECT_TYPE", "PRIVILEGE", "SCHEMA_NAME", "OBJECT_NAME", isGrantableColumn}).
+				AddRow("SCHEMA", selectPrivilege, sql.NullString{String: "SCHEMA1", Valid: true}, sql.NullString{Valid: false}, true).
 				AddRow("SOURCE", "LINKED DATABASE", sql.NullString{Valid: false}, sql.NullString{String: "myremotesys", Valid: true}, false),
 			want:    []string{"SELECT ON SCHEMA \"SCHEMA1\" WITH GRANT OPTION", "LINKED DATABASE ON REMOTE SOURCE \"myremotesys\""},
 			wantErr: false,
@@ -221,24 +245,24 @@ func TestPrivilegeClient_QueryRoles(t *testing.T) {
 	}{
 		"NoRows": {
 			reason:   "Should return empty slice when user has no roles",
-			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "IS_GRANTABLE"}),
+			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", isGrantableColumn}),
 			want:     []string{},
 			wantErr:  false,
 		},
 		"SchemaQualifiedRoles": {
 			reason: "Should format schema-qualified roles as \"SCHEMA\".\"NAME\" (dot outside the quotes, HANA's only valid form for schema-qualified role identifiers)",
-			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "IS_GRANTABLE"}).
-				AddRow(sql.NullString{String: "SCHEMA1", Valid: true}, "ROLE1", true).
+			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", isGrantableColumn}).
+				AddRow(sql.NullString{String: "SCHEMA1", Valid: true}, testRole, true).
 				AddRow(sql.NullString{String: "SCHEMA2", Valid: true}, "ROLE2", false),
-			want:    []string{`"SCHEMA1"."ROLE1" WITH ADMIN OPTION`, `"SCHEMA2"."ROLE2"`},
+			want:    []string{`"SCHEMA1"."` + testRole + `" WITH ADMIN OPTION`, `"SCHEMA2"."ROLE2"`},
 			wantErr: false,
 		},
 		"UnqualifiedRoles": {
 			reason: "Should correctly format unqualified roles and admin option",
-			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", "IS_GRANTABLE"}).
-				AddRow(sql.NullString{Valid: false}, "ROLE1", true).
+			mockRows: sqlmock.NewRows([]string{"ROLE_SCHEMA_NAME", "ROLE_NAME", isGrantableColumn}).
+				AddRow(sql.NullString{Valid: false}, testRole, true).
 				AddRow(sql.NullString{Valid: false}, "ROLE2", false),
-			want:    []string{`"ROLE1" WITH ADMIN OPTION`, `"ROLE2"`},
+			want:    []string{`"` + testRole + `" WITH ADMIN OPTION`, `"ROLE2"`},
 			wantErr: false,
 		},
 		"QueryError": {
@@ -280,8 +304,8 @@ func Test_stringToPrivilege(t *testing.T) {
 	}{
 		{
 			name: "SystemPrivilege",
-			in:   "SELECT",
-			want: Privilege{Type: SystemPrivilegeType, Name: "SELECT"},
+			in:   selectPrivilege,
+			want: Privilege{Type: SystemPrivilegeType, Name: selectPrivilege},
 			ok:   true,
 		},
 		{
@@ -299,13 +323,13 @@ func Test_stringToPrivilege(t *testing.T) {
 		{
 			name: "SchemaPrivilege",
 			in:   "SELECT ON SCHEMA myschema",
-			want: Privilege{Type: SchemaPrivilegeType, Name: "SELECT", Identifier: "myschema"},
+			want: Privilege{Type: SchemaPrivilegeType, Name: selectPrivilege, Identifier: "myschema"},
 			ok:   true,
 		},
 		{
 			name: "GrantableSchemaPrivilege",
 			in:   "SELECT ON SCHEMA myschema with grant option",
-			want: Privilege{Type: SchemaPrivilegeType, Name: "SELECT", Identifier: "myschema", IsGrantable: true},
+			want: Privilege{Type: SchemaPrivilegeType, Name: selectPrivilege, Identifier: "myschema", IsGrantable: true},
 			ok:   true,
 		},
 		{
@@ -323,7 +347,7 @@ func Test_stringToPrivilege(t *testing.T) {
 		{
 			name: "SourcePrivilege",
 			in:   "SELECT ON REMOTE SOURCE src",
-			want: Privilege{Type: SourcePrivilegeType, Name: "SELECT", Identifier: "src"},
+			want: Privilege{Type: SourcePrivilegeType, Name: selectPrivilege, Identifier: "src"},
 			ok:   true,
 		},
 		{
@@ -335,7 +359,7 @@ func Test_stringToPrivilege(t *testing.T) {
 		{
 			name: "ObjectPrivilege",
 			in:   "SELECT ON myobj",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "defaultschema", SubIdentifier: "myobj"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: selectPrivilege, Identifier: "defaultschema", SubIdentifier: "myobj"},
 			ok:   true,
 		},
 		{
@@ -371,126 +395,126 @@ func Test_stringToPrivilege(t *testing.T) {
 		{
 			name: "CaseInsensitiveSchema",
 			in:   "select on schema MySchema",
-			want: Privilege{Type: SchemaPrivilegeType, Name: "select", Identifier: "MySchema"},
+			want: Privilege{Type: SchemaPrivilegeType, Name: lowercaseSelectPrivilege, Identifier: "MySchema"},
 			ok:   true,
 		},
 		{
 			name: "CaseInsensitiveRemoteSource",
 			in:   "INSERT ON remote source MySource",
-			want: Privilege{Type: SourcePrivilegeType, Name: "INSERT", Identifier: "MySource"},
+			want: Privilege{Type: SourcePrivilegeType, Name: insertPrivilege, Identifier: "MySource"},
 			ok:   true,
 		},
 		{
 			name: "ComplexPrivilegeName",
-			in:   "CREATE ANY TABLE",
-			want: Privilege{Type: SystemPrivilegeType, Name: "CREATE ANY TABLE"},
+			in:   createAnyTablePrivilege,
+			want: Privilege{Type: SystemPrivilegeType, Name: createAnyTablePrivilege},
 			ok:   true,
 		},
 		{
 			name: "WhitespaceHandling",
 			in:   "  SELECT ON SCHEMA   myschema  ",
-			want: Privilege{Type: SchemaPrivilegeType, Name: "SELECT", Identifier: "myschema"},
+			want: Privilege{Type: SchemaPrivilegeType, Name: selectPrivilege, Identifier: "myschema"},
 			ok:   true,
 		},
 		{
 			name: "PrivilegeNameWithTrailingSpace",
 			in:   "CREATE ANY TABLE ",
-			want: Privilege{Type: SystemPrivilegeType, Name: "CREATE ANY TABLE"},
+			want: Privilege{Type: SystemPrivilegeType, Name: createAnyTablePrivilege},
 			ok:   true,
 		},
 		{
 			name: "MultiWordPrivilegeNoTrailingSpace",
-			in:   "CREATE ANY TABLE",
-			want: Privilege{Type: SystemPrivilegeType, Name: "CREATE ANY TABLE"},
+			in:   createAnyTablePrivilege,
+			want: Privilege{Type: SystemPrivilegeType, Name: createAnyTablePrivilege},
 			ok:   true,
 		},
 		// PSE privilege tests
 		{
 			name: "PSEPrivilege",
-			in:   "REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY"},
+			in:   pseReferencePrivilege,
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY"},
 			ok:   true,
 		},
 		{
 			name: "PSEPrivilegeWithGrantOption",
 			in:   "REFERENCES ON PSE my_pse WITH GRANT OPTION",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "PSE my_pse", IsGrantable: true},
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "PSE my_pse", IsGrantable: true},
 			ok:   true,
 		},
 		{
 			name: "PSEPrivilegeQuotedName",
 			in:   "REFERENCES ON PSE \"my-pse-with-dashes\"",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "PSE my-pse-with-dashes"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "PSE my-pse-with-dashes"},
 			ok:   true,
 		},
 		{
 			name: "PSEPrivilegeCaseInsensitive",
 			in:   "references on pse TestPSE",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "references", Identifier: "PSE TestPSE"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: lowercaseReferencesPrivilege, Identifier: "PSE TestPSE"},
 			ok:   true,
 		},
 		// JWT PROVIDER privilege tests
 		{
 			name: "JWTProviderPrivilege",
 			in:   "REFERENCES ON JWT PROVIDER my_jwt_provider",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "JWT PROVIDER my_jwt_provider"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "JWT PROVIDER my_jwt_provider"},
 			ok:   true,
 		},
 		{
 			name: "JWTProviderPrivilegeWithGrantOption",
 			in:   "REFERENCES ON JWT PROVIDER jwt_test WITH GRANT OPTION",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "JWT PROVIDER jwt_test", IsGrantable: true},
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "JWT PROVIDER jwt_test", IsGrantable: true},
 			ok:   true,
 		},
 		{
 			name: "JWTProviderPrivilegeCaseInsensitive",
 			in:   "references on jwt provider MyJWTProvider",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "references", Identifier: "JWT PROVIDER MyJWTProvider"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: lowercaseReferencesPrivilege, Identifier: "JWT PROVIDER MyJWTProvider"},
 			ok:   true,
 		},
 		// SAML PROVIDER privilege tests
 		{
 			name: "SAMLProviderPrivilege",
 			in:   "REFERENCES ON SAML PROVIDER my_saml_provider",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "SAML PROVIDER my_saml_provider"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "SAML PROVIDER my_saml_provider"},
 			ok:   true,
 		},
 		{
 			name: "SAMLProviderPrivilegeWithGrantOption",
 			in:   "REFERENCES ON SAML PROVIDER saml_test WITH GRANT OPTION",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "SAML PROVIDER saml_test", IsGrantable: true},
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "SAML PROVIDER saml_test", IsGrantable: true},
 			ok:   true,
 		},
 		// X509 PROVIDER privilege tests
 		{
 			name: "X509ProviderPrivilege",
 			in:   "REFERENCES ON X509 PROVIDER my_x509_provider",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "X509 PROVIDER my_x509_provider"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "X509 PROVIDER my_x509_provider"},
 			ok:   true,
 		},
 		{
 			name: "X509ProviderPrivilegeWithGrantOption",
 			in:   "REFERENCES ON X509 PROVIDER x509_test WITH GRANT OPTION",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "REFERENCES", Identifier: "X509 PROVIDER x509_test", IsGrantable: true},
+			want: Privilege{Type: ObjectPrivilegeType, Name: referencesPrivilege, Identifier: "X509 PROVIDER x509_test", IsGrantable: true},
 			ok:   true,
 		},
 		{
 			name: "X509ProviderPrivilegeCaseInsensitive",
 			in:   "references on x509 provider MyX509Provider",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "references", Identifier: "X509 PROVIDER MyX509Provider"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: lowercaseReferencesPrivilege, Identifier: "X509 PROVIDER MyX509Provider"},
 			ok:   true,
 		},
 		// Test different privilege types on PSE
 		{
 			name: "PSEPrivilegeSelect",
 			in:   "SELECT ON PSE test_pse",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "PSE test_pse"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: selectPrivilege, Identifier: "PSE test_pse"},
 			ok:   true,
 		},
 		{
 			name: "PSEPrivilegeInsert",
 			in:   "INSERT ON PSE test_pse",
-			want: Privilege{Type: ObjectPrivilegeType, Name: "INSERT", Identifier: "PSE test_pse"},
+			want: Privilege{Type: ObjectPrivilegeType, Name: insertPrivilege, Identifier: "PSE test_pse"},
 			ok:   true,
 		},
 		{
@@ -527,8 +551,8 @@ func Test_stringToPrivilege(t *testing.T) {
 
 func Test_groupPrivilegesByType(t *testing.T) {
 	in := []string{
-		"SELECT",
-		"INSERT",
+		selectPrivilege,
+		insertPrivilege,
 		"SELECT ON myobj",
 		"INSERT ON myobj",
 		"SELECT ON SCHEMA myschema",
@@ -566,11 +590,11 @@ func Test_groupPrivilegesByType(t *testing.T) {
 
 func Test_groupPrivilegesByTypeAndIdentifier(t *testing.T) {
 	privs := []Privilege{
-		{Type: SystemPrivilegeType, Name: "SELECT", Identifier: ""},
-		{Type: SystemPrivilegeType, Name: "INSERT", Identifier: ""},
-		{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "OBJ1"},
-		{Type: ObjectPrivilegeType, Name: "INSERT", Identifier: "OBJ1"},
-		{Type: SchemaPrivilegeType, Name: "SELECT", Identifier: "myschema"},
+		{Type: SystemPrivilegeType, Name: selectPrivilege, Identifier: ""},
+		{Type: SystemPrivilegeType, Name: insertPrivilege, Identifier: ""},
+		{Type: ObjectPrivilegeType, Name: selectPrivilege, Identifier: "OBJ1"},
+		{Type: ObjectPrivilegeType, Name: insertPrivilege, Identifier: "OBJ1"},
+		{Type: SchemaPrivilegeType, Name: selectPrivilege, Identifier: "myschema"},
 		{Type: SourcePrivilegeType, Name: "LINKED DATABASE", Identifier: "myremotesys"},
 		{Type: ColumnKeyPrivilegeType, Name: "USAGE", Identifier: "my_cek"},
 		{Type: UserGroupPrivilegeType, Name: "USERGROUP OPERATOR", Identifier: "mygroup"},
@@ -601,11 +625,11 @@ func Test_groupPrivilegesByTypeAndIdentifier(t *testing.T) {
 
 func Test_groupPrivilegesByTypeAndIdentifier_GrantableSplit(t *testing.T) {
 	privs := []Privilege{
-		{Type: ObjectPrivilegeType, Name: "SELECT", Identifier: "S1", SubIdentifier: "T1", IsGrantable: true},
-		{Type: ObjectPrivilegeType, Name: "INSERT", Identifier: "S1", SubIdentifier: "T1", IsGrantable: true},
-		{Type: ObjectPrivilegeType, Name: "UPDATE", Identifier: "S1", SubIdentifier: "T1", IsGrantable: false},
-		{Type: SchemaPrivilegeType, Name: "SELECT", Identifier: "S1", IsGrantable: false},
-		{Type: SchemaPrivilegeType, Name: "INSERT", Identifier: "S1", IsGrantable: true},
+		{Type: ObjectPrivilegeType, Name: selectPrivilege, Identifier: "S1", SubIdentifier: "T1", IsGrantable: true},
+		{Type: ObjectPrivilegeType, Name: insertPrivilege, Identifier: "S1", SubIdentifier: "T1", IsGrantable: true},
+		{Type: ObjectPrivilegeType, Name: updatePrivilege, Identifier: "S1", SubIdentifier: "T1", IsGrantable: false},
+		{Type: SchemaPrivilegeType, Name: selectPrivilege, Identifier: "S1", IsGrantable: false},
+		{Type: SchemaPrivilegeType, Name: insertPrivilege, Identifier: "S1", IsGrantable: true},
 	}
 	got := groupPrivilegesByTypeAndIdentifier(privs)
 
@@ -668,16 +692,16 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT", "INSERT", "UPDATE"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege, insertPrivilege, updatePrivilege},
 				},
-				specPrivileges: []string{"SELECT"},
+				specPrivileges: []string{selectPrivilege},
 				prevPrivileges: []string{},
 				policy:         "strict",
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT", "INSERT", "UPDATE"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege, insertPrivilege, updatePrivilege},
 				},
 				err: nil,
 			},
@@ -687,16 +711,16 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{GetDefaultPrivilege("test_user"), "SELECT", "INSERT", "UPDATE", "DELETE"},
+					Privileges: []string{GetDefaultPrivilege("test_user"), selectPrivilege, insertPrivilege, updatePrivilege, deletePrivilege},
 				},
-				specPrivileges: []string{"INSERT", "SELECT"},
+				specPrivileges: []string{insertPrivilege, selectPrivilege},
 				prevPrivileges: []string{},
-				policy:         "lax",
+				policy:         laxPolicy,
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"INSERT", "SELECT"},
+					Privileges: []string{insertPrivilege, selectPrivilege},
 				},
 				err: nil,
 			},
@@ -706,16 +730,16 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT", "INSERT", "UPDATE", "DELETE"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege, insertPrivilege, updatePrivilege, deletePrivilege},
 				},
-				specPrivileges: []string{"UPDATE", "SELECT"},
-				prevPrivileges: []string{"SELECT", "UPDATE"},
-				policy:         "lax",
+				specPrivileges: []string{updatePrivilege, selectPrivilege},
+				prevPrivileges: []string{selectPrivilege, updatePrivilege},
+				policy:         laxPolicy,
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"SELECT", "UPDATE"},
+					Privileges: []string{selectPrivilege, updatePrivilege},
 				},
 				err: nil,
 			},
@@ -725,16 +749,16 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT", "INSERT", "UPDATE", "DELETE"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege, insertPrivilege, updatePrivilege, deletePrivilege},
 				},
-				specPrivileges: []string{"SELECT", "INSERT"},
-				prevPrivileges: []string{"INSERT", "UPDATE"},
-				policy:         "lax",
+				specPrivileges: []string{selectPrivilege, insertPrivilege},
+				prevPrivileges: []string{insertPrivilege, updatePrivilege},
+				policy:         laxPolicy,
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"SELECT", "INSERT", "UPDATE"},
+					Privileges: []string{selectPrivilege, insertPrivilege, updatePrivilege},
 				},
 				err: nil,
 			},
@@ -744,11 +768,11 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"DELETE", "TRUNCATE", "ALTER"},
+					Privileges: []string{deletePrivilege, "TRUNCATE", "ALTER"},
 				},
-				specPrivileges: []string{"SELECT"},
-				prevPrivileges: []string{"INSERT", "UPDATE"},
-				policy:         "lax",
+				specPrivileges: []string{selectPrivilege},
+				prevPrivileges: []string{insertPrivilege, updatePrivilege},
+				policy:         laxPolicy,
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
@@ -765,9 +789,9 @@ func TestFilterManagedPrivileges(t *testing.T) {
 					Username:   new("test_user"),
 					Privileges: []string{},
 				},
-				specPrivileges: []string{"CREATE ANY", "SELECT"},
-				prevPrivileges: []string{"INSERT", "UPDATE"},
-				policy:         "lax",
+				specPrivileges: []string{createAnyPrivilege, selectPrivilege},
+				prevPrivileges: []string{insertPrivilege, updatePrivilege},
+				policy:         laxPolicy,
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
@@ -782,11 +806,11 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT", "INSERT"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege, insertPrivilege},
 				},
 				specPrivileges: []string{},
 				prevPrivileges: []string{},
-				policy:         "lax",
+				policy:         laxPolicy,
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
@@ -801,16 +825,16 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege},
 				},
-				specPrivileges: []string{"SELECT"},
+				specPrivileges: []string{selectPrivilege},
 				prevPrivileges: []string{},
 				policy:         "unknown",
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege},
 				},
 				err: fmt.Errorf(ErrUnknownPrivilegeManagementPolicy, "unknown"),
 			},
@@ -820,16 +844,16 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege},
 				},
-				specPrivileges: []string{"SELECT"},
+				specPrivileges: []string{selectPrivilege},
 				prevPrivileges: []string{},
 				policy:         "",
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"CREATE ANY", "SELECT"},
+					Privileges: []string{createAnyPrivilege, selectPrivilege},
 				},
 				err: fmt.Errorf(ErrUnknownPrivilegeManagementPolicy, ""),
 			},
@@ -842,14 +866,14 @@ func TestFilterManagedPrivileges(t *testing.T) {
 					RestrictedUser:         new(true),
 					LastPasswordChangeTime: testTime,
 					CreatedAt:              testTime,
-					Privileges:             []string{"CREATE ANY", "SELECT", "INSERT", "DELETE"},
-					Roles:                  []string{"PUBLIC", "ADMIN"},
+					Privileges:             []string{createAnyPrivilege, selectPrivilege, insertPrivilege, deletePrivilege},
+					Roles:                  []string{publicRole, "ADMIN"},
 					Parameters:             map[string]string{"param1": "value1"},
 					Usergroup:              new("TEST_GROUP"),
 				},
-				specPrivileges: []string{"SELECT"},
+				specPrivileges: []string{selectPrivilege},
 				prevPrivileges: []string{},
-				policy:         "lax",
+				policy:         laxPolicy,
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
@@ -857,8 +881,8 @@ func TestFilterManagedPrivileges(t *testing.T) {
 					RestrictedUser:         new(true),
 					LastPasswordChangeTime: testTime,
 					CreatedAt:              testTime,
-					Privileges:             []string{"SELECT"},
-					Roles:                  []string{"PUBLIC", "ADMIN"},
+					Privileges:             []string{selectPrivilege},
+					Roles:                  []string{publicRole, "ADMIN"},
 					Parameters:             map[string]string{"param1": "value1"},
 					Usergroup:              new("TEST_GROUP"),
 				},
@@ -873,13 +897,13 @@ func TestFilterManagedPrivileges(t *testing.T) {
 					RestrictedUser:         new(false),
 					LastPasswordChangeTime: testTime,
 					CreatedAt:              testTime,
-					Privileges:             []string{"CREATE ANY", "SELECT", "INSERT", "DELETE"},
-					Roles:                  []string{"PUBLIC"},
+					Privileges:             []string{createAnyPrivilege, selectPrivilege, insertPrivilege, deletePrivilege},
+					Roles:                  []string{publicRole},
 					Parameters:             map[string]string{"param1": "value1", "param2": "value2"},
 					Usergroup:              new("DEFAULT"),
 				},
-				specPrivileges: []string{"SELECT"},
-				prevPrivileges: []string{"INSERT"},
+				specPrivileges: []string{selectPrivilege},
+				prevPrivileges: []string{insertPrivilege},
 				policy:         "strict",
 			},
 			want: want{
@@ -888,8 +912,8 @@ func TestFilterManagedPrivileges(t *testing.T) {
 					RestrictedUser:         new(false),
 					LastPasswordChangeTime: testTime,
 					CreatedAt:              testTime,
-					Privileges:             []string{"CREATE ANY", "SELECT", "INSERT", "DELETE"},
-					Roles:                  []string{"PUBLIC"},
+					Privileges:             []string{createAnyPrivilege, selectPrivilege, insertPrivilege, deletePrivilege},
+					Roles:                  []string{publicRole},
 					Parameters:             map[string]string{"param1": "value1", "param2": "value2"},
 					Usergroup:              new("DEFAULT"),
 				},
@@ -901,16 +925,16 @@ func TestFilterManagedPrivileges(t *testing.T) {
 			args: args{
 				observed: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{GetDefaultPrivilege("test_user"), "SELECT", "INSERT", "UPDATE"},
+					Privileges: []string{GetDefaultPrivilege("test_user"), selectPrivilege, insertPrivilege, updatePrivilege},
 				},
-				specPrivileges: []string{"SELECT", "INSERT"},
-				prevPrivileges: []string{GetDefaultPrivilege("test_user"), "SELECT", "INSERT", "UPDATE"}, // Previous state from strict mode
-				policy:         "lax",
+				specPrivileges: []string{selectPrivilege, insertPrivilege},
+				prevPrivileges: []string{GetDefaultPrivilege("test_user"), selectPrivilege, insertPrivilege, updatePrivilege}, // Previous state from strict mode
+				policy:         laxPolicy,
 			},
 			want: want{
 				result: &v1alpha1.UserObservation{
 					Username:   new("test_user"),
-					Privileges: []string{"SELECT", "INSERT", "UPDATE"},
+					Privileges: []string{selectPrivilege, insertPrivilege, updatePrivilege},
 				},
 				err: nil,
 			},
@@ -950,7 +974,7 @@ func TestFilterManagedPrivilegesNilObservation(t *testing.T) {
 		}
 	}()
 
-	_, err := FilterManagedPrivileges(nil, []string{"CREATE ANY"}, []string{}, "strict", "test_user")
+	_, err := FilterManagedPrivileges(nil, []string{createAnyPrivilege}, []string{}, "strict", "test_user")
 	if err == nil {
 		t.Error("Expected error when observation is nil, got nil")
 		return
@@ -971,12 +995,12 @@ func TestFormatPrivilegeStrings_PSEAndProviderPrivileges(t *testing.T) {
 		{
 			name: "PSE privileges",
 			input: []string{
-				"REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				pseReferencePrivilege,
 				"REFERENCES ON PSE my_pse WITH GRANT OPTION",
 				"SELECT ON PSE test_pse",
 			},
 			expected: []string{
-				"REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				pseReferencePrivilege,
 				"REFERENCES ON PSE my_pse WITH GRANT OPTION",
 				"SELECT ON PSE test_pse",
 			},
@@ -1017,13 +1041,13 @@ func TestFormatPrivilegeStrings_PSEAndProviderPrivileges(t *testing.T) {
 		{
 			name: "Mixed PSE and provider privileges",
 			input: []string{
-				"REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				pseReferencePrivilege,
 				"REFERENCES ON JWT PROVIDER jwt_prov",
 				"REFERENCES ON SAML PROVIDER saml_prov",
 				"REFERENCES ON X509 PROVIDER x509_prov",
 			},
 			expected: []string{
-				"REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+				pseReferencePrivilege,
 				"REFERENCES ON JWT PROVIDER jwt_prov",
 				"REFERENCES ON SAML PROVIDER saml_prov",
 				"REFERENCES ON X509 PROVIDER x509_prov",
@@ -1081,13 +1105,13 @@ func TestParseRoleString_WithOptions(t *testing.T) {
 	}{
 		{
 			name: "PlainRole",
-			in:   "ROLE1",
-			want: Role{Name: "ROLE1", IsGrantable: false},
+			in:   testRole,
+			want: Role{Name: testRole, IsGrantable: false},
 		},
 		{
 			name: "RoleWithAdminOption",
 			in:   "ROLE1 WITH ADMIN OPTION",
-			want: Role{Name: "ROLE1", IsGrantable: true},
+			want: Role{Name: testRole, IsGrantable: true},
 		},
 		{
 			name:      "RoleWithGrantOptionShouldError",
@@ -1098,7 +1122,7 @@ func TestParseRoleString_WithOptions(t *testing.T) {
 		{
 			name: "SchemaQualifiedRoleWithAdmin",
 			in:   "MYSCHEMA.ROLE1 WITH ADMIN OPTION",
-			want: Role{Schema: "MYSCHEMA", Name: "ROLE1", IsGrantable: true},
+			want: Role{Schema: "MYSCHEMA", Name: testRole, IsGrantable: true},
 		},
 		// Special character role name tests (e.g., HANA namespace-style roles).
 		// A dot is always the schema/name separator in HANA — dots are never
@@ -1106,13 +1130,13 @@ func TestParseRoleString_WithOptions(t *testing.T) {
 		// schema=sap, name=hana::data_reader.
 		{
 			name: "RoleWithDoubleColons",
-			in:   "data::access_g",
-			want: Role{Name: "data::access_g", IsGrantable: false},
+			in:   testNamespacedRole,
+			want: Role{Name: testNamespacedRole, IsGrantable: false},
 		},
 		{
 			name: "RoleWithDoubleColonsAndAdminOption",
 			in:   "data::access_g WITH ADMIN OPTION",
-			want: Role{Name: "data::access_g", IsGrantable: true},
+			want: Role{Name: testNamespacedRole, IsGrantable: true},
 		},
 		{
 			name: "RoleWithDotsAndDoubleColons",
@@ -1129,13 +1153,13 @@ func TestParseRoleString_WithOptions(t *testing.T) {
 		// values. quotedName() re-quotes on output for canonical form.
 		{
 			name: "QuotedRoleWithSpecialChars",
-			in:   `"data::access_g"`,
-			want: Role{Name: "data::access_g", IsGrantable: false},
+			in:   `"` + testNamespacedRole + `"`,
+			want: Role{Name: testNamespacedRole, IsGrantable: false},
 		},
 		{
 			name: "QuotedRoleWithSpecialCharsAndAdminOption",
-			in:   `"data::access_g" WITH ADMIN OPTION`,
-			want: Role{Name: "data::access_g", IsGrantable: true},
+			in:   `"` + testNamespacedRole + `" WITH ADMIN OPTION`,
+			want: Role{Name: testNamespacedRole, IsGrantable: true},
 		},
 		{
 			name: "LowercaseRoleName",
@@ -1195,11 +1219,11 @@ func TestFormatPrivilegeStrings_WithQuoteTrimming(t *testing.T) {
 			name: "QuotedPrivilegesWithInnerQuotes",
 			input: []string{
 				`"INSERT ON SCHEMA MY_SCHEMA"`,
-				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+				quotedUsergroupOperatorPrivilege,
 			},
 			expected: []string{
 				`INSERT ON SCHEMA "MY_SCHEMA"`,
-				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+				normalizedUsergroupPrivilege,
 			},
 			wantErr: false,
 		},
@@ -1208,12 +1232,12 @@ func TestFormatPrivilegeStrings_WithQuoteTrimming(t *testing.T) {
 			input: []string{
 				`"INSERT ON SCHEMA NEW_SCHEMA"`,
 				`SELECT ON SCHEMA OLD_SCHEMA`,
-				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+				quotedUsergroupOperatorPrivilege,
 			},
 			expected: []string{
 				`INSERT ON SCHEMA "NEW_SCHEMA"`,
 				`SELECT ON SCHEMA "OLD_SCHEMA"`,
-				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+				normalizedUsergroupPrivilege,
 			},
 			wantErr: false,
 		},
@@ -1234,12 +1258,12 @@ func TestFormatPrivilegeStrings_WithQuoteTrimming(t *testing.T) {
 			input: []string{
 				`"INSERT ON SCHEMA MY_SCHEMA"`,
 				`"INSERT ON NEW_TABLE"`,
-				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+				quotedUsergroupOperatorPrivilege,
 			},
 			expected: []string{
 				`INSERT ON SCHEMA "MY_SCHEMA"`,
-				`INSERT ON "testuser"."NEW_TABLE"`,
-				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+				`INSERT ON "` + testGrantee + `"."NEW_TABLE"`,
+				normalizedUsergroupPrivilege,
 			},
 			wantErr: false,
 		},
@@ -1248,12 +1272,12 @@ func TestFormatPrivilegeStrings_WithQuoteTrimming(t *testing.T) {
 			input: []string{
 				`"INSERT ON SCHEMA NEW_SCHEMA"`,
 				`"INSERT ON NEW_TABLE"`,
-				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+				quotedUsergroupOperatorPrivilege,
 			},
 			expected: []string{
 				`INSERT ON SCHEMA "NEW_SCHEMA"`,
-				`INSERT ON "testuser"."NEW_TABLE"`,
-				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+				`INSERT ON "` + testGrantee + `"."NEW_TABLE"`,
+				normalizedUsergroupPrivilege,
 			},
 			wantErr: false,
 		},
@@ -1262,12 +1286,12 @@ func TestFormatPrivilegeStrings_WithQuoteTrimming(t *testing.T) {
 			input: []string{
 				`"INSERT ON SCHEMA NEW_SCHEMA"`,
 				`"INSERT ON NEW_SCHEMA.NEW_TABLE"`,
-				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
+				quotedUsergroupOperatorPrivilege,
 			},
 			expected: []string{
 				`INSERT ON SCHEMA "NEW_SCHEMA"`,
 				`INSERT ON "NEW_SCHEMA"."NEW_TABLE"`,
-				`USERGROUP OPERATOR ON USERGROUP "DEFAULT"`,
+				normalizedUsergroupPrivilege,
 			},
 			wantErr: false,
 		},
@@ -1291,7 +1315,7 @@ func TestFormatPrivilegeStrings_WithQuoteTrimming(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := FormatPrivilegeStringsWithPreprocessing(tc.input, "testuser")
+			got, err := FormatPrivilegeStringsWithPreprocessing(tc.input, testGrantee)
 
 			if tc.wantErr {
 				if err == nil {
@@ -1325,13 +1349,13 @@ func TestHandlePrivilegeRows_PSEAndProviderPrivileges(t *testing.T) {
 		{
 			name:        "PSE privilege",
 			objectType:  "PSE",
-			privilege:   "REFERENCES",
+			privilege:   referencesPrivilege,
 			schemaName:  sql.NullString{String: "", Valid: false},
 			objectName:  sql.NullString{String: "_SAP_DB_ACCESS_PSE_CLIENT_IDENTITY", Valid: true},
 			isGrantable: false,
 			expected: Privilege{
 				Type:        ObjectPrivilegeType,
-				Name:        "REFERENCES",
+				Name:        referencesPrivilege,
 				Identifier:  "PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
 				IsGrantable: false,
 			},
@@ -1339,13 +1363,13 @@ func TestHandlePrivilegeRows_PSEAndProviderPrivileges(t *testing.T) {
 		{
 			name:        "PSE privilege with grant option",
 			objectType:  "PSE",
-			privilege:   "REFERENCES",
+			privilege:   referencesPrivilege,
 			schemaName:  sql.NullString{String: "", Valid: false},
 			objectName:  sql.NullString{String: "my_pse", Valid: true},
 			isGrantable: true,
 			expected: Privilege{
 				Type:        ObjectPrivilegeType,
-				Name:        "REFERENCES",
+				Name:        referencesPrivilege,
 				Identifier:  "PSE my_pse",
 				IsGrantable: true,
 			},
@@ -1353,13 +1377,13 @@ func TestHandlePrivilegeRows_PSEAndProviderPrivileges(t *testing.T) {
 		{
 			name:        "JWT PROVIDER privilege",
 			objectType:  "JWT PROVIDER",
-			privilege:   "REFERENCES",
+			privilege:   referencesPrivilege,
 			schemaName:  sql.NullString{String: "", Valid: false},
 			objectName:  sql.NullString{String: "my_jwt_provider", Valid: true},
 			isGrantable: false,
 			expected: Privilege{
 				Type:        ObjectPrivilegeType,
-				Name:        "REFERENCES",
+				Name:        referencesPrivilege,
 				Identifier:  "JWT PROVIDER my_jwt_provider",
 				IsGrantable: false,
 			},
@@ -1367,13 +1391,13 @@ func TestHandlePrivilegeRows_PSEAndProviderPrivileges(t *testing.T) {
 		{
 			name:        "SAML PROVIDER privilege with grant option",
 			objectType:  "SAML PROVIDER",
-			privilege:   "REFERENCES",
+			privilege:   referencesPrivilege,
 			schemaName:  sql.NullString{String: "", Valid: false},
 			objectName:  sql.NullString{String: "saml_test", Valid: true},
 			isGrantable: true,
 			expected: Privilege{
 				Type:        ObjectPrivilegeType,
-				Name:        "REFERENCES",
+				Name:        referencesPrivilege,
 				Identifier:  "SAML PROVIDER saml_test",
 				IsGrantable: true,
 			},
@@ -1381,13 +1405,13 @@ func TestHandlePrivilegeRows_PSEAndProviderPrivileges(t *testing.T) {
 		{
 			name:        "X509 PROVIDER privilege",
 			objectType:  "X509 PROVIDER",
-			privilege:   "REFERENCES",
+			privilege:   referencesPrivilege,
 			schemaName:  sql.NullString{String: "", Valid: false},
 			objectName:  sql.NullString{String: "x509_provider", Valid: true},
 			isGrantable: false,
 			expected: Privilege{
 				Type:        ObjectPrivilegeType,
-				Name:        "REFERENCES",
+				Name:        referencesPrivilege,
 				Identifier:  "X509 PROVIDER x509_provider",
 				IsGrantable: false,
 			},
@@ -1416,10 +1440,10 @@ func TestHandlePrivilegeRows_PSEAndProviderPrivileges(t *testing.T) {
 			}
 			defer db.Close()
 
-			rows := sqlmock.NewRows([]string{"object_type", "privilege", "schema_name", "object_name", "is_grantable"}).
+			rows := sqlmock.NewRows([]string{"object_type", "privilege", "schema_name", "object_name", isGrantableColumn}).
 				AddRow(tc.objectType, tc.privilege, tc.schemaName, tc.objectName, tc.isGrantable)
 
-			mock.ExpectQuery("SELECT").WillReturnRows(rows)
+			mock.ExpectQuery(selectPrivilege).WillReturnRows(rows)
 
 			sqlRows, err := db.QueryContext(context.Background(), "SELECT object_type, privilege, schema_name, object_name, is_grantable FROM dummy")
 			if err != nil {
@@ -1454,37 +1478,37 @@ func TestFormatSpecialObjectPrivilege(t *testing.T) {
 	}{
 		{
 			name:       "PSE privilege",
-			privilege:  "REFERENCES",
+			privilege:  referencesPrivilege,
 			identifier: "PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
-			expected:   "REFERENCES ON PSE _SAP_DB_ACCESS_PSE_CLIENT_IDENTITY",
+			expected:   pseReferencePrivilege,
 		},
 		{
 			name:       "JWT PROVIDER privilege",
-			privilege:  "REFERENCES",
+			privilege:  referencesPrivilege,
 			identifier: "JWT PROVIDER my_jwt_provider",
 			expected:   "REFERENCES ON JWT PROVIDER my_jwt_provider",
 		},
 		{
 			name:       "SAML PROVIDER privilege",
-			privilege:  "REFERENCES",
+			privilege:  referencesPrivilege,
 			identifier: "SAML PROVIDER my_saml_provider",
 			expected:   "REFERENCES ON SAML PROVIDER my_saml_provider",
 		},
 		{
 			name:       "X509 PROVIDER privilege",
-			privilege:  "REFERENCES",
+			privilege:  referencesPrivilege,
 			identifier: "X509 PROVIDER my_x509_provider",
 			expected:   "REFERENCES ON X509 PROVIDER my_x509_provider",
 		},
 		{
 			name:       "Regular object privilege",
-			privilege:  "SELECT",
+			privilege:  selectPrivilege,
 			identifier: "my_table",
 			expected:   `SELECT ON "my_table"`,
 		},
 		{
 			name:       "Regular object with special chars",
-			privilege:  "INSERT",
+			privilege:  insertPrivilege,
 			identifier: "table-with-dashes",
 			expected:   `INSERT ON "table-with-dashes"`,
 		},
@@ -1514,45 +1538,45 @@ func TestGrantRevokeRoles_SpecialCharRoleName(t *testing.T) {
 		{
 			name:      "GrantRoleWithDoubleColon",
 			roleNames: []string{"data::external_access_g"},
-			grantee:   "TESTUSER",
+			grantee:   testGrantee,
 			wantSQL:   `GRANT "data::external_access_g" TO TESTUSER`,
 		},
 		{
 			name:      "GrantRoleWithDoubleColonAndAdminOption",
 			roleNames: []string{"data::external_access_g WITH ADMIN OPTION"},
-			grantee:   "TESTUSER",
+			grantee:   testGrantee,
 			wantSQL:   `GRANT "data::external_access_g" TO TESTUSER WITH ADMIN OPTION`,
 		},
 		{
 			name:      "RevokeRoleWithDoubleColon",
 			roleNames: []string{"data::external_access_g"},
-			grantee:   "TESTUSER",
+			grantee:   testGrantee,
 			isRevoke:  true,
 			wantSQL:   `REVOKE "data::external_access_g" FROM TESTUSER`,
 		},
 		{
 			name:      "GrantSimpleRoleNoUnnecessaryQuoting",
-			roleNames: []string{"PUBLIC"},
-			grantee:   "TESTUSER",
-			wantSQL:   `GRANT "PUBLIC" TO TESTUSER`,
+			roleNames: []string{publicRole},
+			grantee:   testGrantee,
+			wantSQL:   `GRANT "` + publicRole + `" TO ` + testGrantee,
 		},
 		{
 			name:      "GrantQuotedSpecialCharRole",
-			roleNames: []string{`"data::external_access_g" WITH ADMIN OPTION`},
-			grantee:   "TESTUSER",
+			roleNames: []string{quotedExternalAccessGrantRole},
+			grantee:   testGrantee,
 			wantSQL:   `GRANT "data::external_access_g" TO TESTUSER WITH ADMIN OPTION`,
 		},
 		{
 			name:      "RevokeQuotedSpecialCharRole",
-			roleNames: []string{`"data::external_access" WITH ADMIN OPTION`},
-			grantee:   "TESTUSER",
+			roleNames: []string{quotedExternalAccessRole},
+			grantee:   testGrantee,
 			isRevoke:  true,
 			wantSQL:   `REVOKE "data::external_access" FROM TESTUSER`,
 		},
 		{
 			name:      "GrantLowercaseRole",
 			roleNames: []string{"my_role"},
-			grantee:   "TESTUSER",
+			grantee:   testGrantee,
 			wantSQL:   `GRANT "my_role" TO TESTUSER`,
 		},
 		// Schema-qualified roles (e.g. HDI container roles) must be emitted as
@@ -1562,34 +1586,34 @@ func TestGrantRevokeRoles_SpecialCharRoleName(t *testing.T) {
 		{
 			name:      "GrantRoleWithSchemaQualified",
 			roleNames: []string{`"CONTAINER"."ns::reader"`},
-			grantee:   "TESTUSER",
+			grantee:   testGrantee,
 			wantSQL:   `GRANT "CONTAINER"."ns::reader" TO TESTUSER`,
 		},
 		{
 			name:      "GrantRoleWithSchemaQualifiedAndAdminOption",
 			roleNames: []string{`"CONTAINER"."ns::reader" WITH ADMIN OPTION`},
-			grantee:   "TESTUSER",
+			grantee:   testGrantee,
 			wantSQL:   `GRANT "CONTAINER"."ns::reader" TO TESTUSER WITH ADMIN OPTION`,
 		},
 		{
 			name:      "GrantRoleWithUnquotedSchemaQualified",
 			roleNames: []string{"APP_SCHEMA.ROLE1"},
-			grantee:   "TESTUSER",
-			wantSQL:   `GRANT "APP_SCHEMA"."ROLE1" TO TESTUSER`,
+			grantee:   testGrantee,
+			wantSQL:   `GRANT "APP_SCHEMA"."` + testRole + `" TO ` + testGrantee,
 		},
 		{
 			name:      "RevokeRoleWithSchemaQualified",
 			roleNames: []string{`"CONTAINER"."ns::reader"`},
-			grantee:   "TESTUSER",
+			grantee:   testGrantee,
 			isRevoke:  true,
 			wantSQL:   `REVOKE "CONTAINER"."ns::reader" FROM TESTUSER`,
 		},
 		{
 			name:      "RevokeRoleWithUnquotedSchemaQualified",
 			roleNames: []string{"APP_SCHEMA.ROLE1"},
-			grantee:   "TESTUSER",
+			grantee:   testGrantee,
 			isRevoke:  true,
-			wantSQL:   `REVOKE "APP_SCHEMA"."ROLE1" FROM TESTUSER`,
+			wantSQL:   `REVOKE "APP_SCHEMA"."` + testRole + `" FROM ` + testGrantee,
 		},
 		// A single REVOKE batches all roles into one statement (privilege.go
 		// RevokeRoles joins with ", "). Mixing a top-level role and a
@@ -1597,10 +1621,10 @@ func TestGrantRevokeRoles_SpecialCharRoleName(t *testing.T) {
 		// the input slice.
 		{
 			name:      "RevokeMixedTopLevelAndSchemaQualified",
-			roleNames: []string{"PUBLIC", `"CONTAINER"."ns::reader"`},
-			grantee:   "TESTUSER",
+			roleNames: []string{publicRole, `"CONTAINER"."ns::reader"`},
+			grantee:   testGrantee,
 			isRevoke:  true,
-			wantSQL:   `REVOKE "PUBLIC", "CONTAINER"."ns::reader" FROM TESTUSER`,
+			wantSQL:   `REVOKE "` + publicRole + `", "CONTAINER"."ns::reader" FROM ` + testGrantee,
 		},
 	}
 
@@ -1637,16 +1661,16 @@ func TestGrantRevokeRoles_SpecialCharRoleName(t *testing.T) {
 // loop where quoted spec roles never matched unquoted observed roles.
 func TestRoleNormalizationMatchesObserved(t *testing.T) {
 	specRoles := []string{
-		"PUBLIC",
-		`"data::external_access_g" WITH ADMIN OPTION`,
-		`"data::external_access" WITH ADMIN OPTION`,
+		publicRole,
+		quotedExternalAccessGrantRole,
+		quotedExternalAccessRole,
 	}
 	// QueryRoles constructs Role{Name: rawDBName} and calls .String(),
 	// which now unconditionally quotes all role names.
 	observedRoles := []string{
-		`"PUBLIC"`,
-		`"data::external_access_g" WITH ADMIN OPTION`,
-		`"data::external_access" WITH ADMIN OPTION`,
+		quotedPublicRole,
+		quotedExternalAccessGrantRole,
+		quotedExternalAccessRole,
 	}
 
 	formatted, err := FormatRoleStrings(specRoles)
@@ -1668,36 +1692,36 @@ func TestFormatRoleStrings(t *testing.T) {
 	}{
 		{
 			name:  "PlainRoles",
-			input: []string{"PUBLIC", "ROLE1"},
-			want:  []string{`"PUBLIC"`, `"ROLE1"`},
+			input: []string{publicRole, testRole},
+			want:  []string{quotedPublicRole, `"` + testRole + `"`},
 		},
 		{
 			name:  "QuotedSpecialCharRoleNormalized",
-			input: []string{`"data::external_access_g" WITH ADMIN OPTION`},
-			want:  []string{`"data::external_access_g" WITH ADMIN OPTION`},
+			input: []string{quotedExternalAccessGrantRole},
+			want:  []string{quotedExternalAccessGrantRole},
 		},
 		{
 			name:  "UnquotedSpecialCharRoleGetsQuoted",
 			input: []string{"data::external_access_g WITH ADMIN OPTION"},
-			want:  []string{`"data::external_access_g" WITH ADMIN OPTION`},
+			want:  []string{quotedExternalAccessGrantRole},
 		},
 		{
 			name: "MixedQuotedAndUnquotedNormalize",
 			input: []string{
-				"PUBLIC",
-				`"data::external_access_g" WITH ADMIN OPTION`,
-				`"data::external_access" WITH ADMIN OPTION`,
+				publicRole,
+				quotedExternalAccessGrantRole,
+				quotedExternalAccessRole,
 			},
 			want: []string{
-				`"PUBLIC"`,
-				`"data::external_access_g" WITH ADMIN OPTION`,
-				`"data::external_access" WITH ADMIN OPTION`,
+				quotedPublicRole,
+				quotedExternalAccessGrantRole,
+				quotedExternalAccessRole,
 			},
 		},
 		{
 			name:  "SchemaQualifiedRole",
 			input: []string{"MYSCHEMA.ROLE1 WITH ADMIN OPTION"},
-			want:  []string{`"MYSCHEMA"."ROLE1" WITH ADMIN OPTION`},
+			want:  []string{`"MYSCHEMA"."` + testRole + `" WITH ADMIN OPTION`},
 		},
 		{
 			name:    "InvalidRoleString",
@@ -1765,17 +1789,17 @@ func TestSchemaQualifiedRoleRoundTrip(t *testing.T) {
 			name:        "UnquotedSchemaAndName",
 			specInput:   "APP_SCHEMA.ROLE1",
 			dbSchema:    "APP_SCHEMA",
-			dbName:      "ROLE1",
+			dbName:      testRole,
 			dbGrantable: false,
-			wantString:  `"APP_SCHEMA"."ROLE1"`,
+			wantString:  `"APP_SCHEMA"."` + testRole + `"`,
 		},
 		{
 			name:        "TopLevelRoleNoSchema",
-			specInput:   "PUBLIC",
+			specInput:   publicRole,
 			dbSchema:    "", // NULL in DB
-			dbName:      "PUBLIC",
+			dbName:      publicRole,
 			dbGrantable: false,
-			wantString:  `"PUBLIC"`,
+			wantString:  quotedPublicRole,
 		},
 	}
 
@@ -1817,13 +1841,13 @@ func TestFindPrivilegeRoleOverlap(t *testing.T) {
 		want              []string
 	}{
 		"NoOverlap": {
-			desiredPrivileges: []string{`"CREATE ANY"`, `"SELECT"`},
-			observedRoles:     []string{`"PUBLIC"`},
+			desiredPrivileges: []string{`"` + createAnyPrivilege + `"`, `"` + selectPrivilege + `"`},
+			observedRoles:     []string{quotedPublicRole},
 			want:              nil,
 		},
 		"OverlapBareNames": {
-			desiredPrivileges: []string{`"DUMMY_ROLE_A"`, `"CREATE ANY"`},
-			observedRoles:     []string{`"DUMMY_ROLE_A"`, `"PUBLIC"`},
+			desiredPrivileges: []string{`"DUMMY_ROLE_A"`, `"` + createAnyPrivilege + `"`},
+			observedRoles:     []string{`"DUMMY_ROLE_A"`, quotedPublicRole},
 			want:              []string{`"DUMMY_ROLE_A"`},
 		},
 		"OverlapStripsAdminOption": {
@@ -1838,11 +1862,11 @@ func TestFindPrivilegeRoleOverlap(t *testing.T) {
 		// case is therefore not tested here.
 		"EmptyPrivileges": {
 			desiredPrivileges: []string{},
-			observedRoles:     []string{`"PUBLIC"`},
+			observedRoles:     []string{quotedPublicRole},
 			want:              nil,
 		},
 		"EmptyRoles": {
-			desiredPrivileges: []string{`"SELECT"`},
+			desiredPrivileges: []string{`"` + selectPrivilege + `"`},
 			observedRoles:     []string{},
 			want:              nil,
 		},

@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"testing"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -24,6 +24,11 @@ import (
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	certclient "github.com/SAP/crossplane-provider-hana/internal/clients/hana/certificate"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+)
+
+const (
+	testCertificateName = "my-ca"
+	testCertificateKey  = "ca.crt"
 )
 
 type mockLogger struct{}
@@ -55,7 +60,7 @@ func TestConnect(t *testing.T) {
 
 	type fields struct {
 		kube      client.Client
-		usage     resource.Tracker
+		usage     resource.LegacyTracker
 		newClient func(db xsql.DB) certclient.Client
 	}
 
@@ -78,7 +83,7 @@ func TestConnect(t *testing.T) {
 		"ErrTrackProviderConfigUsage": {
 			reason: "An error should be returned if ProviderConfig usage tracking fails",
 			fields: fields{
-				usage: resource.TrackerFn(func(_ context.Context, _ resource.Managed) error { return errBoom }),
+				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return errBoom }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{mg: &v1alpha1.Certificate{}},
 			want: fmt.Errorf("%s: %w", errTrackPCUsage, errBoom),
@@ -87,13 +92,13 @@ func TestConnect(t *testing.T) {
 			reason: "An error should be returned if the ProviderConfig cannot be fetched",
 			fields: fields{
 				kube:  &test.MockClient{MockGet: test.NewMockGetFn(errBoom)},
-				usage: resource.TrackerFn(func(_ context.Context, _ resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -104,13 +109,13 @@ func TestConnect(t *testing.T) {
 			reason: "An error should be returned if the ProviderConfig has no connection secret reference",
 			fields: fields{
 				kube:  &test.MockClient{MockGet: test.NewMockGetFn(nil)},
-				usage: resource.TrackerFn(func(_ context.Context, _ resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -123,7 +128,7 @@ func TestConnect(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						if pc, ok := obj.(*apisv1alpha1.ProviderConfig); ok {
-							pc.Spec.Credentials.ConnectionSecretRef = &xpv1.SecretReference{}
+							pc.Spec.Credentials.ConnectionSecretRef = &xpv2.SecretReference{}
 						}
 						if _, ok := obj.(*corev1.Secret); ok {
 							return errBoom
@@ -131,13 +136,13 @@ func TestConnect(t *testing.T) {
 						return nil
 					}),
 				},
-				usage: resource.TrackerFn(func(_ context.Context, _ resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(_ context.Context, _ resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -198,7 +203,7 @@ func TestObserve(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{err: fmt.Errorf("%s: %w", errReadCert, errBoom)},
@@ -215,7 +220,7 @@ func TestObserve(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{ob: managed.ExternalObservation{ResourceExists: false}},
@@ -235,7 +240,7 @@ func TestObserve(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{ob: managed.ExternalObservation{ResourceExists: true, ResourceUpToDate: true}},
@@ -297,8 +302,8 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
 						ForProvider: v1alpha1.CertificateParameters{
-							Name:                 "my-ca",
-							CertificateSecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+							Name:                 testCertificateName,
+							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: testCertificateKey},
 						},
 					},
 				},
@@ -311,7 +316,7 @@ func TestCreate(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						if s, ok := obj.(*corev1.Secret); ok {
-							s.Data = map[string][]byte{"ca.crt": certPEM}
+							s.Data = map[string][]byte{testCertificateKey: certPEM}
 						}
 						return nil
 					}),
@@ -327,8 +332,8 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
 						ForProvider: v1alpha1.CertificateParameters{
-							Name:                 "my-ca",
-							CertificateSecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+							Name:                 testCertificateName,
+							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: testCertificateKey},
 						},
 					},
 				},
@@ -341,7 +346,7 @@ func TestCreate(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						if s, ok := obj.(*corev1.Secret); ok {
-							s.Data = map[string][]byte{"ca.crt": certPEM}
+							s.Data = map[string][]byte{testCertificateKey: certPEM}
 						}
 						return nil
 					}),
@@ -357,8 +362,8 @@ func TestCreate(t *testing.T) {
 				mg: &v1alpha1.Certificate{
 					Spec: v1alpha1.CertificateSpec{
 						ForProvider: v1alpha1.CertificateParameters{
-							Name:                 "my-ca",
-							CertificateSecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Namespace: "ns", Name: "secret"}, Key: "ca.crt"},
+							Name:                 testCertificateName,
+							CertificateSecretRef: &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Namespace: "ns", Name: "secret"}, Key: testCertificateKey},
 						},
 					},
 				},
@@ -417,7 +422,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{err: fmt.Errorf("%s: %w", errDeleteCert, errBoom)},
@@ -434,7 +439,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.Certificate{
-					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: "my-ca"}},
+					Spec: v1alpha1.CertificateSpec{ForProvider: v1alpha1.CertificateParameters{Name: testCertificateName}},
 				},
 			},
 			want: want{err: nil},

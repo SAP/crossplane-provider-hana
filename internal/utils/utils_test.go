@@ -2,6 +2,15 @@ package utils
 
 import "testing"
 
+const (
+	insertOnSchema       = `INSERT ON SCHEMA NEW_SCHEMA`
+	insertOnQuotedSchema = `INSERT ON SCHEMA "NEW_SCHEMA"`
+	firstParameterName   = "param1"
+	secondParameterName  = "param2"
+	firstParameterValue  = "value1"
+	secondParameterValue = "value2"
+)
+
 func TestTrimOuterDoubleQuotes(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -11,7 +20,7 @@ func TestTrimOuterDoubleQuotes(t *testing.T) {
 		{
 			name:     "basic quoted string",
 			input:    `"INSERT ON SCHEMA NEW_SCHEMA"`,
-			expected: `INSERT ON SCHEMA NEW_SCHEMA`,
+			expected: insertOnSchema,
 		},
 		{
 			name:     "quoted string with inner quotes",
@@ -20,8 +29,8 @@ func TestTrimOuterDoubleQuotes(t *testing.T) {
 		},
 		{
 			name:     "unquoted string",
-			input:    `INSERT ON SCHEMA NEW_SCHEMA`,
-			expected: `INSERT ON SCHEMA NEW_SCHEMA`,
+			input:    insertOnSchema,
+			expected: insertOnSchema,
 		},
 		{
 			name:     "empty string",
@@ -46,7 +55,7 @@ func TestTrimOuterDoubleQuotes(t *testing.T) {
 		{
 			name:     "whitespace around quoted string",
 			input:    `  "INSERT ON SCHEMA NEW_SCHEMA"  `,
-			expected: `INSERT ON SCHEMA NEW_SCHEMA`,
+			expected: insertOnSchema,
 		},
 		{
 			name:     "string with only quotes",
@@ -132,7 +141,7 @@ func TestConvertBackslashEscapesToHanaEscapes(t *testing.T) {
 		{
 			name:     "simple backslash escaped quotes",
 			input:    `INSERT ON SCHEMA \"NEW_SCHEMA\"`,
-			expected: `INSERT ON SCHEMA "NEW_SCHEMA"`,
+			expected: insertOnQuotedSchema,
 		},
 		{
 			name:     "usergroup with backslash escaped quotes",
@@ -141,18 +150,18 @@ func TestConvertBackslashEscapesToHanaEscapes(t *testing.T) {
 		},
 		{
 			name:     "no backslash escapes",
-			input:    `INSERT ON SCHEMA NEW_SCHEMA`,
-			expected: `INSERT ON SCHEMA NEW_SCHEMA`,
+			input:    insertOnSchema,
+			expected: insertOnSchema,
 		},
 		{
 			name:     "double-quote wrapper removal",
 			input:    `INSERT ON SCHEMA ""NEW_SCHEMA""`,
-			expected: `INSERT ON SCHEMA "NEW_SCHEMA"`,
+			expected: insertOnQuotedSchema,
 		},
 		{
 			name:     "already properly escaped for HANA",
-			input:    `INSERT ON SCHEMA "NEW_SCHEMA"`,
-			expected: `INSERT ON SCHEMA "NEW_SCHEMA"`,
+			input:    insertOnQuotedSchema,
+			expected: insertOnQuotedSchema,
 		},
 		{
 			name:     "mixed escaping",
@@ -189,7 +198,7 @@ func TestPreprocessPrivilegeStrings(t *testing.T) {
 				`"USERGROUP OPERATOR ON USERGROUP DEFAULT"`,
 			},
 			expected: []string{
-				`INSERT ON SCHEMA NEW_SCHEMA`,
+				insertOnSchema,
 				`USERGROUP OPERATOR ON USERGROUP DEFAULT`,
 			},
 		},
@@ -200,7 +209,7 @@ func TestPreprocessPrivilegeStrings(t *testing.T) {
 				`SELECT ON SCHEMA OLD_SCHEMA`,
 			},
 			expected: []string{
-				`INSERT ON SCHEMA NEW_SCHEMA`,
+				insertOnSchema,
 				`SELECT ON SCHEMA OLD_SCHEMA`,
 			},
 		},
@@ -210,7 +219,7 @@ func TestPreprocessPrivilegeStrings(t *testing.T) {
 				`"INSERT ON SCHEMA \"NEW_SCHEMA\""`,
 			},
 			expected: []string{
-				`INSERT ON SCHEMA "NEW_SCHEMA"`,
+				insertOnQuotedSchema,
 			},
 		},
 		{
@@ -219,7 +228,7 @@ func TestPreprocessPrivilegeStrings(t *testing.T) {
 				`"INSERT ON SCHEMA ""NEW_SCHEMA"""`,
 			},
 			expected: []string{
-				`INSERT ON SCHEMA "NEW_SCHEMA"`,
+				insertOnQuotedSchema,
 			},
 		},
 	}
@@ -246,61 +255,61 @@ func TestMapDiffOnlyDesired(t *testing.T) {
 		{
 			name: "no differences - all desired keys match",
 			observed: map[string]string{
-				"param1": "value1",
-				"param2": "value2",
-				"param3": "default3", // extra observed parameter (HANA default)
+				firstParameterName:  firstParameterValue,
+				secondParameterName: secondParameterValue,
+				"param3":            "default3", // extra observed parameter (HANA default)
 			},
 			desired: map[string]string{
-				"param1": "value1",
-				"param2": "value2",
+				firstParameterName:  firstParameterValue,
+				secondParameterName: secondParameterValue,
 			},
 			expected: map[string]string{},
 		},
 		{
 			name: "desired parameter differs from observed",
 			observed: map[string]string{
-				"param1": "value1",
-				"param2": "oldValue",
-				"param3": "default3",
+				firstParameterName:  firstParameterValue,
+				secondParameterName: "oldValue",
+				"param3":            "default3",
 			},
 			desired: map[string]string{
-				"param1": "value1",
-				"param2": "newValue",
+				firstParameterName:  firstParameterValue,
+				secondParameterName: "newValue",
 			},
 			expected: map[string]string{
-				"param2": "newValue",
+				secondParameterName: "newValue",
 			},
 		},
 		{
 			name: "desired parameter missing in observed",
 			observed: map[string]string{
-				"param1": "value1",
+				firstParameterName: firstParameterValue,
 			},
 			desired: map[string]string{
-				"param1": "value1",
-				"param2": "value2",
+				firstParameterName:  firstParameterValue,
+				secondParameterName: secondParameterValue,
 			},
 			expected: map[string]string{
-				"param2": "value2",
+				secondParameterName: secondParameterValue,
 			},
 		},
 		{
 			name:     "empty observed map",
 			observed: map[string]string{},
 			desired: map[string]string{
-				"param1": "value1",
-				"param2": "value2",
+				firstParameterName:  firstParameterValue,
+				secondParameterName: secondParameterValue,
 			},
 			expected: map[string]string{
-				"param1": "value1",
-				"param2": "value2",
+				firstParameterName:  firstParameterValue,
+				secondParameterName: secondParameterValue,
 			},
 		},
 		{
 			name: "empty desired map",
 			observed: map[string]string{
-				"param1": "value1",
-				"param2": "value2",
+				firstParameterName:  firstParameterValue,
+				secondParameterName: secondParameterValue,
 			},
 			desired:  map[string]string{},
 			expected: map[string]string{},
@@ -323,18 +332,18 @@ func TestMapDiffOnlyDesired(t *testing.T) {
 		{
 			name: "multiple differences",
 			observed: map[string]string{
-				"param1": "value1",
-				"param2": "value2",
-				"param3": "value3",
+				firstParameterName:  firstParameterValue,
+				secondParameterName: secondParameterValue,
+				"param3":            "value3",
 			},
 			desired: map[string]string{
-				"param1": "newValue1",
-				"param2": "value2",
-				"param4": "newValue4",
+				firstParameterName:  "newValue1",
+				secondParameterName: secondParameterValue,
+				"param4":            "newValue4",
 			},
 			expected: map[string]string{
-				"param1": "newValue1",
-				"param4": "newValue4",
+				firstParameterName: "newValue1",
+				"param4":           "newValue4",
 			},
 		},
 	}
