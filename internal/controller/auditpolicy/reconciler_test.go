@@ -8,11 +8,11 @@ import (
 	"context"
 	"testing"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -22,6 +22,12 @@ import (
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/auditpolicy"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/xsql"
+)
+
+const (
+	auditPrincipalUsergroup = "USERGROUP"
+	auditPrincipalUser      = "USER"
+	monitoringAdminUser     = "MONITORING_ADMIN"
 )
 
 // MockLogger is a mock implementation of logging.Logger
@@ -74,7 +80,7 @@ func TestConnect(t *testing.T) {
 
 	type fields struct {
 		kube      client.Client
-		usage     resource.Tracker
+		usage     resource.LegacyTracker
 		newClient func(db xsql.DB) auditpolicy.Client
 	}
 
@@ -99,7 +105,7 @@ func TestConnect(t *testing.T) {
 		"ErrTrackProviderConfigUsage": {
 			reason: "An error should be returned if we can't track our ProviderConfig usage",
 			fields: fields{
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return errBoom }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return errBoom }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.AuditPolicy{},
@@ -112,13 +118,13 @@ func TestConnect(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(errBoom),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.AuditPolicy{
 					Spec: v1alpha1.AuditPolicySpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -134,13 +140,13 @@ func TestConnect(t *testing.T) {
 					// in a ProviderConfig with a nil connection secret.
 					MockGet: test.NewMockGetFn(nil),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.AuditPolicy{
 					Spec: v1alpha1.AuditPolicySpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -154,20 +160,20 @@ func TestConnect(t *testing.T) {
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						switch o := obj.(type) {
 						case *apisv1alpha1.ProviderConfig:
-							o.Spec.Credentials.ConnectionSecretRef = &xpv1.SecretReference{}
+							o.Spec.Credentials.ConnectionSecretRef = &xpv2.SecretReference{}
 						case *corev1.Secret:
 							return errBoom
 						}
 						return nil
 					}),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.AuditPolicy{
 					Spec: v1alpha1.AuditPolicySpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -539,6 +545,184 @@ func TestRecreatePolicy(t *testing.T) {
 			_, err := e.Update(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.RecreatePolicy(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+func TestBuildDesiredParameters(t *testing.T) {
+	cases := map[string]struct {
+		reason string
+		cr     *v1alpha1.AuditPolicy
+		want   *v1alpha1.AuditPolicyParameters
+	}{
+		"UserGroupPrincipals": {
+			reason: "The desired parameters should carry and upper-case a single user group principal",
+			cr: &v1alpha1.AuditPolicy{
+				Spec: v1alpha1.AuditPolicySpec{
+					ForProvider: v1alpha1.AuditPolicyParameters{
+						PolicyName:   "signavio_technical_user_connect",
+						AuditStatus:  "successful",
+						AuditActions: []string{"connect"},
+						AuditPrincipals: []v1alpha1.AuditPrincipal{
+							{Type: auditPrincipalUsergroup, Name: "technical_user_group"},
+						},
+						AuditLevel: "info",
+					},
+				},
+			},
+			want: &v1alpha1.AuditPolicyParameters{
+				PolicyName:   "SIGNAVIO_TECHNICAL_USER_CONNECT",
+				AuditStatus:  "SUCCESSFUL",
+				AuditActions: []string{"CONNECT"},
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: auditPrincipalUsergroup, Name: "TECHNICAL_USER_GROUP"},
+				},
+				AuditLevel: "INFO",
+			},
+		},
+		"NoPrincipals": {
+			reason: "The desired parameters should carry a nil principal list when none are configured",
+			cr: &v1alpha1.AuditPolicy{
+				Spec: v1alpha1.AuditPolicySpec{
+					ForProvider: v1alpha1.AuditPolicyParameters{
+						PolicyName:   "demo_audit_policy",
+						AuditStatus:  "successful",
+						AuditActions: []string{"connect"},
+						AuditLevel:   "info",
+					},
+				},
+			},
+			want: &v1alpha1.AuditPolicyParameters{
+				PolicyName:      "DEMO_AUDIT_POLICY",
+				AuditStatus:     "SUCCESSFUL",
+				AuditActions:    []string{"CONNECT"},
+				AuditPrincipals: nil,
+				AuditLevel:      "INFO",
+			},
+		},
+		"ExceptMixedPrincipals": {
+			reason: "The desired parameters should carry and upper-case an ordered, mixed principal list with the EXCEPT flag",
+			cr: &v1alpha1.AuditPolicy{
+				Spec: v1alpha1.AuditPolicySpec{
+					ForProvider: v1alpha1.AuditPolicyParameters{
+						PolicyName:   "except_principals_audit_policy1",
+						AuditStatus:  "successful",
+						AuditActions: []string{"actions"},
+						AuditPrincipals: []v1alpha1.AuditPrincipal{
+							{Type: auditPrincipalUser, Name: "user1"},
+							{Type: auditPrincipalUsergroup, Name: "usergroup1"},
+							{Type: auditPrincipalUser, Name: "user2"},
+							{Type: auditPrincipalUsergroup, Name: "usergroup2"},
+						},
+						ExceptPrincipals: true,
+						AuditLevel:       "critical",
+					},
+				},
+			},
+			want: &v1alpha1.AuditPolicyParameters{
+				PolicyName:   "EXCEPT_PRINCIPALS_AUDIT_POLICY1",
+				AuditStatus:  "SUCCESSFUL",
+				AuditActions: []string{"ACTIONS"},
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: auditPrincipalUser, Name: "USER1"},
+					{Type: auditPrincipalUsergroup, Name: "USERGROUP1"},
+					{Type: auditPrincipalUser, Name: "USER2"},
+					{Type: auditPrincipalUsergroup, Name: "USERGROUP2"},
+				},
+				ExceptPrincipals: true,
+				AuditLevel:       "CRITICAL",
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := buildDesiredParameters(tc.cr)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("\n%s\nbuildDesiredParameters(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+func TestPrincipalsDiffer(t *testing.T) {
+	cases := map[string]struct {
+		reason   string
+		observed *v1alpha1.AuditPolicyObservation
+		desired  *v1alpha1.AuditPolicyParameters
+		want     bool
+	}{
+		"NoPrincipalsEqual": {
+			reason:   "No principals on either side is not a difference",
+			observed: &v1alpha1.AuditPolicyObservation{},
+			desired:  &v1alpha1.AuditPolicyParameters{},
+			want:     false,
+		},
+		"SamePrincipalsDifferentOrder": {
+			reason: "Principal comparison is order-independent",
+			observed: &v1alpha1.AuditPolicyObservation{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: auditPrincipalUsergroup, Name: "TECHNICAL_USER_GROUP"},
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
+				},
+			},
+			desired: &v1alpha1.AuditPolicyParameters{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
+					{Type: auditPrincipalUsergroup, Name: "TECHNICAL_USER_GROUP"},
+				},
+			},
+			want: false,
+		},
+		"AddedPrincipal": {
+			reason: "Adding a principal is a difference",
+			observed: &v1alpha1.AuditPolicyObservation{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
+				},
+			},
+			desired: &v1alpha1.AuditPolicyParameters{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
+					{Type: auditPrincipalUsergroup, Name: "TECHNICAL_USER_GROUP"},
+				},
+			},
+			want: true,
+		},
+		"FlippedExceptPrincipals": {
+			reason: "Flipping ExceptPrincipals with principals configured is a difference",
+			observed: &v1alpha1.AuditPolicyObservation{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
+				},
+				ExceptPrincipals: false,
+			},
+			desired: &v1alpha1.AuditPolicyParameters{
+				AuditPrincipals: []v1alpha1.AuditPrincipal{
+					{Type: auditPrincipalUser, Name: monitoringAdminUser},
+				},
+				ExceptPrincipals: true,
+			},
+			want: true,
+		},
+		"ExceptPrincipalsIgnoredWhenNoPrincipals": {
+			reason: "ExceptPrincipals is irrelevant when no principals are configured",
+			observed: &v1alpha1.AuditPolicyObservation{
+				ExceptPrincipals: false,
+			},
+			desired: &v1alpha1.AuditPolicyParameters{
+				ExceptPrincipals: true,
+			},
+			want: false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := principalsDiffer(tc.observed, tc.desired)
+			if got != tc.want {
+				t.Errorf("\n%s\nprincipalsDiffer(...): want %v, got %v", tc.reason, tc.want, got)
 			}
 		})
 	}

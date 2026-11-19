@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"testing"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,7 +31,12 @@ import (
 // https://github.com/golang/go/wiki/TestComments
 // https://github.com/crossplane/crossplane/blob/master/CONTRIBUTING.md#contributing-code
 
-const testProvider = "test-provider"
+const (
+	testProvider          = "test-provider"
+	testPSEName           = "test-pse"
+	defaultNamespace      = "default"
+	testProviderReference = "test-provider-ref"
+)
 
 func TestObserve(t *testing.T) {
 	errBoom := errors.New("boom")
@@ -84,12 +89,12 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 						},
 					},
 				},
@@ -113,7 +118,7 @@ func TestObserve(t *testing.T) {
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "nonexistent-pse",
-						Namespace: "default",
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
@@ -134,7 +139,7 @@ func TestObserve(t *testing.T) {
 				client: &mockPersonalSecurityEnvironmentClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error) {
 						return &v1alpha1.PersonalSecurityEnvironmentObservation{
-							Name:             "test-pse",
+							Name:             testPSEName,
 							X509ProviderName: testProvider,
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -156,14 +161,14 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: testProviderReference},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -186,7 +191,7 @@ func TestObserve(t *testing.T) {
 				client: &mockPersonalSecurityEnvironmentClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error) {
 						return &v1alpha1.PersonalSecurityEnvironmentObservation{
-							Name:             "test-pse",
+							Name:             testPSEName,
 							X509ProviderName: "old-provider",
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -207,14 +212,14 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "new-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: "new-provider-ref"},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -237,7 +242,7 @@ func TestObserve(t *testing.T) {
 				client: &mockPersonalSecurityEnvironmentClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error) {
 						return &v1alpha1.PersonalSecurityEnvironmentObservation{
-							Name:             "test-pse",
+							Name:             testPSEName,
 							X509ProviderName: testProvider,
 						}, nil
 					},
@@ -250,14 +255,14 @@ func TestObserve(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: testProviderReference},
 							},
 						},
 					},
@@ -273,7 +278,7 @@ func TestObserve(t *testing.T) {
 				client: &mockPersonalSecurityEnvironmentClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error) {
 						return &v1alpha1.PersonalSecurityEnvironmentObservation{
-							Name:            "test-pse",
+							Name:            testPSEName,
 							JWTProviderName: testProvider,
 							PublicKeys:      []string{"ias-signing-key"},
 						}, nil
@@ -291,13 +296,13 @@ func TestObserve(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-pse", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: testPSEName, Namespace: defaultNamespace},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name:    "test-pse",
+							Name:    testPSEName,
 							Purpose: v1alpha1.PSEPurposeJWT,
 							JWTProviderRef: &v1alpha1.JWTProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+								ProviderRef: &xpv2.Reference{Name: "ias-jwt"},
 							},
 							PublicKeyRefs: []v1alpha1.PublicKeyRef{{Name: "ias-signing-key"}},
 						},
@@ -322,7 +327,7 @@ func TestObserve(t *testing.T) {
 				client: &mockPersonalSecurityEnvironmentClient{
 					MockRead: func(ctx context.Context, parameters *v1alpha1.PersonalSecurityEnvironmentParameters) (*v1alpha1.PersonalSecurityEnvironmentObservation, error) {
 						return &v1alpha1.PersonalSecurityEnvironmentObservation{
-							Name:            "test-pse",
+							Name:            testPSEName,
 							JWTProviderName: "old-jwt-provider",
 						}, nil
 					},
@@ -339,13 +344,13 @@ func TestObserve(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-pse", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: testPSEName, Namespace: defaultNamespace},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name:    "test-pse",
+							Name:    testPSEName,
 							Purpose: v1alpha1.PSEPurposeJWT,
 							JWTProviderRef: &v1alpha1.JWTProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+								ProviderRef: &xpv2.Reference{Name: "ias-jwt"},
 							},
 						},
 					},
@@ -423,14 +428,14 @@ func TestCreate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: testProviderReference},
 							},
 						},
 					},
@@ -461,14 +466,14 @@ func TestCreate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: testProviderReference},
 							},
 						},
 					},
@@ -499,14 +504,14 @@ func TestCreate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: testProviderReference},
 							},
 						},
 					},
@@ -536,13 +541,13 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-pse", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: testPSEName, Namespace: defaultNamespace},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name:    "test-pse",
+							Name:    testPSEName,
 							Purpose: v1alpha1.PSEPurposeJWT,
 							JWTProviderRef: &v1alpha1.JWTProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+								ProviderRef: &xpv2.Reference{Name: "ias-jwt"},
 							},
 						},
 					},
@@ -626,14 +631,14 @@ func TestUpdate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: testProviderReference},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -642,7 +647,7 @@ func TestUpdate(t *testing.T) {
 					},
 					Status: v1alpha1.PersonalSecurityEnvironmentStatus{
 						AtProvider: v1alpha1.PersonalSecurityEnvironmentObservation{
-							Name:             "test-pse",
+							Name:             testPSEName,
 							X509ProviderName: testProvider,
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(2), Name: new("cert2")},
@@ -676,14 +681,14 @@ func TestUpdate(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 							X509ProviderRef: &v1alpha1.X509ProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "test-provider-ref"},
+								ProviderRef: &xpv2.Reference{Name: testProviderReference},
 							},
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(1), Name: new("cert1")},
@@ -692,7 +697,7 @@ func TestUpdate(t *testing.T) {
 					},
 					Status: v1alpha1.PersonalSecurityEnvironmentStatus{
 						AtProvider: v1alpha1.PersonalSecurityEnvironmentObservation{
-							Name:             "test-pse",
+							Name:             testPSEName,
 							X509ProviderName: testProvider,
 							CertificateRefs: []v1alpha1.CertificateRef{
 								{ID: new(2), Name: new("cert2")},
@@ -727,20 +732,20 @@ func TestUpdate(t *testing.T) {
 			},
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-pse", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: testPSEName, Namespace: defaultNamespace},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name:    "test-pse",
+							Name:    testPSEName,
 							Purpose: v1alpha1.PSEPurposeJWT,
 							JWTProviderRef: &v1alpha1.JWTProviderRef{
-								ProviderRef: &xpv1.Reference{Name: "ias-jwt"},
+								ProviderRef: &xpv2.Reference{Name: "ias-jwt"},
 							},
 							PublicKeyRefs: []v1alpha1.PublicKeyRef{{Name: "new-key"}},
 						},
 					},
 					Status: v1alpha1.PersonalSecurityEnvironmentStatus{
 						AtProvider: v1alpha1.PersonalSecurityEnvironmentObservation{
-							Name:            "test-pse",
+							Name:            testPSEName,
 							JWTProviderName: testProvider,
 							PublicKeys:      []string{"old-key"},
 						},
@@ -819,12 +824,12 @@ func TestDelete(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 						},
 					},
 				},
@@ -847,12 +852,12 @@ func TestDelete(t *testing.T) {
 			args: args{
 				mg: &v1alpha1.PersonalSecurityEnvironment{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pse",
-						Namespace: "default",
+						Name:      testPSEName,
+						Namespace: defaultNamespace,
 					},
 					Spec: v1alpha1.PersonalSecurityEnvironmentSpec{
 						ForProvider: v1alpha1.PersonalSecurityEnvironmentParameters{
-							Name: "test-pse",
+							Name: testPSEName,
 						},
 					},
 				},

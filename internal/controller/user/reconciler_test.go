@@ -10,16 +10,18 @@ import (
 	"fmt"
 	"testing"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
@@ -31,10 +33,16 @@ import (
 )
 
 const (
-	demoUser     = "DEMO_USER"
-	demoEndpoint = "hana.example.com"
-	demoPort     = "443"
-	demoPassword = "s3cret"
+	demoUser              = "DEMO_USER"
+	demoEndpoint          = "hana.example.com"
+	demoPort              = "443"
+	demoPassword          = "s3cret"
+	defaultUsergroup      = "DEFAULT"
+	quotedPublicRole      = `"PUBLIC"`
+	strictPrivilegePolicy = "strict"
+	insertPrivilege       = "INSERT"
+	selectPrivilege       = "SELECT"
+	updatePrivilege       = "UPDATE"
 )
 
 // MockLogger is a mock implementation of logging.Logger
@@ -125,6 +133,10 @@ func (m mockUserClient) UpdateX509Providers(ctx context.Context, username string
 	return nil
 }
 
+func (m mockUserClient) ToggleX509Authentication(ctx context.Context, username string, enable bool) error {
+	return nil
+}
+
 func (m mockUserClient) UpdateJWTProviders(ctx context.Context, username string, toAdd, toRemove []user.ResolvedJWTUserMapping) error {
 	return nil
 }
@@ -153,7 +165,7 @@ func TestConnect(t *testing.T) {
 
 	type fields struct {
 		kube      client.Client
-		usage     resource.Tracker
+		usage     resource.LegacyTracker
 		newClient func(xsql.DB, string) user.Client
 	}
 
@@ -178,7 +190,7 @@ func TestConnect(t *testing.T) {
 		"ErrTrackProviderConfigUsage": {
 			reason: "An error should be returned if we can't track our ProviderConfig usage",
 			fields: fields{
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return errBoom }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return errBoom }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.User{},
@@ -191,13 +203,13 @@ func TestConnect(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(errBoom),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.User{
 					Spec: v1alpha1.UserSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -213,13 +225,13 @@ func TestConnect(t *testing.T) {
 					// in a ProviderConfig with a nil connection secret.
 					MockGet: test.NewMockGetFn(nil),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.User{
 					Spec: v1alpha1.UserSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -233,20 +245,20 @@ func TestConnect(t *testing.T) {
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						switch o := obj.(type) {
 						case *apisv1alpha1.ProviderConfig:
-							o.Spec.Credentials.ConnectionSecretRef = &xpv1.SecretReference{}
+							o.Spec.Credentials.ConnectionSecretRef = &xpv2.SecretReference{}
 						case *corev1.Secret:
 							return errBoom
 						}
 						return nil
 					}),
 				},
-				usage: resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
+				usage: resource.LegacyTrackerFn(func(ctx context.Context, mg resource.LegacyManaged) error { return nil }), //nolint:staticcheck // Legacy cluster-scoped resources are intentionally preserved.
 			},
 			args: args{
 				mg: &v1alpha1.User{
 					Spec: v1alpha1.UserSpec{
-						ResourceSpec: xpv1.ResourceSpec{
-							ProviderConfigReference: &xpv1.Reference{},
+						ClusterManagedResourceSpec: xpv2.ClusterManagedResourceSpec{
+							ProviderConfigReference: &xpv2.Reference{},
 						},
 					},
 				},
@@ -332,9 +344,9 @@ func TestObserve(t *testing.T) {
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
-							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{`"PUBLIC"`},
-							Usergroup:                      new("DEFAULT"),
+							Privileges:                     []string{privilege.GetDefaultPrivilege(demoUser)},
+							Roles:                          []string{quotedPublicRole},
+							Usergroup:                      new(defaultUsergroup),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 							Parameters:                     make(map[string]string),
@@ -349,10 +361,10 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -371,9 +383,9 @@ func TestObserve(t *testing.T) {
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
-							Privileges:                     []string{"SELECT", "INSERT", privilege.GetDefaultPrivilege("DEMO_USER")},
-							Roles:                          []string{`"PUBLIC"`},
-							Usergroup:                      new("DEFAULT"),
+							Privileges:                     []string{selectPrivilege, insertPrivilege, privilege.GetDefaultPrivilege(demoUser)},
+							Roles:                          []string{quotedPublicRole},
+							Usergroup:                      new(defaultUsergroup),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 							Parameters:                     make(map[string]string),
@@ -388,11 +400,11 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Privileges:                     []string{"SELECT", "INSERT"},
-							Usergroup:                      "DEFAULT",
+							Privileges:                     []string{selectPrivilege, insertPrivilege},
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -411,9 +423,9 @@ func TestObserve(t *testing.T) {
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
-							Privileges:                     []string{"SELECT", "INSERT", "DELETE", "UPDATE"},
-							Roles:                          []string{`"PUBLIC"`},
-							Usergroup:                      new("DEFAULT"),
+							Privileges:                     []string{selectPrivilege, insertPrivilege, "DELETE", updatePrivilege},
+							Roles:                          []string{quotedPublicRole},
+							Usergroup:                      new(defaultUsergroup),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
@@ -426,16 +438,16 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:   demoUser,
-							Privileges: []string{"SELECT", "INSERT"},
+							Privileges: []string{selectPrivilege, insertPrivilege},
 
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
 						PrivilegeManagementPolicy: "lax",
 					},
 					Status: v1alpha1.UserStatus{
 						AtProvider: v1alpha1.UserObservation{
-							Privileges: []string{"SELECT", "INSERT"},
+							Privileges: []string{selectPrivilege, insertPrivilege},
 						},
 					},
 				},
@@ -455,7 +467,7 @@ func TestObserve(t *testing.T) {
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
 							Username:   new(demoUser),
-							Privileges: []string{"SELECT", "INSERT"},
+							Privileges: []string{selectPrivilege, insertPrivilege},
 						}, nil
 					},
 				},
@@ -466,7 +478,7 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:   demoUser,
-							Privileges: []string{"SELECT", "INSERT"},
+							Privileges: []string{selectPrivilege, insertPrivilege},
 						},
 						PrivilegeManagementPolicy: "invalid",
 					},
@@ -494,7 +506,7 @@ func TestObserve(t *testing.T) {
 						ForProvider: v1alpha1.UserParameters{
 							Username: demoUser,
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -512,9 +524,9 @@ func TestObserve(t *testing.T) {
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
-							Privileges:                     []string{privilege.GetDefaultPrivilege("DEFAULT_SCHEMA"), "SELECT", "INSERT", "UPDATE"},
-							Roles:                          []string{`"PUBLIC"`},
-							Usergroup:                      new("DEFAULT"),
+							Privileges:                     []string{privilege.GetDefaultPrivilege("DEFAULT_SCHEMA"), selectPrivilege, insertPrivilege, updatePrivilege},
+							Roles:                          []string{quotedPublicRole},
+							Usergroup:                      new(defaultUsergroup),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
@@ -527,8 +539,8 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Privileges:                     []string{"SELECT", "INSERT", "UPDATE"},
-							Usergroup:                      "DEFAULT",
+							Privileges:                     []string{selectPrivilege, insertPrivilege, updatePrivilege},
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
 						PrivilegeManagementPolicy: "lax",
@@ -536,7 +548,7 @@ func TestObserve(t *testing.T) {
 					Status: v1alpha1.UserStatus{
 						AtProvider: v1alpha1.UserObservation{
 							// Previous state when it was in strict mode
-							Privileges: []string{privilege.GetDefaultPrivilege("DEMO_USER"), "SELECT", "INSERT", "UPDATE"},
+							Privileges: []string{privilege.GetDefaultPrivilege(demoUser), selectPrivilege, insertPrivilege, updatePrivilege},
 						},
 					},
 				},
@@ -556,9 +568,9 @@ func TestObserve(t *testing.T) {
 					MockRead: func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
-							Privileges:                     []string{privilege.GetDefaultPrivilege("DEMO_USER"), "SELECT", "INSERT", "UPDATE"},
-							Roles:                          []string{`"PUBLIC"`},
-							Usergroup:                      new("DEFAULT"),
+							Privileges:                     []string{privilege.GetDefaultPrivilege(demoUser), selectPrivilege, insertPrivilege, updatePrivilege},
+							Roles:                          []string{quotedPublicRole},
+							Usergroup:                      new(defaultUsergroup),
 							PasswordUpToDate:               nil, // No password authentication
 							IsPasswordLifetimeCheckEnabled: new(true),
 						}, nil
@@ -571,11 +583,11 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Privileges:                     []string{"SELECT", "INSERT", "SELECT", "UPDATE"},
-							Usergroup:                      "DEFAULT",
+							Privileges:                     []string{selectPrivilege, insertPrivilege, selectPrivilege, updatePrivilege},
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -595,8 +607,8 @@ func TestObserve(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
 							Privileges:                     []string{"CREATE ANY"},
-							Roles:                          []string{`"PUBLIC"`},
-							Usergroup:                      new("DEFAULT"),
+							Roles:                          []string{quotedPublicRole},
+							Usergroup:                      new(defaultUsergroup),
 							PasswordUpToDate:               new(true),
 							IsPasswordLifetimeCheckEnabled: new(false), // Different from desired
 						}, nil
@@ -609,10 +621,10 @@ func TestObserve(t *testing.T) {
 					Spec: v1alpha1.UserSpec{
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: true, // Desired state
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -632,8 +644,8 @@ func TestObserve(t *testing.T) {
 						return &v1alpha1.UserObservation{
 							Username:                       new(demoUser),
 							Privileges:                     []string{},
-							Roles:                          []string{`"PUBLIC"`, `"DUMMY_SYSTEM_ROLE"`},
-							Usergroup:                      new("DEFAULT"),
+							Roles:                          []string{quotedPublicRole, `"DUMMY_SYSTEM_ROLE"`},
+							Usergroup:                      new(defaultUsergroup),
 							IsPasswordLifetimeCheckEnabled: new(true),
 							Parameters:                     make(map[string]string),
 							X509Providers:                  []v1alpha1.X509UserMapping{},
@@ -648,10 +660,10 @@ func TestObserve(t *testing.T) {
 						ForProvider: v1alpha1.UserParameters{
 							Username:                       demoUser,
 							Privileges:                     []string{"DUMMY_SYSTEM_ROLE"},
-							Usergroup:                      "DEFAULT",
+							Usergroup:                      defaultUsergroup,
 							IsPasswordLifetimeCheckEnabled: true,
 						},
-						PrivilegeManagementPolicy: "strict",
+						PrivilegeManagementPolicy: strictPrivilegePolicy,
 					},
 				},
 			},
@@ -754,10 +766,10 @@ func TestCreate(t *testing.T) {
 			want: want{
 				err: nil,
 				c: managed.ExternalCreation{ConnectionDetails: managed.ConnectionDetails{
-					"host":                                []byte(demoEndpoint),
-					xpv1.ResourceCredentialsSecretPortKey: []byte(demoPort),
-					xpv1.ResourceCredentialsSecretPasswordKey: {},
-					xpv1.ResourceCredentialsSecretUserKey:     []byte(demoUser),
+					xpv2.CredentialsSecretEndpointKey:     []byte(demoEndpoint),
+					xpv2.CredentialsSecretPortKey:         []byte(demoPort),
+					xpv2.CredentialsSecretPasswordKey:     {},
+					xpv2.CredentialsSecretUserKey:         []byte(demoUser),
 				}},
 			},
 		},
@@ -796,8 +808,8 @@ func TestUpdate(t *testing.T) {
 		err error
 	}
 
-	pwdSecretRef := &xpv1.SecretKeySelector{
-		SecretReference: xpv1.SecretReference{Name: "pwd-secret", Namespace: "default"},
+	pwdSecretRef := &xpv2.SecretKeySelector{
+		SecretReference: xpv2.SecretReference{Name: "pwd-secret", Namespace: "default"},
 		Key:             "password",
 	}
 
@@ -874,10 +886,10 @@ func TestUpdate(t *testing.T) {
 			},
 			want: want{
 				u: managed.ExternalUpdate{ConnectionDetails: managed.ConnectionDetails{
-					"host":                                    []byte(demoEndpoint),
-					xpv1.ResourceCredentialsSecretPortKey:     []byte(demoPort),
-					xpv1.ResourceCredentialsSecretUserKey:     []byte(demoUser),
-					xpv1.ResourceCredentialsSecretPasswordKey: []byte(demoPassword),
+					xpv2.CredentialsSecretEndpointKey: []byte(demoEndpoint),
+					xpv2.CredentialsSecretPortKey:     []byte(demoPort),
+					xpv2.CredentialsSecretUserKey:     []byte(demoUser),
+					xpv2.CredentialsSecretPasswordKey: []byte(demoPassword),
 				}},
 			},
 		},
@@ -899,8 +911,8 @@ func TestUpdate(t *testing.T) {
 
 func TestUpdatePassword(t *testing.T) {
 	errBoom := errors.New("boom")
-	pwdRef := &xpv1.SecretKeySelector{
-		SecretReference: xpv1.SecretReference{Name: "pwd-secret", Namespace: "default"},
+	pwdRef := &xpv2.SecretKeySelector{
+		SecretReference: xpv2.SecretReference{Name: "pwd-secret", Namespace: "default"},
 		Key:             "password",
 	}
 	withPassword := v1alpha1.Authentication{Password: &v1alpha1.Password{PasswordSecretRef: pwdRef}}
@@ -1095,6 +1107,16 @@ func TestDelete(t *testing.T) {
 }
 
 func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	newClient := func(objects ...client.Object) client.Client {
+		return fake.NewClientBuilder().WithScheme(scheme).
+			WithIndex(&v1alpha1.User{}, passwordSecretRefIndex, indexPasswordSecretRef).
+			WithObjects(objects...).Build()
+	}
+
 	user1 := &v1alpha1.User{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testUserName1",
@@ -1104,8 +1126,8 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 			ForProvider: v1alpha1.UserParameters{
 				Authentication: v1alpha1.Authentication{
 					Password: &v1alpha1.Password{
-						PasswordSecretRef: &xpv1.SecretKeySelector{
-							SecretReference: xpv1.SecretReference{
+						PasswordSecretRef: &xpv2.SecretKeySelector{
+							SecretReference: xpv2.SecretReference{
 								Namespace: "testSecretNamespace1",
 								Name:      "testSecretName1",
 							},
@@ -1124,8 +1146,8 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 			ForProvider: v1alpha1.UserParameters{
 				Authentication: v1alpha1.Authentication{
 					Password: &v1alpha1.Password{
-						PasswordSecretRef: &xpv1.SecretKeySelector{
-							SecretReference: xpv1.SecretReference{
+						PasswordSecretRef: &xpv2.SecretKeySelector{
+							SecretReference: xpv2.SecretReference{
 								Namespace: "testSecretNamespace2",
 								Name:      "testSecretName2",
 							},
@@ -1191,13 +1213,9 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 		"EmptyUserList": {
 			reason: "An empty list of Users should return an empty request",
 			args: args{
-				kube: &test.MockClient{
-					MockList: test.NewMockListFn(nil, func(obj client.ObjectList) error {
-						return nil
-					}),
-				},
-				log: &MockLogger{},
-				obj: secret,
+				kube: newClient(),
+				log:  &MockLogger{},
+				obj:  secret,
 			},
 			want: want{
 				request: []reconcile.Request{},
@@ -1206,15 +1224,9 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 		"OneUser": {
 			reason: "A single User should return a request for that User",
 			args: args{
-				kube: &test.MockClient{
-					MockList: test.NewMockListFn(nil, func(obj client.ObjectList) error {
-						users := obj.(*v1alpha1.UserList)
-						users.Items = append(users.Items, *user1, *user2)
-						return nil
-					}),
-				},
-				log: &MockLogger{},
-				obj: secret,
+				kube: newClient(user1, user2),
+				log:  &MockLogger{},
+				obj:  secret,
 			},
 			want: want{
 				request: []reconcile.Request{
@@ -1229,15 +1241,9 @@ func TestGenerateReconcileRequestsFromSecret(t *testing.T) {
 		"WrongUser": {
 			reason: "A User with a different secret name should not return a request",
 			args: args{
-				kube: &test.MockClient{
-					MockList: test.NewMockListFn(nil, func(obj client.ObjectList) error {
-						users := obj.(*v1alpha1.UserList)
-						users.Items = append(users.Items, *user2)
-						return nil
-					}),
-				},
-				log: &MockLogger{},
-				obj: secret,
+				kube: newClient(user2),
+				log:  &MockLogger{},
+				obj:  secret,
 			},
 			want: want{
 				request: []reconcile.Request{},
@@ -1292,7 +1298,7 @@ func TestResolveJWTProviderNames(t *testing.T) {
 		Authentication: v1alpha1.Authentication{
 			JWTProviders: []v1alpha1.JWTUserMapping{{
 				JWTProviderRef: v1alpha1.JWTProviderRef{
-					ProviderRef: &xpv1.Reference{Name: k8sProviderName},
+					ProviderRef: &xpv2.Reference{Name: k8sProviderName},
 				},
 				ExternalIdentity: externalIdentity,
 			}},
@@ -1364,6 +1370,111 @@ func TestResolveJWTProviderNamesMissingRef(t *testing.T) {
 	}
 	c := &external{kube: &test.MockClient{}, log: &MockLogger{}}
 	err := c.resolveJWTProviderNames(context.Background(), desired)
+	if err == nil {
+		t.Fatal("expected error for mapping without Name or ProviderRef")
+	}
+}
+
+// TestResolveX509ProviderNames locks in the fix for the X509 providerRef drift
+// bug. Before the fix, spec-side X509UserMapping entries that used providerRef
+// were never resolved before isX509MappingsUpToDate compared them against
+// observed entries from SYS.X509_USER_MAPPINGS. The names never matched, so
+// the controller emitted DROP IDENTITY + ADD IDENTITY every reconcile,
+// causing a constantly updating ASSIGN_TIME in SYS.X509_USER_MAPPINGS.
+func TestResolveX509ProviderNames(t *testing.T) {
+	const (
+		k8sProviderName  = "sap-pki"
+		hanaProviderName = "SAP_PKI_PROVIDER"
+		subjectName      = "CN=Test User,O=SAP"
+	)
+
+	resolverKube := &test.MockClient{
+		MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+			xp, ok := obj.(*v1alpha1.X509Provider)
+			if !ok {
+				return fmt.Errorf("unexpected Get type %T", obj)
+			}
+			xp.Spec.ForProvider.Name = hanaProviderName
+			return nil
+		}),
+	}
+
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			X509Providers: []v1alpha1.X509UserMapping{{
+				X509ProviderRef: v1alpha1.X509ProviderRef{
+					ProviderRef: &xpv2.Reference{Name: k8sProviderName},
+				},
+				SubjectName: subjectName,
+			}},
+		},
+	}
+
+	observed := &v1alpha1.UserObservation{
+		X509Providers: []v1alpha1.X509UserMapping{{
+			X509ProviderRef: v1alpha1.X509ProviderRef{Name: hanaProviderName},
+			SubjectName:     subjectName,
+		}},
+	}
+
+	if isX509MappingsUpToDate(observed, desired) {
+		t.Fatal("unresolved desired must not match observed; this is the precondition for the bug being fixed")
+	}
+
+	c := &external{kube: resolverKube, log: &MockLogger{}}
+	if err := c.resolveX509ProviderNames(context.Background(), desired); err != nil {
+		t.Fatalf("resolveX509ProviderNames: %v", err)
+	}
+
+	if got := desired.Authentication.X509Providers[0].Name; got != hanaProviderName {
+		t.Errorf("desired Name after resolve: want %q, got %q", hanaProviderName, got)
+	}
+
+	if !isX509MappingsUpToDate(observed, desired) {
+		t.Errorf("after resolveX509ProviderNames, desired and observed must compare equal")
+	}
+}
+
+// TestResolveX509ProviderNamesExplicitNameWins ensures an explicit Name on
+// the mapping is preserved and providerRef is not consulted.
+func TestResolveX509ProviderNamesExplicitNameWins(t *testing.T) {
+	const hanaName = "DIRECTLY_SET_PROVIDER"
+
+	resolverKube := &test.MockClient{
+		MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+			return fmt.Errorf("kube.Get must not be called when Name is set explicitly")
+		}),
+	}
+
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			X509Providers: []v1alpha1.X509UserMapping{{
+				X509ProviderRef: v1alpha1.X509ProviderRef{Name: hanaName},
+				SubjectName:     "CN=Some User",
+			}},
+		},
+	}
+	c := &external{kube: resolverKube, log: &MockLogger{}}
+	if err := c.resolveX509ProviderNames(context.Background(), desired); err != nil {
+		t.Fatalf("resolveX509ProviderNames: %v", err)
+	}
+	if got := desired.Authentication.X509Providers[0].Name; got != hanaName {
+		t.Errorf("want %q, got %q", hanaName, got)
+	}
+}
+
+// TestResolveX509ProviderNamesMissingRef ensures we surface a clear error when
+// neither Name nor ProviderRef is set, rather than silently producing "".
+func TestResolveX509ProviderNamesMissingRef(t *testing.T) {
+	desired := &v1alpha1.UserParameters{
+		Authentication: v1alpha1.Authentication{
+			X509Providers: []v1alpha1.X509UserMapping{{
+				SubjectName: "CN=Some User",
+			}},
+		},
+	}
+	c := &external{kube: &test.MockClient{}, log: &MockLogger{}}
+	err := c.resolveX509ProviderNames(context.Background(), desired)
 	if err == nil {
 		t.Fatal("expected error for mapping without Name or ProviderRef")
 	}

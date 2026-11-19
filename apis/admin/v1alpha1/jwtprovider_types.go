@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // JWTClaimFilter restricts incoming tokens by requiring that the named claim
@@ -100,14 +100,14 @@ type JWTProviderObservation struct {
 
 // A JWTProviderSpec defines the desired state of a JWTProvider.
 type JWTProviderSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       JWTProviderParameters `json:"forProvider"`
+	xpv2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                     JWTProviderParameters `json:"forProvider"`
 }
 
 // A JWTProviderStatus represents the observed state of a JWTProvider.
 type JWTProviderStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
-	AtProvider          JWTProviderObservation `json:"atProvider,omitempty"`
+	xpv2.ManagedResourceStatus `json:",inline"`
+	AtProvider                 JWTProviderObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -144,7 +144,7 @@ type JWTProviderRef struct {
 	Name string `json:"name,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	ProviderRef *xpv1.Reference `json:"providerRef,omitempty"`
+	ProviderRef *xpv2.Reference `json:"providerRef,omitempty"`
 }
 
 // JWTUserMapping defines the mapping of an external JWT identity to a database

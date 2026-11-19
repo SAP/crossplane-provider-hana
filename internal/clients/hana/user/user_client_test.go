@@ -9,14 +9,29 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
+	xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/fake"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hana/privilege"
+)
+
+const (
+	testUserName                   = "DEMO_USER"
+	createTimeColumn               = "CREATE_TIME"
+	testCatalogUser                = "TEST_USER"
+	testJWTProviderName            = "IAS_JWT"
+	isClientConnectionEnabled      = "IS_CLIENT_CONNECT_ENABLED"
+	isPasswordEnabled              = "IS_PASSWORD_ENABLED"
+	isPasswordLifetimeCheckEnabled = "IS_PASSWORD_LIFETIME_CHECK_ENABLED"
+	isRestricted                   = "IS_RESTRICTED"
+	lastPasswordChangeTime         = "LAST_PASSWORD_CHANGE_TIME"
+	userGroupName                  = "USERGROUP_NAME"
+	userName                       = "USER_NAME"
+	testProvider                   = "TEST_PROVIDER"
 )
 
 var testTime = metav1.Now()
@@ -62,7 +77,7 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UserParameters{
-					Username: "DEMO_USER",
+					Username: testUserName,
 				},
 			},
 			want: want{
@@ -113,17 +128,17 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
-							AddRow("TEST_USER", "TEST_GROUP", testTime.Time, testTime.Time, false, false, true, true)
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
+							AddRow(testCatalogUser, "TEST_GROUP", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
 					},
 					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 						// Check if this is a user parameters query (has 3 columns and username arg)
-						if len(args) > 0 && args[0] == "TEST_USER" && strings.Contains(query, "USER_PARAMETERS") {
-							return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{"USER_NAME", "PARAMETER", "VALUE"}).
-								AddRow("TEST_USER", "LOCALE", "en_US").
-								AddRow("TEST_USER", "TIME ZONE", "UTC")), nil
+						if len(args) > 0 && args[0] == testCatalogUser && strings.Contains(query, "USER_PARAMETERS") {
+							return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{userName, "PARAMETER", "VALUE"}).
+								AddRow(testCatalogUser, "LOCALE", "en_US").
+								AddRow(testCatalogUser, "TIME ZONE", "UTC")), nil
 						}
 						// Mock privileges query - needs 4 columns: OBJECT_TYPE, PRIVILEGE, SCHEMA_NAME, OBJECT_NAME
 						if strings.Contains(query, "GRANTED_PRIVILEGES") {
@@ -144,10 +159,10 @@ func TestRead(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UserParameters{
-					Username: "TEST_USER",
+					Username: testCatalogUser,
 					Authentication: v1alpha1.Authentication{
 						Password: &v1alpha1.Password{
-							PasswordSecretRef: &xpv1.SecretKeySelector{},
+							PasswordSecretRef: &xpv2.SecretKeySelector{},
 						},
 					},
 				},
@@ -155,7 +170,7 @@ func TestRead(t *testing.T) {
 			},
 			want: want{
 				observed: &v1alpha1.UserObservation{
-					Username:                       new("TEST_USER"),
+					Username:                       new(testCatalogUser),
 					RestrictedUser:                 new(false),
 					LastPasswordChangeTime:         testTime,
 					CreatedAt:                      testTime,
@@ -167,6 +182,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              true,
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -178,7 +194,7 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
 							AddRow("POWER_USER", "", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
@@ -198,7 +214,7 @@ func TestRead(t *testing.T) {
 					Username: "POWER_USER",
 					Authentication: v1alpha1.Authentication{
 						Password: &v1alpha1.Password{
-							PasswordSecretRef: &xpv1.SecretKeySelector{},
+							PasswordSecretRef: &xpv2.SecretKeySelector{},
 						},
 					},
 				},
@@ -218,6 +234,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              true,
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -229,7 +246,7 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
 							AddRow("RESTRICTED_USER", "", testTime.Time, testTime.Time, true, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
@@ -248,7 +265,7 @@ func TestRead(t *testing.T) {
 					Username: "RESTRICTED_USER",
 					Authentication: v1alpha1.Authentication{
 						Password: &v1alpha1.Password{
-							PasswordSecretRef: &xpv1.SecretKeySelector{},
+							PasswordSecretRef: &xpv2.SecretKeySelector{},
 						},
 					},
 				},
@@ -268,6 +285,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(false),
 					IsPasswordEnabled:              true,
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 				},
 				err: nil,
@@ -279,7 +297,7 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
 							AddRow("X509_USER", "X509_GROUP", testTime.Time, testTime.Time, false, true, false, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
@@ -288,7 +306,7 @@ func TestRead(t *testing.T) {
 						// Check if this is an X509 providers query
 						if strings.Contains(query, "X509_USER_MAPPINGS") {
 							return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{"X509_PROVIDER_NAME", "SUBJECT_NAME"}).
-								AddRow("TEST_PROVIDER", "CN=John Doe,O=Acme Corp").
+								AddRow(testProvider, "CN=John Doe,O=Acme Corp").
 								AddRow("BACKUP_PROVIDER", sql.NullString{})), nil
 						}
 						// Other queries return empty results
@@ -306,7 +324,7 @@ func TestRead(t *testing.T) {
 					Authentication: v1alpha1.Authentication{
 						X509Providers: []v1alpha1.X509UserMapping{
 							{
-								X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
+								X509ProviderRef: v1alpha1.X509ProviderRef{Name: testProvider},
 								SubjectName:     "CN=John Doe,O=Acme Corp",
 							},
 							{
@@ -331,10 +349,11 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              false,
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
-							X509ProviderRef: v1alpha1.X509ProviderRef{Name: "TEST_PROVIDER"},
+							X509ProviderRef: v1alpha1.X509ProviderRef{Name: testProvider},
 							SubjectName:     "CN=John Doe,O=Acme Corp",
 						},
 						{
@@ -352,7 +371,7 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
 							AddRow("HYBRID_USER", "HYBRID_GROUP", testTime.Time, testTime.Time, false, true, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
@@ -377,7 +396,7 @@ func TestRead(t *testing.T) {
 					Username: "HYBRID_USER",
 					Authentication: v1alpha1.Authentication{
 						Password: &v1alpha1.Password{
-							PasswordSecretRef: &xpv1.SecretKeySelector{},
+							PasswordSecretRef: &xpv2.SecretKeySelector{},
 						},
 						X509Providers: []v1alpha1.X509UserMapping{
 							{
@@ -403,6 +422,7 @@ func TestRead(t *testing.T) {
 					IsPasswordLifetimeCheckEnabled: new(true),
 					IsPasswordEnabled:              true,
 					IsJWTEnabled:                   new(false),
+					IsX509Enabled:                  new(false),
 					IsClientConnectEnabled:         new(true),
 					X509Providers: []v1alpha1.X509UserMapping{
 						{
@@ -420,7 +440,7 @@ func TestRead(t *testing.T) {
 				db: fake.MockDB{
 					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
 						db, mock, _ := sqlmock.New()
-						rows := sqlmock.NewRows([]string{"USER_NAME", "USERGROUP_NAME", "CREATE_TIME", "LAST_PASSWORD_CHANGE_TIME", "IS_RESTRICTED", "IS_PASSWORD_LIFETIME_CHECK_ENABLED", "IS_PASSWORD_ENABLED", "IS_CLIENT_CONNECT_ENABLED"}).
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
 							AddRow("ERROR_USER", "", testTime.Time, testTime.Time, false, false, true, true)
 						mock.ExpectQuery("SELECT").WillReturnRows(rows)
 						return db.QueryRowContext(context.Background(), "SELECT")
@@ -459,6 +479,61 @@ func TestRead(t *testing.T) {
 					IsClientConnectEnabled:         new(true),
 				},
 				err: fmt.Errorf("failed to query x509 providers: %w", errBoom),
+			},
+		},
+		"ErrQueryX509Enabled": {
+			reason: "Should return error when IS_X509_ENABLED query fails with a non-shape-mismatch error",
+			fields: fields{
+				db: fake.MockDB{
+					MockQueryRowContext: func(ctx context.Context, query string, args ...any) *sql.Row {
+						// Fail specifically on the IS_X509_ENABLED query; all other
+						// QueryRowContext calls (main user row, IS_JWT_ENABLED) return
+						// the normal 8-column row which hits the shape-mismatch fallback.
+						if strings.Contains(query, "IS_X509_ENABLED") {
+							db, mock, _ := sqlmock.New()
+							mock.ExpectQuery("SELECT").WillReturnError(errBoom)
+							return db.QueryRowContext(context.Background(), "SELECT")
+						}
+						db, mock, _ := sqlmock.New()
+						rows := sqlmock.NewRows([]string{userName, userGroupName, createTimeColumn, lastPasswordChangeTime, isRestricted, isPasswordLifetimeCheckEnabled, isPasswordEnabled, isClientConnectionEnabled}).
+							AddRow("ERROR_USER", "", testTime.Time, testTime.Time, false, false, true, true)
+						mock.ExpectQuery("SELECT").WillReturnRows(rows)
+						return db.QueryRowContext(context.Background(), "SELECT")
+					},
+					MockQueryContext: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+						return fake.MockRowsToSQLRows(sqlmock.NewRows([]string{})), nil
+					},
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						return nil, nil
+					},
+				},
+			},
+			args: args{
+				parameters: &v1alpha1.UserParameters{
+					Username: "ERROR_USER",
+				},
+			},
+			want: want{
+				// queryX509Enabled is the last call in Read; by the time it fails,
+				// all prior fields (including IsJWTEnabled) have already been set.
+				// X509Providers and JWTProviders use append without pre-allocation,
+				// so they are nil (not an empty slice) when no rows are returned.
+				observed: &v1alpha1.UserObservation{
+					Username:                       new("ERROR_USER"),
+					RestrictedUser:                 new(false),
+					LastPasswordChangeTime:         testTime,
+					CreatedAt:                      testTime,
+					Privileges:                     make([]string, 0),
+					Roles:                          make([]string, 0),
+					Parameters:                     make(map[string]string),
+					Usergroup:                      new(""),
+					PasswordUpToDate:               new(false),
+					IsPasswordLifetimeCheckEnabled: new(false),
+					IsPasswordEnabled:              true,
+					IsClientConnectEnabled:         new(true),
+					IsJWTEnabled:                   new(false),
+				},
+				err: fmt.Errorf("failed to query x509 enabled flag: %w", errBoom),
 			},
 		},
 	}
@@ -514,7 +589,7 @@ func TestCreate(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UserParameters{
-					Username: "DEMO_USER",
+					Username: testUserName,
 				},
 			},
 			want: want{
@@ -760,7 +835,7 @@ func TestDelete(t *testing.T) {
 			},
 			args: args{
 				parameters: &v1alpha1.UserParameters{
-					Username: "DEMO_USER",
+					Username: testUserName,
 				},
 			},
 			want: want{
@@ -933,7 +1008,7 @@ func TestUpdatePasswordLifetimeCheck(t *testing.T) {
 				},
 			},
 			args: args{
-				username:                       "DEMO_USER",
+				username:                       testUserName,
 				isPasswordLifetimeCheckEnabled: true,
 			},
 			want: want{
@@ -954,7 +1029,7 @@ func TestUpdatePasswordLifetimeCheck(t *testing.T) {
 				},
 			},
 			args: args{
-				username:                       "DEMO_USER",
+				username:                       testUserName,
 				isPasswordLifetimeCheckEnabled: true,
 			},
 			want: want{
@@ -975,7 +1050,7 @@ func TestUpdatePasswordLifetimeCheck(t *testing.T) {
 				},
 			},
 			args: args{
-				username:                       "DEMO_USER",
+				username:                       testUserName,
 				isPasswordLifetimeCheckEnabled: false,
 			},
 			want: want{
@@ -1032,9 +1107,9 @@ func TestUpdateX509Providers(t *testing.T) {
 				},
 			},
 			args: args{
-				username: "TEST_USER",
+				username: testCatalogUser,
 				toAdd: []ResolvedUserMapping{
-					{Name: "TEST_PROVIDER", SubjectName: "CN=Test User"},
+					{Name: testProvider, SubjectName: "CN=Test User"},
 				},
 			},
 			want: want{
@@ -1054,7 +1129,7 @@ func TestUpdateX509Providers(t *testing.T) {
 				},
 			},
 			args: args{
-				username: "TEST_USER",
+				username: testCatalogUser,
 				toRemove: []ResolvedUserMapping{
 					{Name: "OLD_PROVIDER", SubjectName: "CN=Old User"},
 				},
@@ -1063,16 +1138,37 @@ func TestUpdateX509Providers(t *testing.T) {
 				err: errBoom,
 			},
 		},
-		"SuccessAddSingleProvider": {
-			reason: "Should successfully add a single X509 provider",
+		"ErrEnableX509": {
+			reason: "Errors on ENABLE X509 after ADD IDENTITY should be returned",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expectedQuery := "ALTER USER TEST_USER ADD IDENTITY 'CN=Test User,O=Acme Corp' FOR X509 PROVIDER TEST_PROVIDER"
-						if query != expectedQuery {
-							return nil, fmt.Errorf("unexpected query: got %s, want %s", query, expectedQuery)
+						if strings.Contains(query, "ENABLE X509") {
+							return nil, errBoom
 						}
 						return nil, nil
+					},
+				},
+			},
+			args: args{
+				username: testCatalogUser,
+				toAdd: []ResolvedUserMapping{
+					{Name: testProvider, SubjectName: "CN=Test User"},
+				},
+			},
+			want: want{
+				err: fmt.Errorf("failed to enable X509 for user TEST_USER: %w", errBoom),
+			},
+		},
+		"SuccessAddSingleProvider": {
+			reason: "Should successfully add a single X509 provider and enable X509",
+			fields: fields{
+				db: fake.MockDB{
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "ENABLE X509") {
+							return nil, nil
+						}
+						return nil, fmt.Errorf("unexpected query: %s", query)
 					},
 				},
 			},
@@ -1100,7 +1196,7 @@ func TestUpdateX509Providers(t *testing.T) {
 				},
 			},
 			args: args{
-				username: "TEST_USER",
+				username: testCatalogUser,
 				toRemove: []ResolvedUserMapping{
 					{Name: "OLD_PROVIDER", SubjectName: "CN=Old User"},
 				},
@@ -1110,12 +1206,11 @@ func TestUpdateX509Providers(t *testing.T) {
 			},
 		},
 		"SuccessAddMultipleProviders": {
-			reason: "Should successfully add multiple X509 providers",
+			reason: "Should successfully add multiple X509 providers and enable X509 once",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						// Expect two separate queries for multiple providers
-						if strings.Contains(query, "MAIN_PROVIDER") || strings.Contains(query, "BACKUP_PROVIDER") {
+						if strings.Contains(query, "MAIN_PROVIDER") || strings.Contains(query, "BACKUP_PROVIDER") || strings.Contains(query, "ENABLE X509") {
 							return nil, nil
 						}
 						return nil, fmt.Errorf("unexpected query: %s", query)
@@ -1162,8 +1257,7 @@ func TestUpdateX509Providers(t *testing.T) {
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						// Should handle both ADD and DROP operations
-						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "DROP IDENTITY") {
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "DROP IDENTITY") || strings.Contains(query, "ENABLE X509") {
 							return nil, nil
 						}
 						return nil, fmt.Errorf("unexpected query: %s", query)
@@ -1202,15 +1296,14 @@ func TestUpdateX509Providers(t *testing.T) {
 			},
 		},
 		"SuccessWithAnySubject": {
-			reason: "Should successfully handle providers with ANY subject name",
+			reason: "Should successfully handle providers with ANY subject name and enable X509",
 			fields: fields{
 				db: fake.MockDB{
 					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
-						expectedQuery := "ALTER USER ANY_USER ADD IDENTITY 'ANY' FOR X509 PROVIDER ANY_PROVIDER"
-						if query != expectedQuery {
-							return nil, fmt.Errorf("unexpected query: got %s, want %s", query, expectedQuery)
+						if strings.Contains(query, "ADD IDENTITY") || strings.Contains(query, "ENABLE X509") {
+							return nil, nil
 						}
-						return nil, nil
+						return nil, fmt.Errorf("unexpected query: %s", query)
 					},
 				},
 			},
@@ -1270,7 +1363,7 @@ func TestTogglePasswordAuthentication(t *testing.T) {
 				},
 			},
 			args: args{
-				username:          "TEST_USER",
+				username:          testCatalogUser,
 				isPasswordEnabled: true,
 			},
 			want: want{
@@ -1291,7 +1384,7 @@ func TestTogglePasswordAuthentication(t *testing.T) {
 				},
 			},
 			args: args{
-				username:          "TEST_USER",
+				username:          testCatalogUser,
 				isPasswordEnabled: true,
 			},
 			want: want{
@@ -1312,7 +1405,7 @@ func TestTogglePasswordAuthentication(t *testing.T) {
 				},
 			},
 			args: args{
-				username:          "TEST_USER",
+				username:          testCatalogUser,
 				isPasswordEnabled: false,
 			},
 			want: want{
@@ -1387,23 +1480,23 @@ func TestUpdateJWTProviders(t *testing.T) {
 	}{
 		"NoOp": {
 			reason:   "Empty add/remove lists emit no DDL",
-			username: "DEMO_USER",
+			username: testUserName,
 			unwant:   []string{"ALTER USER"},
 		},
 		"AddOne": {
 			reason:   "Single ADD IDENTITY ... FOR JWT PROVIDER emitted per resolved mapping",
-			username: "DEMO_USER",
+			username: testUserName,
 			toAdd: []ResolvedJWTUserMapping{
-				{Name: "IAS_JWT", ExternalIdentity: "user@example.com"},
+				{Name: testJWTProviderName, ExternalIdentity: "user@example.com"},
 			},
 			wantSQL: []string{"ALTER USER DEMO_USER ADD IDENTITY 'user@example.com' FOR JWT PROVIDER IAS_JWT"},
 			unwant:  []string{"DROP IDENTITY"},
 		},
 		"RemoveOne": {
 			reason:   "Single DROP IDENTITY ... FOR JWT PROVIDER emitted per resolved mapping",
-			username: "DEMO_USER",
+			username: testUserName,
 			toRemove: []ResolvedJWTUserMapping{
-				{Name: "IAS_JWT", ExternalIdentity: "user@example.com"},
+				{Name: testJWTProviderName, ExternalIdentity: "user@example.com"},
 			},
 			wantSQL: []string{"ALTER USER DEMO_USER DROP IDENTITY 'user@example.com' FOR JWT PROVIDER IAS_JWT"},
 			unwant:  []string{"ADD IDENTITY"},
@@ -1413,12 +1506,12 @@ func TestUpdateJWTProviders(t *testing.T) {
 			// asserts the emit order is "removes first, then adds" to match the
 			// implementation loop.
 			reason:   "Mixed add/remove emits DROP before ADD",
-			username: "DEMO_USER",
+			username: testUserName,
 			toRemove: []ResolvedJWTUserMapping{
-				{Name: "IAS_JWT", ExternalIdentity: "old@example.com"},
+				{Name: testJWTProviderName, ExternalIdentity: "old@example.com"},
 			},
 			toAdd: []ResolvedJWTUserMapping{
-				{Name: "IAS_JWT", ExternalIdentity: "new@example.com"},
+				{Name: testJWTProviderName, ExternalIdentity: "new@example.com"},
 			},
 			wantSQL: []string{
 				"ALTER USER DEMO_USER ADD IDENTITY 'new@example.com' FOR JWT PROVIDER IAS_JWT",
@@ -1427,9 +1520,9 @@ func TestUpdateJWTProviders(t *testing.T) {
 		},
 		"DriverErrorAdd": {
 			reason:   "Driver failure on ADD IDENTITY propagates wrapped with ErrUpdateUserJWTProviders",
-			username: "DEMO_USER",
+			username: testUserName,
 			toAdd: []ResolvedJWTUserMapping{
-				{Name: "IAS_JWT", ExternalIdentity: "user@example.com"},
+				{Name: testJWTProviderName, ExternalIdentity: "user@example.com"},
 			},
 			driver:  errBoom,
 			wantErr: "cannot update user JWT providers",
@@ -1556,6 +1649,60 @@ func TestToggleJWTAuthentication(t *testing.T) {
 	}
 }
 
+// TestToggleX509Authentication covers the ENABLE/DISABLE X509 DDL. If someone
+// manually runs ALTER USER ... DISABLE X509, the controller must re-issue
+// ENABLE X509 to restore the desired state — verified by isX509EnabledUpToDate
+// returning false and updateX509Authentication calling ToggleX509Authentication.
+// nolint: contextcheck
+func TestToggleX509Authentication(t *testing.T) {
+	errBoom := errors.New("boom")
+	cases := map[string]struct {
+		reason  string
+		enable  bool
+		driver  error
+		wantSQL string
+		wantErr string
+	}{
+		"Enable":  {reason: "enable=true emits ENABLE X509", enable: true, wantSQL: "ALTER USER U ENABLE X509"},
+		"Disable": {reason: "enable=false emits DISABLE X509", enable: false, wantSQL: "ALTER USER U DISABLE X509"},
+		"DriverError": {
+			reason:  "Driver failure wraps with ErrUpdateUserX509Enabled",
+			enable:  true,
+			driver:  errBoom,
+			wantErr: "cannot toggle X.509 authentication",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var db fake.MockDB
+			var cap jwtCaptureExec
+			if tc.driver != nil {
+				db = fake.MockDB{
+					MockExecContext: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
+						return nil, tc.driver
+					},
+				}
+			} else {
+				db = cap.mock()
+			}
+			c := Client{DB: db}
+			err := c.ToggleX509Authentication(context.Background(), "U", tc.enable)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("\n%s\nToggleX509Authentication(...): want error containing %q, got: %v", tc.reason, tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.reason, err)
+			}
+			if !strings.Contains(strings.Join(cap.queries, "\n"), tc.wantSQL) {
+				t.Errorf("\n%s\nToggleX509Authentication(...): missing SQL %q, got: %v", tc.reason, tc.wantSQL, cap.queries)
+			}
+		})
+	}
+}
+
 // TestQueryJWTProviders covers the SYS.JWT_USER_MAPPINGS row-parse path fed
 // into UserObservation.JWTProviders. Empty result, single mapping, and multi-
 // mapping cases; ensures the JWTProviderRef.Name and ExternalIdentity fields
@@ -1579,20 +1726,20 @@ func TestQueryJWTProviders(t *testing.T) {
 		"One": {
 			reason: "Single row maps into one JWTUserMapping",
 			rows: sqlmock.NewRows([]string{"JWT_PROVIDER_NAME", "EXTERNAL_IDENTITY"}).
-				AddRow("IAS_JWT", "user@example.com"),
+				AddRow(testJWTProviderName, "user@example.com"),
 			want: []v1alpha1.JWTUserMapping{
-				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: "IAS_JWT"}, ExternalIdentity: "user@example.com"},
+				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: testJWTProviderName}, ExternalIdentity: "user@example.com"},
 			},
 		},
 		"Many": {
 			reason: "Multiple rows preserve order and both fields",
 			rows: sqlmock.NewRows([]string{"JWT_PROVIDER_NAME", "EXTERNAL_IDENTITY"}).
-				AddRow("IAS_JWT", "user-a@example.com").
-				AddRow("IAS_JWT", "user-b@example.com").
+				AddRow(testJWTProviderName, "user-a@example.com").
+				AddRow(testJWTProviderName, "user-b@example.com").
 				AddRow("OTHER_JWT", "user-c@example.com"),
 			want: []v1alpha1.JWTUserMapping{
-				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: "IAS_JWT"}, ExternalIdentity: "user-a@example.com"},
-				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: "IAS_JWT"}, ExternalIdentity: "user-b@example.com"},
+				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: testJWTProviderName}, ExternalIdentity: "user-a@example.com"},
+				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: testJWTProviderName}, ExternalIdentity: "user-b@example.com"},
 				{JWTProviderRef: v1alpha1.JWTProviderRef{Name: "OTHER_JWT"}, ExternalIdentity: "user-c@example.com"},
 			},
 		},
@@ -1614,7 +1761,7 @@ func TestQueryJWTProviders(t *testing.T) {
 				},
 			}
 			c := Client{DB: db, Client: &privilege.PrivilegeClient{DB: db}}
-			got, err := c.queryJWTProviders(context.Background(), "DEMO_USER")
+			got, err := c.queryJWTProviders(context.Background(), testUserName)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 					t.Errorf("\n%s\nqueryJWTProviders(...): want error containing %q, got: %v", tc.reason, tc.wantErr, err)
