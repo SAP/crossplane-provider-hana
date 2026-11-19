@@ -43,6 +43,10 @@ const (
 	insertPrivilege       = "INSERT"
 	selectPrivilege       = "SELECT"
 	updatePrivilege       = "UPDATE"
+	testNamespace         = "default"
+	passwordSecretKey     = "password"
+	errNotUserCase        = "ErrNotUser"
+	errNotUserReason      = "An error should be returned if the managed resource is not a *User"
 )
 
 // MockLogger is a mock implementation of logging.Logger
@@ -180,8 +184,8 @@ func TestConnect(t *testing.T) {
 		args   args
 		want   error
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			args: args{
 				mg: nil,
 			},
@@ -302,8 +306,8 @@ func TestObserve(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			fields: fields{
 				log: &MockLogger{},
 			},
@@ -712,8 +716,8 @@ func TestCreate(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			args: args{
 				mg: nil,
 			},
@@ -766,10 +770,10 @@ func TestCreate(t *testing.T) {
 			want: want{
 				err: nil,
 				c: managed.ExternalCreation{ConnectionDetails: managed.ConnectionDetails{
-					xpv2.CredentialsSecretEndpointKey:     []byte(demoEndpoint),
-					xpv2.CredentialsSecretPortKey:         []byte(demoPort),
-					xpv2.CredentialsSecretPasswordKey:     {},
-					xpv2.CredentialsSecretUserKey:         []byte(demoUser),
+					xpv2.CredentialsSecretEndpointKey: []byte(demoEndpoint),
+					xpv2.CredentialsSecretPortKey:     []byte(demoPort),
+					xpv2.CredentialsSecretPasswordKey: {},
+					xpv2.CredentialsSecretUserKey:     []byte(demoUser),
 				}},
 			},
 		},
@@ -809,8 +813,8 @@ func TestUpdate(t *testing.T) {
 	}
 
 	pwdSecretRef := &xpv2.SecretKeySelector{
-		SecretReference: xpv2.SecretReference{Name: "pwd-secret", Namespace: "default"},
-		Key:             "password",
+		SecretReference: xpv2.SecretReference{Name: "pwd-secret", Namespace: testNamespace},
+		Key:             passwordSecretKey,
 	}
 
 	cases := map[string]struct {
@@ -819,8 +823,8 @@ func TestUpdate(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			fields: fields{
 				log: &MockLogger{},
 			},
@@ -863,7 +867,7 @@ func TestUpdate(t *testing.T) {
 				kube: &test.MockClient{
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
 						if s, ok := obj.(*corev1.Secret); ok {
-							s.Data = map[string][]byte{"password": []byte(demoPassword)}
+							s.Data = map[string][]byte{passwordSecretKey: []byte(demoPassword)}
 						}
 						return nil
 					}),
@@ -912,8 +916,8 @@ func TestUpdate(t *testing.T) {
 func TestUpdatePassword(t *testing.T) {
 	errBoom := errors.New("boom")
 	pwdRef := &xpv2.SecretKeySelector{
-		SecretReference: xpv2.SecretReference{Name: "pwd-secret", Namespace: "default"},
-		Key:             "password",
+		SecretReference: xpv2.SecretReference{Name: "pwd-secret", Namespace: testNamespace},
+		Key:             passwordSecretKey,
 	}
 	withPassword := v1alpha1.Authentication{Password: &v1alpha1.Password{PasswordSecretRef: pwdRef}}
 
@@ -1038,8 +1042,8 @@ func TestDelete(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			args: args{
 				mg: nil,
 			},

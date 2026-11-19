@@ -68,7 +68,7 @@ func TestIndexPasswordSecretRef(t *testing.T) {
 			},
 		},
 		"SecretReference": {
-			user: passwordSecretUser("user", "default", "password", "key"),
+			user: passwordSecretUser("user", testNamespace, "password", "key"),
 			want: []string{"default/password"},
 		},
 		"DifferentNamespace": {
@@ -86,7 +86,7 @@ func TestIndexPasswordSecretRef(t *testing.T) {
 }
 
 func TestSecretMappingUsesReferenceIndex(t *testing.T) {
-	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "password"}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: "password"}}
 	calls := 0
 	kube := &test.MockClient{
 		MockList: func(_ context.Context, _ client.ObjectList, opts ...client.ListOption) error {
@@ -115,14 +115,14 @@ func TestPasswordSecretReferenceLifecycle(t *testing.T) {
 	if err := v1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	user := passwordSecretUser("first", "default", "password", "first-key")
+	user := passwordSecretUser("first", testNamespace, "password", "first-key")
 	kube := fake.NewClientBuilder().WithScheme(scheme).
 		WithIndex(&v1alpha1.User{}, passwordSecretRefIndex, indexPasswordSecretRef).
 		WithObjects(
 			user,
-			passwordSecretUser("second", "default", "password", "second-key"),
+			passwordSecretUser("second", testNamespace, "password", "second-key"),
 			passwordSecretUser("different-namespace", "other", "password", "key"),
-			passwordSecretUser("different-secret", "default", "unrelated", "key"),
+			passwordSecretUser("different-secret", testNamespace, "unrelated", "key"),
 			&v1alpha1.User{ObjectMeta: metav1.ObjectMeta{Name: "no-password"}},
 		).Build()
 
@@ -139,9 +139,9 @@ func TestPasswordSecretReferenceLifecycle(t *testing.T) {
 		}
 	}
 
-	assertUsers("default", "password", "first", "second")
+	assertUsers(testNamespace, "password", "first", "second")
 	assertUsers("other", "password", "different-namespace")
-	assertUsers("default", "unused")
+	assertUsers(testNamespace, "unused")
 
 	if err := kube.Get(ctx, types.NamespacedName{Name: user.Name}, user); err != nil {
 		t.Fatal(err)
@@ -150,14 +150,14 @@ func TestPasswordSecretReferenceLifecycle(t *testing.T) {
 	if err := kube.Update(ctx, user); err != nil {
 		t.Fatal(err)
 	}
-	assertUsers("default", "password", "second")
-	assertUsers("default", "replacement", "first")
+	assertUsers(testNamespace, "password", "second")
+	assertUsers(testNamespace, "replacement", "first")
 
 	user.Spec.ForProvider.Authentication.Password.PasswordSecretRef.Namespace = "other"
 	if err := kube.Update(ctx, user); err != nil {
 		t.Fatal(err)
 	}
-	assertUsers("default", "replacement")
+	assertUsers(testNamespace, "replacement")
 	assertUsers("other", "replacement", "first")
 
 	user.Spec.ForProvider.Authentication.Password.PasswordSecretRef = nil
@@ -167,28 +167,28 @@ func TestPasswordSecretReferenceLifecycle(t *testing.T) {
 	assertUsers("other", "replacement")
 
 	user.Spec.ForProvider.Authentication.Password.PasswordSecretRef = &xpv2.SecretKeySelector{
-		SecretReference: xpv2.SecretReference{Namespace: "default", Name: "password"},
+		SecretReference: xpv2.SecretReference{Namespace: testNamespace, Name: "password"},
 		Key:             "first-key",
 	}
 	if err := kube.Update(ctx, user); err != nil {
 		t.Fatal(err)
 	}
-	assertUsers("default", "password", "first", "second")
+	assertUsers(testNamespace, "password", "first", "second")
 
 	user.Spec.ForProvider.Authentication.Password = nil
 	if err := kube.Update(ctx, user); err != nil {
 		t.Fatal(err)
 	}
-	assertUsers("default", "password", "second")
+	assertUsers(testNamespace, "password", "second")
 
-	if err := kube.Create(ctx, passwordSecretUser("new-user", "default", "password", "key")); err != nil {
+	if err := kube.Create(ctx, passwordSecretUser("new-user", testNamespace, "password", "key")); err != nil {
 		t.Fatal(err)
 	}
-	assertUsers("default", "password", "new-user", "second")
+	assertUsers(testNamespace, "password", "new-user", "second")
 	if err := kube.Delete(ctx, &v1alpha1.User{ObjectMeta: metav1.ObjectMeta{Name: "second"}}); err != nil {
 		t.Fatal(err)
 	}
-	assertUsers("default", "password", "new-user")
+	assertUsers(testNamespace, "password", "new-user")
 }
 
 func TestPasswordSecretWatchEvents(t *testing.T) {
@@ -198,12 +198,12 @@ func TestPasswordSecretWatchEvents(t *testing.T) {
 	}
 	kube := fake.NewClientBuilder().WithScheme(scheme).
 		WithIndex(&v1alpha1.User{}, passwordSecretRefIndex, indexPasswordSecretRef).
-		WithObjects(passwordSecretUser("user", "default", "password", "key")).Build()
+		WithObjects(passwordSecretUser("user", testNamespace, "password", "key")).Build()
 	h := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		return generateReconcileRequestsFromSecret(ctx, obj, kube, logging.NewNopLogger())
 	})
 	oldSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "password"},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: "password"},
 		Data:       map[string][]byte{"key": []byte("old")},
 	}
 	newSecret := oldSecret.DeepCopy()
@@ -250,12 +250,12 @@ func TestPasswordSecretInitialEventsAtScale(t *testing.T) {
 	users := &v1alpha1.UserList{ListMeta: metav1.ListMeta{ResourceVersion: "1"}}
 	for i := range userCount {
 		users.Items = append(users.Items, *passwordSecretUser(
-			fmt.Sprintf("user-%d", i), "default", fmt.Sprintf("password-%d", i), "key"))
+			fmt.Sprintf("user-%d", i), testNamespace, fmt.Sprintf("password-%d", i), "key"))
 	}
 	secrets := &corev1.SecretList{ListMeta: metav1.ListMeta{ResourceVersion: "1"}}
 	for i := range secretCount {
 		secrets.Items = append(secrets.Items, corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: fmt.Sprintf("password-%d", i)},
+			ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: fmt.Sprintf("password-%d", i)},
 		})
 	}
 	scheme := runtime.NewScheme()
