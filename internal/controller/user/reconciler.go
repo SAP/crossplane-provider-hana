@@ -549,42 +549,22 @@ func (c *external) buildUpdateInputs(ctx context.Context, cr *v1alpha1.User) (*v
 
 // updateUserAttributes runs each user-facet update in order, stopping on the first error.
 func (c *external) updateUserAttributes(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
-	if err := c.updatePrivileges(ctx, cr, desired, observed); err != nil {
-		return err
+	steps := []func(context.Context, *v1alpha1.User, *v1alpha1.UserParameters, *v1alpha1.UserObservation) error{
+		c.updatePrivileges,
+		c.updateRoles,
+		c.updateParameters,
+		c.updateUsergroup,
+		c.updateX509Providers,
+		c.updateX509Authentication,
+		c.updateJWTAuthentication,
+		c.updateJWTProviders,
+		c.updateClientConnect,
+		c.updatePasswordLifetimeCheck,
 	}
-	if err := c.updateRoles(ctx, cr, desired, observed); err != nil {
-		return err
-	}
-	if err := c.updateParameters(ctx, cr, desired, observed); err != nil {
-		return err
-	}
-
-	if err := c.updateUsergroup(ctx, cr, desired, observed); err != nil {
-		return err
-	}
-
-	if err := c.updateX509Providers(ctx, cr, desired, observed); err != nil {
-		return err
-	}
-
-	if err := c.updateX509Authentication(ctx, cr, desired, observed); err != nil {
-		return err
-	}
-
-	if err := c.updateJWTAuthentication(ctx, cr, desired, observed); err != nil {
-		return err
-	}
-
-	if err := c.updateJWTProviders(ctx, cr, desired, observed); err != nil {
-		return err
-	}
-
-	if err := c.updateClientConnect(ctx, cr, desired, observed); err != nil {
-		return err
-	}
-
-	if err := c.updatePasswordLifetimeCheck(ctx, cr, desired, observed); err != nil {
-		return err
+	for _, step := range steps {
+		if err := step(ctx, cr, desired, observed); err != nil {
+			return err
+		}
 	}
 	return nil
 }
