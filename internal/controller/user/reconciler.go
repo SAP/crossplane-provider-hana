@@ -668,15 +668,17 @@ func (c *external) updatePasswordLifetimeCheck(ctx context.Context, cr *v1alpha1
 
 func (c *external) updatePassword(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, password string) error {
 	if cr.Status.AtProvider.PasswordUpToDate != nil && !*cr.Status.AtProvider.PasswordUpToDate {
-		if cr.Spec.ForProvider.Authentication.Password == nil || (cr.Status.AtProvider.IsPasswordEnabled != nil && !*cr.Status.AtProvider.IsPasswordEnabled) {
-			if err := c.client.TogglePasswordAuthentication(ctx, desired.Username, *cr.Status.AtProvider.IsPasswordEnabled); err != nil {
-				c.log.Info("Error disabling password authentication", "name", cr.Name, "error", err)
+		// Always reconcile password-authentication enablement first.
+		if cr.Spec.ForProvider.Authentication.Password != nil || cr.Status.AtProvider.IsPasswordEnabled {
+			if err := c.client.TogglePasswordAuthentication(ctx, desired.Username, cr.Status.AtProvider.IsPasswordEnabled); err != nil {
+				c.log.Info("Error toggling password authentication", "name", cr.Name, "error", err)
 				return fmt.Errorf(errUpdateUser, err)
 			}
-		} else {
+		}
+		// When a password is configured and enabled, also set the password value.
+		if cr.Spec.ForProvider.Authentication.Password != nil && cr.Status.AtProvider.IsPasswordEnabled {
 			c.log.Info("Updating user password", "name", cr.Name, "username", desired.Username)
-			err := c.client.UpdatePassword(ctx, desired.Username, password, desired.Authentication.Password.ForceFirstPasswordChange)
-			if err != nil {
+			if err := c.client.UpdatePassword(ctx, desired.Username, password, desired.Authentication.Password.ForceFirstPasswordChange); err != nil {
 				c.log.Info("Error updating user password", "name", cr.Name, "error", err)
 				return fmt.Errorf(errUpdateUser, err)
 			}
