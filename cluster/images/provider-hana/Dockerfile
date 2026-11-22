@@ -1,5 +1,5 @@
 # renovate: datasource=docker depName=gcr.io/distroless/static
-ARG DISTROLESS_DIGEST="sha256:58133991db06659feaabe0f4e97a35cebf15ef4ea08f8a4c6d2ee5f75e4aa6a0"
+ARG DISTROLESS_DIGEST="sha256:4c2cd1dee442c9a99924a378c7c126fac8fef14771579ef567c3f2bdd7a5122a"
 
 FROM gcr.io/distroless/static@${DISTROLESS_DIGEST}
 ARG TARGETOS
