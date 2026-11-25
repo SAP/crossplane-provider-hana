@@ -76,25 +76,9 @@ Apply the resources to your control plane:
 kubectl create -f hana-admin-api.yaml
 ```
 
-The `ServiceBinding` creates the secret in a different format than the HANA provider expects. Until this is solved as part of [#88](https://github.com/SAP/crossplane-provider-hana/issues/88), create the secret manually.
-Replace `<baseurl>` with the base URL and `<uaa>` with the UAA object from the secret created by the `ServiceBinding` above.
+The `ServiceBinding` publishes the admin API credentials as separate `baseurl` (plain string) and `uaa` (JSON object) entries in `hana-api-binding-secret`. Reference this secret directly from `InstanceMapping` and omit `adminCredentialsSecretRef.key`, as shown below.
 
-```yaml title="hana-api-secret.yaml" {8}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: hana-api-secret
-  namespace: default
-type: Opaque
-data:
-  credentials: '{"baseurl":"{{<baseurl>}}","uaa":{{<uaa>}}}'
-```
-
-Apply the secret to your control plane:
-
-```shell title="Run in terminal"
-kubectl create -f hana-api-secret.yaml
-```
+Secrets containing the full JSON credentials in a single entry are also supported: set `key` to that entry's name, such as `credentials` or `attribute.credentials`. If the selected entry is absent, the provider falls back to the separate `baseurl` and `uaa` entries, so existing references continue to work after the BTP provider changes the secret format. If the selected entry exists, it takes precedence and must contain valid credentials.
 
 ## Create an instance mapping (Cloud Foundry)
 
@@ -147,9 +131,8 @@ spec:
             primaryID: ${org.status.atProvider.id}
             secondaryID: ${space.status.atProvider.id}
             adminCredentialsSecretRef:
-              name: hana-api-secret
+              name: hana-api-binding-secret
               namespace: default
-              key: credentials
 ```
 
 <button onClick={() => window.open("https://doc.crds.dev/github.com/SAP/crossplane-provider-hana/inventory.hana.orchestrate.cloud.sap/InstanceMapping/v1alpha1@v0.1.1", "_blank")} className='button button--secondary'>See full CRD reference</button>

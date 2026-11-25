@@ -12,7 +12,12 @@
 #   cf org <org-name> --guid
 #   cf space <space-name> --guid
 #
-# The admin credentials secret must contain a JSON blob with the following structure:
+# The admin credentials secret can contain separate baseurl (plain string) and
+# uaa (JSON object) entries, as published by a BTP provider ServiceBinding.
+# To use that secret directly, reference its name and namespace and omit key.
+# Existing references to a missing key also fall back to these separate entries.
+#
+# Alternatively, select a key containing a JSON blob, as shown below:
 # {
 #   "baseurl": "api.hana.cloud.sap",
 #   "uaa": {

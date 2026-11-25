@@ -6,6 +6,7 @@ package instancemapping
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -112,13 +113,7 @@ func (c *Connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, fmt.Errorf(errGetCredentialsSecret, err)
 	}
 
-	credentialsJSON, ok := secret.Data[secretRef.Key]
-	if !ok {
-		return nil, fmt.Errorf(errMissingCredentialsKey, secretRef.Key)
-	}
-
-	// Parse credentials
-	creds, err := hanacloud.ParseAdminAPICredentials(credentialsJSON)
+	creds, err := parseAdminAPICredentials(secret.Data, secretRef.Key)
 	if err != nil {
 		return nil, fmt.Errorf(errParseCredentials, err)
 	}
@@ -135,6 +130,30 @@ func (c *Connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		client: imClient,
 		log:    c.log,
 	}, nil
+}
+
+// parseAdminAPICredentials accepts both a selected JSON blob and the flattened
+// baseurl/uaa entries published by the BTP provider. Falling back when the selected
+// key is absent also supports existing references to attribute.credentials.
+func parseAdminAPICredentials(data map[string][]byte, key string) (hanacloud.AdminAPICredentials, error) {
+	if credentialsJSON, ok := data[key]; key != "" && ok {
+		return hanacloud.ParseAdminAPICredentials(credentialsJSON)
+	}
+
+	baseURL, ok := data["baseurl"]
+	if !ok {
+		return hanacloud.AdminAPICredentials{}, fmt.Errorf(errMissingCredentialsKey, "baseurl")
+	}
+	uaa, ok := data["uaa"]
+	if !ok {
+		return hanacloud.AdminAPICredentials{}, fmt.Errorf(errMissingCredentialsKey, "uaa")
+	}
+
+	creds := hanacloud.AdminAPICredentials{BaseURL: string(baseURL)}
+	if err := json.Unmarshal(uaa, &creds.UAA); err != nil {
+		return hanacloud.AdminAPICredentials{}, fmt.Errorf("cannot parse uaa credentials: %w", err)
+	}
+	return creds, nil
 }
 
 // external observes, creates, updates, or deletes an external resource.
