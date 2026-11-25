@@ -34,12 +34,19 @@ import (
 
 const (
 	demoUser              = "DEMO_USER"
+	demoEndpoint          = "hana.example.com"
+	demoPort              = "443"
+	demoPassword          = "s3cret"
 	defaultUsergroup      = "DEFAULT"
 	quotedPublicRole      = `"PUBLIC"`
 	strictPrivilegePolicy = "strict"
 	insertPrivilege       = "INSERT"
 	selectPrivilege       = "SELECT"
 	updatePrivilege       = "UPDATE"
+	testNamespace         = "default"
+	passwordSecretKey     = "password"
+	errNotUserCase        = "ErrNotUser"
+	errNotUserReason      = "An error should be returned if the managed resource is not a *User"
 )
 
 // MockLogger is a mock implementation of logging.Logger
@@ -65,10 +72,13 @@ func (l *MockLogger) WithValues(_ ...any) logging.Logger { return l }
 
 // mockUserClient implements the user.Client struct methods for testing
 type mockUserClient struct {
-	MockRead                   func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error)
-	MockCreate                 func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping, jwtProviders []user.ResolvedJWTUserMapping) error
-	MockDelete                 func(ctx context.Context, parameters *v1alpha1.UserParameters) error
-	MockFormatPrivilegeStrings func(privilegeStrings []string) ([]string, error)
+	MockRead                         func(ctx context.Context, parameters *v1alpha1.UserParameters, password string) (observed *v1alpha1.UserObservation, err error)
+	MockCreate                       func(ctx context.Context, parameters *v1alpha1.UserParameters, password string, providers []user.ResolvedUserMapping, jwtProviders []user.ResolvedJWTUserMapping) error
+	MockDelete                       func(ctx context.Context, parameters *v1alpha1.UserParameters) error
+	MockUpdateUsergroup              func(ctx context.Context, username, usergroup string) error
+	MockUpdatePassword               func(ctx context.Context, username, password string, forceFirstPasswordChange bool) error
+	MockTogglePasswordAuthentication func(ctx context.Context, username string, isPasswordEnabled bool) error
+	MockFormatPrivilegeStrings       func(privilegeStrings []string) ([]string, error)
 }
 
 // Implement the methods that user.Client struct has
@@ -102,10 +112,16 @@ func (m mockUserClient) UpdateParameters(ctx context.Context, username string, p
 }
 
 func (m mockUserClient) UpdateUsergroup(ctx context.Context, username, usergroup string) error {
+	if m.MockUpdateUsergroup != nil {
+		return m.MockUpdateUsergroup(ctx, username, usergroup)
+	}
 	return nil
 }
 
 func (m mockUserClient) UpdatePassword(ctx context.Context, username, password string, forceFirstPasswordChange bool) error {
+	if m.MockUpdatePassword != nil {
+		return m.MockUpdatePassword(ctx, username, password, forceFirstPasswordChange)
+	}
 	return nil
 }
 
@@ -138,6 +154,9 @@ func (m mockUserClient) ToggleClientConnect(ctx context.Context, username string
 }
 
 func (m mockUserClient) TogglePasswordAuthentication(ctx context.Context, username string, isPasswordEnabled bool) error {
+	if m.MockTogglePasswordAuthentication != nil {
+		return m.MockTogglePasswordAuthentication(ctx, username, isPasswordEnabled)
+	}
 	return nil
 }
 
@@ -165,8 +184,8 @@ func TestConnect(t *testing.T) {
 		args   args
 		want   error
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			args: args{
 				mg: nil,
 			},
@@ -287,8 +306,8 @@ func TestObserve(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			fields: fields{
 				log: &MockLogger{},
 			},
@@ -697,8 +716,8 @@ func TestCreate(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			args: args{
 				mg: nil,
 			},
@@ -751,8 +770,10 @@ func TestCreate(t *testing.T) {
 			want: want{
 				err: nil,
 				c: managed.ExternalCreation{ConnectionDetails: managed.ConnectionDetails{
-					"password": {},
-					"user":     []byte(demoUser),
+					xpv2.CredentialsSecretEndpointKey: []byte(demoEndpoint),
+					xpv2.CredentialsSecretPortKey:     []byte(demoPort),
+					xpv2.CredentialsSecretPasswordKey: {},
+					xpv2.CredentialsSecretUserKey:     []byte(demoUser),
 				}},
 			},
 		},
@@ -760,13 +781,239 @@ func TestCreate(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			e := external{client: tc.fields.client, log: tc.fields.log}
+			e := external{client: tc.fields.client, log: tc.fields.log, endpoint: demoEndpoint, port: demoPort}
 			got, err := e.Create(tc.args.ctx, tc.args.mg)
 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
 				t.Errorf("\n%s\ne.Create(...): -want error, +got error:\n%s\n", tc.reason, diff)
 			}
 			if diff := cmp.Diff(tc.want.c, got); diff != "" {
 				t.Errorf("\n%s\ne.Create(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	type fields struct {
+		client user.UserClient
+		kube   client.Client
+		log    logging.Logger
+	}
+
+	type args struct {
+		ctx context.Context
+		mg  resource.Managed
+	}
+
+	type want struct {
+		u   managed.ExternalUpdate
+		err error
+	}
+
+	pwdSecretRef := &xpv2.SecretKeySelector{
+		SecretReference: xpv2.SecretReference{Name: "pwd-secret", Namespace: testNamespace},
+		Key:             passwordSecretKey,
+	}
+
+	cases := map[string]struct {
+		reason string
+		fields fields
+		args   args
+		want   want
+	}{
+		errNotUserCase: {
+			reason: errNotUserReason,
+			fields: fields{
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: nil,
+			},
+			want: want{
+				err: errors.New(errNotUser),
+			},
+		},
+		"ErrUpdate": {
+			reason: "Any errors encountered while updating the User should be returned",
+			fields: fields{
+				client: mockUserClient{
+					MockUpdateUsergroup: func(ctx context.Context, username, usergroup string) error {
+						return errBoom
+					},
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.User{
+					Spec: v1alpha1.UserSpec{
+						ForProvider: v1alpha1.UserParameters{
+							Username:  demoUser,
+							Usergroup: "DEFAULT",
+						},
+						PrivilegeManagementPolicy: "strict",
+					},
+				},
+			},
+			want: want{
+				err: fmt.Errorf(errUpdateUser, errBoom),
+			},
+		},
+		"Success": {
+			reason: "Update should return the full connection bundle including the current password",
+			fields: fields{
+				client: mockUserClient{},
+				kube: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						if s, ok := obj.(*corev1.Secret); ok {
+							s.Data = map[string][]byte{passwordSecretKey: []byte(demoPassword)}
+						}
+						return nil
+					}),
+				},
+				log: &MockLogger{},
+			},
+			args: args{
+				mg: &v1alpha1.User{
+					Spec: v1alpha1.UserSpec{
+						ForProvider: v1alpha1.UserParameters{
+							Username:  demoUser,
+							Usergroup: "DEFAULT",
+							Authentication: v1alpha1.Authentication{
+								Password: &v1alpha1.Password{PasswordSecretRef: pwdSecretRef},
+							},
+						},
+						PrivilegeManagementPolicy: "strict",
+					},
+				},
+			},
+			want: want{
+				u: managed.ExternalUpdate{ConnectionDetails: managed.ConnectionDetails{
+					xpv2.CredentialsSecretEndpointKey: []byte(demoEndpoint),
+					xpv2.CredentialsSecretPortKey:     []byte(demoPort),
+					xpv2.CredentialsSecretUserKey:     []byte(demoUser),
+					xpv2.CredentialsSecretPasswordKey: []byte(demoPassword),
+				}},
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := external{client: tc.fields.client, kube: tc.fields.kube, log: tc.fields.log, endpoint: demoEndpoint, port: demoPort}
+			got, err := e.Update(tc.args.ctx, tc.args.mg)
+			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+				t.Errorf("\n%s\ne.Update(...): -want error, +got error:\n%s\n", tc.reason, diff)
+			}
+			if diff := cmp.Diff(tc.want.u, got); diff != "" {
+				t.Errorf("\n%s\ne.Update(...): -want, +got:\n%s\n", tc.reason, diff)
+			}
+		})
+	}
+}
+
+func TestUpdatePassword(t *testing.T) {
+	errBoom := errors.New("boom")
+	pwdRef := &xpv2.SecretKeySelector{
+		SecretReference: xpv2.SecretReference{Name: "pwd-secret", Namespace: testNamespace},
+		Key:             passwordSecretKey,
+	}
+	withPassword := v1alpha1.Authentication{Password: &v1alpha1.Password{PasswordSecretRef: pwdRef}}
+
+	newUser := func(pwdUpToDate *bool, isPasswordEnabled bool, auth v1alpha1.Authentication) *v1alpha1.User {
+		return &v1alpha1.User{
+			Spec: v1alpha1.UserSpec{ForProvider: v1alpha1.UserParameters{Username: demoUser, Authentication: auth}},
+			Status: v1alpha1.UserStatus{AtProvider: v1alpha1.UserObservation{
+				PasswordUpToDate:  pwdUpToDate,
+				IsPasswordEnabled: isPasswordEnabled,
+			}},
+		}
+	}
+
+	type want struct {
+		updateCalled bool
+		toggleCalled bool
+		pwdUpToDate  *bool
+		err          error
+	}
+
+	cases := map[string]struct {
+		reason    string
+		cr        *v1alpha1.User
+		updateErr error
+		want      want
+	}{
+		// Truth table (PasswordUpToDate == false): toggle unless (password == nil && disabled);
+		// update only when password configured AND enabled.
+		"NoActionWhenPasswordNullAndDisabled": {
+			reason: "When no password is configured and password auth is already disabled, neither Toggle nor UpdatePassword is called",
+			cr:     newUser(new(false), false, v1alpha1.Authentication{}),
+			want:   want{updateCalled: false, toggleCalled: false, pwdUpToDate: new(false), err: nil},
+		},
+		"TogglesWhenPasswordNullAndEnabled": {
+			reason: "When no password is configured but password auth is enabled, Toggle is called and UpdatePassword is not",
+			cr:     newUser(new(false), true, v1alpha1.Authentication{}),
+			want:   want{updateCalled: false, toggleCalled: true, pwdUpToDate: new(false), err: nil},
+		},
+		"TogglesWhenPasswordConfiguredButDisabled": {
+			reason: "When a password is configured but password auth is disabled, Toggle is called and UpdatePassword is not",
+			cr:     newUser(new(false), false, withPassword),
+			want:   want{updateCalled: false, toggleCalled: true, pwdUpToDate: new(false), err: nil},
+		},
+		"TogglesAndUpdatesWhenConfiguredAndEnabled": {
+			reason: "When a password is configured and enabled but out of date, both Toggle and UpdatePassword are called and PasswordUpToDate is set to true",
+			cr:     newUser(new(false), true, withPassword),
+			want:   want{updateCalled: true, toggleCalled: true, pwdUpToDate: new(true), err: nil},
+		},
+		"SkipsWhenPasswordAlreadyUpToDate": {
+			reason: "When PasswordUpToDate is already true, neither UpdatePassword nor Toggle is called",
+			cr:     newUser(new(true), true, withPassword),
+			want:   want{updateCalled: false, toggleCalled: false, pwdUpToDate: new(true), err: nil},
+		},
+		"ReturnsErrorWhenUpdatePasswordFails": {
+			reason:    "An error from UpdatePassword is wrapped and returned, and PasswordUpToDate is left unchanged (Toggle still runs first)",
+			cr:        newUser(new(false), true, withPassword),
+			updateErr: errBoom,
+			want:      want{updateCalled: true, toggleCalled: true, pwdUpToDate: new(false), err: fmt.Errorf(errUpdateUser, errBoom)},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var updateCalled, toggleCalled bool
+			desired := &v1alpha1.UserParameters{Username: demoUser, Authentication: tc.cr.Spec.ForProvider.Authentication}
+			client := mockUserClient{
+				MockUpdatePassword: func(ctx context.Context, username, password string, forceFirstPasswordChange bool) error {
+					updateCalled = true
+					if username != desired.Username {
+						t.Errorf("%s: UpdatePassword username = %q, want %q", tc.reason, username, desired.Username)
+					}
+					if password != demoPassword {
+						t.Errorf("%s: UpdatePassword password = %q, want %q", tc.reason, password, demoPassword)
+					}
+					return tc.updateErr
+				},
+				MockTogglePasswordAuthentication: func(ctx context.Context, username string, isPasswordEnabled bool) error {
+					toggleCalled = true
+					return nil
+				},
+			}
+			e := external{client: client, log: &MockLogger{}}
+
+			err := e.updatePassword(context.Background(), tc.cr, desired, demoPassword)
+
+			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+				t.Errorf("\n%s\nupdatePassword(...): -want error, +got error:\n%s", tc.reason, diff)
+			}
+			if updateCalled != tc.want.updateCalled {
+				t.Errorf("\n%s\nUpdatePassword called = %v, want %v", tc.reason, updateCalled, tc.want.updateCalled)
+			}
+			if toggleCalled != tc.want.toggleCalled {
+				t.Errorf("\n%s\nTogglePasswordAuthentication called = %v, want %v", tc.reason, toggleCalled, tc.want.toggleCalled)
+			}
+			if diff := cmp.Diff(tc.want.pwdUpToDate, tc.cr.Status.AtProvider.PasswordUpToDate); diff != "" {
+				t.Errorf("\n%s\nPasswordUpToDate: -want, +got:\n%s", tc.reason, diff)
 			}
 		})
 	}
@@ -795,8 +1042,8 @@ func TestDelete(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ErrNotUser": {
-			reason: "An error should be returned if the managed resource is not a *User",
+		errNotUserCase: {
+			reason: errNotUserReason,
 			args: args{
 				mg: nil,
 			},

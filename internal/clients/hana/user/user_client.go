@@ -152,7 +152,7 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 		LastPasswordChangeTime:         metav1.NewTime(lastPasswordChangeTime),
 		RestrictedUser:                 &restrictedUser,
 		IsPasswordLifetimeCheckEnabled: &isPasswordLifetimeCheckEnabled,
-		IsPasswordEnabled:              &isPasswordEnabled,
+		IsPasswordEnabled:              isPasswordEnabled,
 	}
 	if isClientConnectEnabled.Valid {
 		v := isClientConnectEnabled.Bool

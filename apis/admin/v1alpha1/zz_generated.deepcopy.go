@@ -1357,11 +1357,6 @@ func (in *UserObservation) DeepCopyInto(out *UserObservation) {
 		*out = new(bool)
 		**out = **in
 	}
-	if in.IsPasswordEnabled != nil {
-		in, out := &in.IsPasswordEnabled, &out.IsPasswordEnabled
-		*out = new(bool)
-		**out = **in
-	}
 	if in.IsClientConnectEnabled != nil {
 		in, out := &in.IsClientConnectEnabled, &out.IsClientConnectEnabled
 		*out = new(bool)
