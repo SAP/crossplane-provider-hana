@@ -14,6 +14,7 @@ type MockDB struct {
 	MockQueryRowContext func(ctx context.Context, query string, args ...any) *sql.Row
 	MockQueryContext    func(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	MockBeginTx         func(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+	MockClose           func() error
 }
 
 func (m MockDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
@@ -34,6 +35,13 @@ func (m MockDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, erro
 		return m.MockBeginTx(ctx, opts)
 	}
 	return nil, nil
+}
+
+func (m MockDB) Close() error {
+	if m.MockClose != nil {
+		return m.MockClose()
+	}
+	return nil
 }
 
 type MockConnector struct {

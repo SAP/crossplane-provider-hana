@@ -226,7 +226,7 @@ func TestRolegroupLifecycle(t *testing.T) {
 
 	c := &RolegroupTestConfig{
 		TestConfig: testConfig,
-		db:         hana.New(logger),
+		db:         hana.New(logger, 0),
 	}
 
 	fB := features.New("RolegroupLifecycle")
@@ -301,7 +301,7 @@ func TestRolegroupWithRoleAssignment(t *testing.T) {
 	roleCRName := "e2e-role-with-rolegroup"
 
 	c := &RolegroupTestConfig{
-		db: hana.New(logger),
+		db: hana.New(logger, 0),
 	}
 
 	fB := features.New("RolegroupWithRoleAssignment")

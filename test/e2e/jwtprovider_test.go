@@ -207,7 +207,7 @@ func TestJWTProviderFlow(t *testing.T) {
 
 	c := &JWTFlowTestConfig{
 		TestConfig: testConfig,
-		db:         hana.New(logger),
+		db:         hana.New(logger, 0),
 	}
 
 	fB := features.New("JWTProviderFlow")

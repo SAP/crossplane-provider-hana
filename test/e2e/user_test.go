@@ -50,7 +50,7 @@ func TestUser(t *testing.T) {
 
 	c := &UserTestConfig{
 		TestConfig: testConfig,
-		db:         hana.New(logger),
+		db:         hana.New(logger, 0),
 	}
 
 	fB := features.New(fmt.Sprintf("%v", testConfig.Kind))

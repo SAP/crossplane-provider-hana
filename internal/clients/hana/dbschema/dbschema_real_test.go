@@ -20,7 +20,7 @@ func TestReadSchema_RealConnection(t *testing.T) {
 	}
 
 	// Create HANA DB connection
-	db := hana.New(logging.NewNopLogger())
+	db := hana.New(logging.NewNopLogger(), 0)
 	ctx := context.Background()
 	conn, err := db.Connect(ctx, creds)
 	if err != nil {

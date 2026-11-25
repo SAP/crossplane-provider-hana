@@ -134,7 +134,7 @@ func TestX509ProviderFlow(t *testing.T) {
 
 	c := &X509FlowTestConfig{
 		TestConfig: testConfig,
-		db:         hana.New(logger),
+		db:         hana.New(logger, 0),
 	}
 
 	fB := features.New("X509ProviderFlow")
