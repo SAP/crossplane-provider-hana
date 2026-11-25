@@ -95,6 +95,8 @@ spec:
                         description: |-
                           Key is the key in the secret containing the JSON credentials.
                           The JSON must contain: {"baseurl": "...", "uaa": {"url": "...", "clientid": "...", "clientsecret": "..."}}
+                          If omitted or absent from the secret, credentials are read from separate
+                          baseurl (plain string) and uaa (JSON object) entries, as published by the BTP provider.
                         type: string
                       name:
                         description: Name is the name of the Secret
@@ -103,7 +105,6 @@ spec:
                         description: Namespace is the namespace of the Secret
                         type: string
                     required:
-                    - key
                     - name
                     - namespace
                     type: object

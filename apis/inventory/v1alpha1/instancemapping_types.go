@@ -25,8 +25,10 @@ type AdminCredentialsSecretRef struct {
 
 	// Key is the key in the secret containing the JSON credentials.
 	// The JSON must contain: {"baseurl": "...", "uaa": {"url": "...", "clientid": "...", "clientsecret": "..."}}
-	// +kubebuilder:validation:Required
-	Key string `json:"key"`
+	// If omitted or absent from the secret, credentials are read from separate
+	// baseurl (plain string) and uaa (JSON object) entries, as published by the BTP provider.
+	// +kubebuilder:validation:Optional
+	Key string `json:"key,omitempty"`
 }
 
 // InstanceMappingParameters are the configurable fields of an InstanceMapping.
