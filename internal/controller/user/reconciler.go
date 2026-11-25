@@ -31,6 +31,7 @@ import (
 	"github.com/SAP/crossplane-provider-hana/apis/admin/v1alpha1"
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/controller/features"
+	controlleroptions "github.com/SAP/crossplane-provider-hana/internal/controller/options"
 )
 
 const (
@@ -50,11 +51,17 @@ const (
 
 	msgNotValidSecret = "Object is not a valid secret"
 	msgListFailed     = "Failed to list users"
+
+	passwordSecretRefIndex = "spec.forProvider.authentication.password.passwordSecretRef"
 )
 
 // Setup adds a controller that reconciles User managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 	name := managed.ControllerName(v1alpha1.UserGroupKind)
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.User{}, passwordSecretRefIndex, indexPasswordSecretRef); err != nil {
+		return fmt.Errorf("cannot index User password Secret references: %w", err)
+	}
 
 	log := o.Logger.WithValues("controller", name)
 	t := resource.NewLegacyProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{})
@@ -72,8 +79,10 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
 		features.ConfigureBetaManagementPolicies(o))
 
+	co := controlleroptions.ForManagedController(name, o, r)
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
+		WithOptions(co.RuntimeOptions).
 		For(&v1alpha1.User{}).
 		Watches(
 			&corev1.Secret{},
@@ -81,10 +90,21 @@ func Setup(mgr ctrl.Manager, o controller.Options, db xsql.Connector) error {
 				return generateReconcileRequestsFromSecret(ctx, obj, mgr.GetClient(), log)
 			})),
 		).
-		Complete(r)
+		Complete(co.Reconciler)
 }
 
-func generateReconcileRequestsFromSecret(ctx context.Context, obj client.Object, kube client.Client, log logging.Logger) []reconcile.Request {
+func indexPasswordSecretRef(obj client.Object) []string {
+	cr := obj.(*v1alpha1.User)
+	password := cr.Spec.ForProvider.Authentication.Password
+	if password == nil || password.PasswordSecretRef == nil {
+		return nil
+	}
+
+	ref := password.PasswordSecretRef
+	return []string{types.NamespacedName{Namespace: ref.Namespace, Name: ref.Name}.String()}
+}
+
+func generateReconcileRequestsFromSecret(ctx context.Context, obj client.Object, kube client.Reader, log logging.Logger) []reconcile.Request {
 	log.Info("Enqueueing requests from secret")
 	secret, ok := obj.(*corev1.Secret)
 	if !ok {
@@ -93,26 +113,19 @@ func generateReconcileRequestsFromSecret(ctx context.Context, obj client.Object,
 	}
 
 	users := &v1alpha1.UserList{}
-	if err := kube.List(ctx, users); err != nil {
+	if err := kube.List(ctx, users, client.MatchingFields{
+		passwordSecretRefIndex: client.ObjectKeyFromObject(secret).String(),
+	}); err != nil {
 		log.Info(msgListFailed, "error", err)
 		return []reconcile.Request{}
 	}
 
-	requests := []reconcile.Request{}
-	for _, user := range users.Items {
-		if passwordObj := user.Spec.ForProvider.Authentication.Password; passwordObj != nil {
-			if secretRef := passwordObj.PasswordSecretRef; secretRef != nil &&
-				secretRef.Namespace == secret.GetNamespace() &&
-				secretRef.Name == secret.GetName() {
-				log.Info("Secret for user changed", "user", user.GetName(), "secret", secret.GetName())
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Name: user.Name,
-					},
-				},
-				)
-			}
-		}
+	requests := make([]reconcile.Request, 0, len(users.Items))
+	for i := range users.Items {
+		log.Info("Secret for user changed", "user", users.Items[i].Name, "secret", secret.GetName())
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: users.Items[i].Name},
+		})
 	}
 
 	return requests
@@ -204,6 +217,11 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	if err := c.resolveJWTProviderNames(ctx, parameters); err != nil {
 		c.log.Info("Error resolving JWT provider references", "name", cr.Name, "error", err)
+		return managed.ExternalObservation{}, err
+	}
+
+	if err := c.resolveX509ProviderNames(ctx, parameters); err != nil {
+		c.log.Info("Error resolving X.509 provider references", "name", cr.Name, "error", err)
 		return managed.ExternalObservation{}, err
 	}
 
@@ -300,6 +318,7 @@ func (c *external) checkPrivilegeRoleOverlap(cr *v1alpha1.User, desiredPrivilege
 func upToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
 	return isPasswordUpToDate(observed, desired) &&
 		isX509MappingsUpToDate(observed, desired) &&
+		isX509EnabledUpToDate(observed, desired) &&
 		isJWTMappingsUpToDate(observed, desired) &&
 		isJWTEnabledUpToDate(observed, desired) &&
 		isClientConnectUpToDate(observed, desired) &&
@@ -320,10 +339,46 @@ func isPasswordUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.Us
 }
 
 func isX509MappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
-	if desired.Authentication.X509Providers != nil {
-		return utils.ArraysEqual(observed.X509Providers, desired.Authentication.X509Providers)
+	if desired.Authentication.X509Providers == nil {
+		return len(observed.X509Providers) == 0
 	}
-	return len(observed.X509Providers) == 0
+	toAdd, toRemove := diffX509Mappings(desired.Authentication.X509Providers, observed.X509Providers)
+	return len(toAdd) == 0 && len(toRemove) == 0
+}
+
+func isX509EnabledUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
+	wantEnabled := len(desired.Authentication.X509Providers) > 0
+	if observed.IsX509Enabled == nil {
+		return !wantEnabled
+	}
+	return *observed.IsX509Enabled == wantEnabled
+}
+
+// diffX509Mappings returns the X.509 mappings that need to be added (present in
+// desired but not observed) and removed (present in observed but not desired).
+// Comparison is by resolved HANA provider Name and SubjectName only — the
+// Kubernetes ProviderRef field is ignored because observed entries read back
+// from SYS.X509_USER_MAPPINGS never carry it.
+func diffX509Mappings(desired, observed []v1alpha1.X509UserMapping) (toAdd, toRemove []v1alpha1.X509UserMapping) {
+	in := func(m v1alpha1.X509UserMapping, s []v1alpha1.X509UserMapping) bool {
+		for _, x := range s {
+			if x.Name == m.Name && x.SubjectName == m.SubjectName {
+				return true
+			}
+		}
+		return false
+	}
+	for _, d := range desired {
+		if !in(d, observed) {
+			toAdd = append(toAdd, d)
+		}
+	}
+	for _, o := range observed {
+		if !in(o, desired) {
+			toRemove = append(toRemove, o)
+		}
+	}
+	return toAdd, toRemove
 }
 
 func isJWTMappingsUpToDate(observed *v1alpha1.UserObservation, desired *v1alpha1.UserParameters) bool {
@@ -462,6 +517,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, err
 	}
 
+	if err := c.updateX509Authentication(ctx, cr, desired, observed); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
 	if err := c.updateJWTAuthentication(ctx, cr, desired, observed); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
@@ -588,36 +647,36 @@ func (c *external) updateUsergroup(ctx context.Context, cr *v1alpha1.User, desir
 }
 
 func (c *external) updateX509Providers(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
-	desiredProviders := desired.Authentication.X509Providers
-	observedProviders := observed.X509Providers
+	if isX509MappingsUpToDate(observed, desired) {
+		return nil
+	}
 
-	isEqual, providerMappingsToAdd, providerMappingsToRemove := utils.ArraysBothDiff(desiredProviders, observedProviders)
-	providersToAdd, err := c.ResolveUserMappings(ctx, providerMappingsToAdd, cr.GetNamespace())
+	toAdd, toRemove := diffX509Mappings(desired.Authentication.X509Providers, observed.X509Providers)
+
+	providersToAdd, err := c.ResolveUserMappings(ctx, toAdd, cr.GetNamespace())
 	if err != nil {
 		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
 		return fmt.Errorf(errUpdateUser, err)
 	}
 
-	providersToRemove, err := c.ResolveUserMappings(ctx, providerMappingsToRemove, cr.GetNamespace())
+	providersToRemove, err := c.ResolveUserMappings(ctx, toRemove, cr.GetNamespace())
 	if err != nil {
 		c.log.Info("Error resolving user X.509 providers", "name", cr.Name, "error", err)
 		return fmt.Errorf(errUpdateUser, err)
 	}
 
-	if !isEqual {
-		c.log.Info("Updating user X.509 providers",
-			"name", cr.Name,
-			"username", desired.Username,
-			"toAdd", providersToAdd,
-			"toRemove", providersToRemove)
+	c.log.Info("Updating user X.509 providers",
+		"name", cr.Name,
+		"username", desired.Username,
+		"toAdd", providersToAdd,
+		"toRemove", providersToRemove)
 
-		if err := c.client.UpdateX509Providers(ctx, desired.Username, providersToAdd, providersToRemove); err != nil {
-			c.log.Info("Error updating user X.509 providers", "name", cr.Name, "error", err)
-			return fmt.Errorf(errUpdateUser, err)
-		}
-		cr.Status.AtProvider.X509Providers = desired.Authentication.X509Providers
-		c.log.Info("Updated user X.509 providers", "name", cr.Name, "username", desired.Username)
+	if err := c.client.UpdateX509Providers(ctx, desired.Username, providersToAdd, providersToRemove); err != nil {
+		c.log.Info("Error updating user X.509 providers", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
 	}
+	cr.Status.AtProvider.X509Providers = desired.Authentication.X509Providers
+	c.log.Info("Updated user X.509 providers", "name", cr.Name, "username", desired.Username)
 
 	return nil
 }
@@ -704,6 +763,10 @@ func (c *external) buildDesiredParameters(ctx context.Context, cr *v1alpha1.User
 	parameters := handleDefaults(cr)
 
 	if err := c.resolveJWTProviderNames(ctx, parameters); err != nil {
+		return nil, err
+	}
+
+	if err := c.resolveX509ProviderNames(ctx, parameters); err != nil {
 		return nil, err
 	}
 
@@ -905,6 +968,29 @@ func (c *external) resolveJWTProviderNames(ctx context.Context, params *v1alpha1
 	return nil
 }
 
+// resolveX509ProviderNames mutates params.Authentication.X509Providers so each
+// entry's Name carries the HANA-side X509_PROVIDER_NAME. Required before any
+// comparison against observed.X509Providers (which always carries the resolved
+// name from SYS.X509_USER_MAPPINGS); see isX509MappingsUpToDate.
+func (c *external) resolveX509ProviderNames(ctx context.Context, params *v1alpha1.UserParameters) error {
+	for i := range params.Authentication.X509Providers {
+		m := &params.Authentication.X509Providers[i]
+		switch {
+		case m.Name != "":
+			// direct HANA name already present
+		case m.ProviderRef != nil:
+			obj := &v1alpha1.X509Provider{}
+			if err := c.kube.Get(ctx, types.NamespacedName{Name: m.ProviderRef.Name}, obj); err != nil {
+				return fmt.Errorf("cannot resolve X.509 provider reference: %w", err)
+			}
+			m.Name = obj.Spec.ForProvider.Name
+		default:
+			return errors.New("cannot resolve X.509 provider reference: no name or providerRef specified")
+		}
+	}
+	return nil
+}
+
 func (c *external) updateJWTAuthentication(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
 	want := len(desired.Authentication.JWTProviders) > 0
 	current := observed.IsJWTEnabled != nil && *observed.IsJWTEnabled
@@ -918,6 +1004,22 @@ func (c *external) updateJWTAuthentication(ctx context.Context, cr *v1alpha1.Use
 	}
 	v := want
 	cr.Status.AtProvider.IsJWTEnabled = &v
+	return nil
+}
+
+func (c *external) updateX509Authentication(ctx context.Context, cr *v1alpha1.User, desired *v1alpha1.UserParameters, observed *v1alpha1.UserObservation) error {
+	want := len(desired.Authentication.X509Providers) > 0
+	current := observed.IsX509Enabled != nil && *observed.IsX509Enabled
+	if want == current {
+		return nil
+	}
+	c.log.Info("Toggling X.509 authentication", "name", cr.Name, "username", desired.Username, "enable", want)
+	if err := c.client.ToggleX509Authentication(ctx, desired.Username, want); err != nil {
+		c.log.Info("Error toggling X.509 authentication", "name", cr.Name, "error", err)
+		return fmt.Errorf(errUpdateUser, err)
+	}
+	v := want
+	cr.Status.AtProvider.IsX509Enabled = &v
 	return nil
 }
 

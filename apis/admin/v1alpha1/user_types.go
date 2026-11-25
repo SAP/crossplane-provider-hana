@@ -117,6 +117,11 @@ type UserObservation struct {
 	// applied to the user.
 	// +kubebuilder:validation:Optional
 	IsJWTEnabled *bool `json:"isJWTEnabled,omitempty"`
+
+	// IsX509Enabled reflects whether `ALTER USER ... ENABLE X509` has been
+	// applied to the user.
+	// +kubebuilder:validation:Optional
+	IsX509Enabled *bool `json:"isX509Enabled,omitempty"`
 }
 
 // A UserSpec defines the desired state of a User.

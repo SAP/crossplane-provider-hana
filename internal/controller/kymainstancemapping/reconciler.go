@@ -29,6 +29,7 @@ import (
 	apisv1alpha1 "github.com/SAP/crossplane-provider-hana/apis/v1alpha1"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/hanacloud"
 	"github.com/SAP/crossplane-provider-hana/internal/clients/remotecluster"
+	controlleroptions "github.com/SAP/crossplane-provider-hana/internal/controller/options"
 )
 
 const (
@@ -78,12 +79,14 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))), //nolint:staticcheck // NewAPIRecorder still requires the old recorder API.
 	)
 
+	co := controlleroptions.ForManagedController(name, o, r)
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
+		WithOptions(co.RuntimeOptions).
 		For(&v1alpha1.KymaInstanceMapping{}).
 		Owns(&v1alpha1.InstanceMapping{}).
 		Owns(&corev1.Secret{}).
-		Complete(r)
+		Complete(co.Reconciler)
 }
 
 // Connector is exported for testing.

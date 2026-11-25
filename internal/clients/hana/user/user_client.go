@@ -35,6 +35,7 @@ const (
 	ErrUpdateUserUsergroup             = "cannot update user usergroup: %w"
 	ErrUpdateUserPasswordLifetimeCheck = "cannot update user password lifetime check: %w"
 	ErrUpdateUserX509Providers         = "cannot update user X.509 providers: %w"
+	ErrUpdateUserX509Enabled           = "cannot toggle X.509 authentication: %w"
 	ErrUpdateUserJWTProviders          = "cannot update user JWT providers: %w"
 	ErrUpdateUserJWTEnabled            = "cannot toggle JWT authentication: %w"
 	ErrUpdateUserClientConnect         = "cannot toggle client connect: %w"
@@ -82,6 +83,7 @@ type UserClient interface {
 	UpdatePasswordLifetimeCheck(ctx context.Context, username string, isPasswordLifetimeCheckEnabled bool) error
 	UpdateX509Providers(ctx context.Context, username string, toAdd, toRemove []ResolvedUserMapping) error
 	UpdateJWTProviders(ctx context.Context, username string, toAdd, toRemove []ResolvedJWTUserMapping) error
+	ToggleX509Authentication(ctx context.Context, username string, enable bool) error
 	ToggleJWTAuthentication(ctx context.Context, username string, enable bool) error
 	ToggleClientConnect(ctx context.Context, username string, enable bool) error
 	TogglePasswordAuthentication(ctx context.Context, username string, isPasswordEnabled bool) error
@@ -194,6 +196,12 @@ func (c Client) Read(ctx context.Context, parameters *v1alpha1.UserParameters, p
 	}
 	observed.IsJWTEnabled = &isJWTEnabled
 
+	isX509Enabled, err := c.queryX509Enabled(ctx, parameters.Username)
+	if err != nil {
+		return observed, err
+	}
+	observed.IsX509Enabled = &isX509Enabled
+
 	return observed, err
 }
 
@@ -240,6 +248,24 @@ func (c Client) queryJWTEnabled(ctx context.Context, username string) (bool, err
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to query jwt enabled flag: %w", err)
+	}
+	return enabled, nil
+}
+
+// queryX509Enabled reports whether the user has X.509 authentication enabled.
+// Mirrors queryJWTEnabled: treats a missing column as "false" for compatibility
+// with older HANA builds.
+func (c Client) queryX509Enabled(ctx context.Context, username string) (bool, error) {
+	const query = "SELECT IS_X509_ENABLED FROM SYS.USERS WHERE USER_NAME = ?"
+	var enabled bool
+	if err := c.QueryRowContext(ctx, query, username).Scan(&enabled); err != nil {
+		if xsql.IsNoRows(err) {
+			return false, nil
+		}
+		if strings.Contains(err.Error(), "expected") || strings.Contains(err.Error(), "invalid column") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to query x509 enabled flag: %w", err)
 	}
 	return enabled, nil
 }
@@ -546,6 +572,11 @@ func (c Client) UpdateX509Providers(ctx context.Context, username string, toAdd,
 				return err
 			}
 		}
+
+		// IS_X509_ENABLED = FALSE in SYS.USERS, blocking certificate-based login.
+		if _, err := c.ExecContext(ctx, fmt.Sprintf("ALTER USER %s ENABLE X509", username)); err != nil {
+			return fmt.Errorf("failed to enable X509 for user %s: %w", username, err)
+		}
 	}
 
 	if len(toRemove) > 0 {
@@ -586,6 +617,19 @@ func (c Client) ToggleJWTAuthentication(ctx context.Context, username string, en
 	query := fmt.Sprintf("ALTER USER %s %s JWT", username, verb)
 	if _, err := c.ExecContext(ctx, query); err != nil {
 		return fmt.Errorf(ErrUpdateUserJWTEnabled, err)
+	}
+	return nil
+}
+
+// ToggleX509Authentication flips `ENABLE/DISABLE X509` on the user.
+func (c Client) ToggleX509Authentication(ctx context.Context, username string, enable bool) error {
+	verb := "DISABLE"
+	if enable {
+		verb = "ENABLE"
+	}
+	query := fmt.Sprintf("ALTER USER %s %s X509", username, verb)
+	if _, err := c.ExecContext(ctx, query); err != nil {
+		return fmt.Errorf(ErrUpdateUserX509Enabled, err)
 	}
 	return nil
 }
